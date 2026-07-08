@@ -1,9 +1,7 @@
 import {
   type EnvironmentId,
-  isProviderDriverKind,
   ProjectId,
   type ModelSelection,
-  type ProviderDriverKind,
   type ServerProvider,
   type ScopedThreadRef,
   type ThreadId,
@@ -266,41 +264,11 @@ export function threadHasStarted(thread: Thread | null | undefined): boolean {
   );
 }
 
-// `threadProvider` is the open branded driver kind carried by the session.
-// Unknown driver kinds degrade to `null` (i.e. "unlocked"), which is the safe
-// rollback / fork behavior — the routing layer is the right place to surface
-// "driver not installed" errors, not the lock state.
-//
-// `selectedProvider` takes the same open-string shape because the composer
-// now tracks the picker selection as a `ProviderInstanceId` (e.g.
-// `codex_personal`). Custom instance ids that don't directly match a
-// registered driver resolve to `null` here, which matches the existing
-// "unknown driver -> unlocked" semantics. Callers that want the lock to track
-// a custom instance's underlying driver kind should resolve the instance id
-// upstream and pass the correlated kind.
-export function deriveLockedProvider(input: {
-  thread: Thread | null | undefined;
-  selectedProvider: string | null;
-  threadProvider: string | null;
-}): ProviderDriverKind | null {
-  if (!threadHasStarted(input.thread)) {
-    return null;
-  }
-  const sessionProvider = input.thread?.session?.providerName ?? null;
-  if (sessionProvider && isProviderDriverKind(sessionProvider)) {
-    return sessionProvider;
-  }
-  const narrowedThreadProvider =
-    input.threadProvider && isProviderDriverKind(input.threadProvider)
-      ? input.threadProvider
-      : null;
-  const narrowedSelectedProvider =
-    input.selectedProvider && isProviderDriverKind(input.selectedProvider)
-      ? input.selectedProvider
-      : null;
-  return narrowedThreadProvider ?? narrowedSelectedProvider ?? null;
-}
-
+// Blocks in-thread model changes for providers that cannot resume their own
+// thread with a different model (`requiresNewThreadForModelChange`). Selecting
+// a *different* provider instance is never blocked: the server treats that as
+// a handoff and starts a fresh provider session with the prior conversation
+// replayed as context.
 export function getStartedThreadModelChangeBlockReason(input: {
   providers: ReadonlyArray<Pick<ServerProvider, "instanceId" | "requiresNewThreadForModelChange">>;
   hasStartedSession: boolean;
@@ -315,22 +283,18 @@ export function getStartedThreadModelChangeBlockReason(input: {
     ...input.currentModelSelection,
     instanceId: input.currentProviderInstanceId ?? input.currentModelSelection.instanceId,
   };
-  if (
-    currentModelSelection.instanceId === input.nextModelSelection.instanceId &&
-    currentModelSelection.model === input.nextModelSelection.model
-  ) {
+  if (currentModelSelection.instanceId !== input.nextModelSelection.instanceId) {
+    // Cross-instance selection is a provider handoff, not an in-thread model
+    // change; the server starts a fresh provider session for it.
+    return null;
+  }
+  if (currentModelSelection.model === input.nextModelSelection.model) {
     return null;
   }
   const currentProvider = input.providers.find(
     (snapshot) => snapshot.instanceId === currentModelSelection.instanceId,
   );
-  const nextProvider = input.providers.find(
-    (snapshot) => snapshot.instanceId === input.nextModelSelection.instanceId,
-  );
-  if (
-    currentProvider?.requiresNewThreadForModelChange !== true &&
-    nextProvider?.requiresNewThreadForModelChange !== true
-  ) {
+  if (currentProvider?.requiresNewThreadForModelChange !== true) {
     return null;
   }
   return {

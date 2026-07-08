@@ -616,7 +616,18 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           threadId,
           currentInstanceId: resolvedInstanceId,
         });
-        yield* upsertSessionBinding(sessionWithInstance, threadId, {
+        // When the thread moves to a different provider instance, the
+        // previously persisted resume cursor belongs to the old driver and
+        // must not survive the rebind (directory.upsert would otherwise keep
+        // it), or a later recovery would feed it to the wrong adapter.
+        const bindingInstanceChanged =
+          persistedBinding !== undefined &&
+          persistedBinding.providerInstanceId !== resolvedInstanceId;
+        const sessionForBinding =
+          bindingInstanceChanged && sessionWithInstance.resumeCursor === undefined
+            ? { ...sessionWithInstance, resumeCursor: null }
+            : sessionWithInstance;
+        yield* upsertSessionBinding(sessionForBinding, threadId, {
           modelSelection: input.modelSelection,
         });
         yield* analytics.record("provider.session.started", {
@@ -935,19 +946,17 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           "ProviderService.listSessions",
           binding,
         );
-        if (binding.provider !== session.provider) {
-          return yield* Effect.die(
-            new Error(
-              `ProviderService.listSessions: thread '${session.threadId}' is active on provider '${session.provider}' but persisted binding names provider '${binding.provider}'.`,
-            ),
-          );
-        }
-        if (overrides.providerInstanceId !== session.providerInstanceId) {
-          return yield* Effect.die(
-            new Error(
-              `ProviderService.listSessions: thread '${session.threadId}' is active on provider instance '${session.providerInstanceId}' but persisted binding names '${overrides.providerInstanceId}'.`,
-            ),
-          );
+        if (
+          binding.provider !== session.provider ||
+          overrides.providerInstanceId !== session.providerInstanceId
+        ) {
+          // The persisted binding does not describe this session. This is
+          // expected transiently while a thread hands off to a different
+          // provider instance (the new session starts before the binding is
+          // rewritten and stale sessions are stopped). Surface the live
+          // session as-is instead of applying the mismatched binding.
+          sessions.push(session);
+          continue;
         }
         if (session.resumeCursor === undefined && binding.resumeCursor !== undefined) {
           overrides.resumeCursor = binding.resumeCursor;

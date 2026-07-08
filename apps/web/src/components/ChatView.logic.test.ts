@@ -225,7 +225,7 @@ describe("getStartedThreadModelChangeBlockReason", () => {
     ).toBeNull();
   });
 
-  it("blocks started-session model changes when either provider requires a new thread", () => {
+  it("allows cross-instance switches on started sessions (provider handoff)", () => {
     expect(
       getStartedThreadModelChangeBlockReason({
         providers,
@@ -237,6 +237,23 @@ describe("getStartedThreadModelChangeBlockReason", () => {
         nextModelSelection: {
           instanceId: ProviderInstanceId.make("grok"),
           model: "grok-build",
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("blocks started-session model changes on providers that require a new thread", () => {
+    expect(
+      getStartedThreadModelChangeBlockReason({
+        providers,
+        hasStartedSession: true,
+        currentModelSelection: {
+          instanceId: ProviderInstanceId.make("grok"),
+          model: "grok-build",
+        },
+        nextModelSelection: {
+          instanceId: ProviderInstanceId.make("grok"),
+          model: "grok-other",
         },
       }),
     ).toEqual({
