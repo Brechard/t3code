@@ -304,6 +304,10 @@ export const BranchToolbar = memo(function BranchToolbar({
         void stopThreadSession({ environmentId, input: { threadId: mutationThreadId } });
       }
       if (serverThread !== null) {
+        // Set the env-mode override optimistically so a send that races the
+        // async metadata round-trip already runs in the chosen worktree
+        // instead of the thread's prior (local) mode.
+        onEnvModeChange("worktree");
         void updateThreadMetadata({
           environmentId,
           input: {
@@ -333,6 +337,7 @@ export const BranchToolbar = memo(function BranchToolbar({
       stopThreadSession,
       updateThreadMetadata,
       onActiveThreadBranchOverrideChange,
+      onEnvModeChange,
       setDraftThreadContext,
       draftId,
       threadRef,
