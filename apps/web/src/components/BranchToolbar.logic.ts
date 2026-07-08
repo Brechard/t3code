@@ -94,11 +94,13 @@ export function resolveEnvModeLabel(mode: EnvMode): string {
 }
 
 export function resolveCurrentWorkspaceLabel(activeWorktreePath: string | null): string {
-  return activeWorktreePath ? "Current worktree" : resolveEnvModeLabel("local");
+  if (!activeWorktreePath) return resolveEnvModeLabel("local");
+  return `Current worktree · ${formatWorktreePathForDisplay(activeWorktreePath)}`;
 }
 
 export function resolveLockedWorkspaceLabel(activeWorktreePath: string | null): string {
-  return activeWorktreePath ? "Worktree" : "Local checkout";
+  if (!activeWorktreePath) return "Local checkout";
+  return `Worktree · ${formatWorktreePathForDisplay(activeWorktreePath)}`;
 }
 
 export function resolveEffectiveEnvMode(input: {
