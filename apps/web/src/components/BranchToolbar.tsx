@@ -51,6 +51,8 @@ interface BranchToolbarProps {
   effectiveEnvModeOverride?: EnvMode;
   activeThreadBranchOverride?: string | null;
   onActiveThreadBranchOverrideChange?: (branch: string | null) => void;
+  activeThreadWorktreePathOverride?: string | null;
+  onActiveThreadWorktreePathOverrideChange?: (worktreePath: string | null) => void;
   startFromOrigin: boolean;
   onStartFromOriginChange: (startFromOrigin: boolean) => void;
   envLocked: boolean;
@@ -233,6 +235,8 @@ export const BranchToolbar = memo(function BranchToolbar({
   effectiveEnvModeOverride,
   activeThreadBranchOverride,
   onActiveThreadBranchOverrideChange,
+  activeThreadWorktreePathOverride,
+  onActiveThreadWorktreePathOverrideChange,
   startFromOrigin,
   onStartFromOriginChange,
   envLocked,
@@ -256,7 +260,12 @@ export const BranchToolbar = memo(function BranchToolbar({
       : null;
   const activeProject = useProject(activeProjectRef);
   const hasActiveThread = serverThread !== null || draftThread !== null;
-  const activeWorktreePath = serverThread?.worktreePath ?? draftThread?.worktreePath ?? null;
+  // Reflect an optimistic "existing worktree" pick immediately so the env-mode
+  // lock, labels and the branch picker's cwd don't lag the metadata round-trip.
+  const activeWorktreePath =
+    activeThreadWorktreePathOverride !== undefined
+      ? activeThreadWorktreePathOverride
+      : (serverThread?.worktreePath ?? draftThread?.worktreePath ?? null);
   const effectiveEnvMode =
     effectiveEnvModeOverride ??
     resolveEffectiveEnvMode({
@@ -304,10 +313,14 @@ export const BranchToolbar = memo(function BranchToolbar({
         void stopThreadSession({ environmentId, input: { threadId: mutationThreadId } });
       }
       if (serverThread !== null) {
-        // Set the env-mode override optimistically so a send that races the
-        // async metadata round-trip already runs in the chosen worktree
-        // instead of the thread's prior (local) mode.
+        // Set the env-mode, branch and worktree-path overrides optimistically
+        // so a send that races the async metadata round-trip already runs in
+        // the chosen worktree instead of the thread's prior (local) mode. The
+        // worktree-path override is what stops that raced send from spawning a
+        // brand-new worktree and keeps the branch picker pointed at the chosen
+        // worktree until the metadata update lands.
         onEnvModeChange("worktree");
+        onActiveThreadWorktreePathOverrideChange?.(option.worktreePath);
         void updateThreadMetadata({
           environmentId,
           input: {
@@ -337,6 +350,7 @@ export const BranchToolbar = memo(function BranchToolbar({
       stopThreadSession,
       updateThreadMetadata,
       onActiveThreadBranchOverrideChange,
+      onActiveThreadWorktreePathOverrideChange,
       onEnvModeChange,
       setDraftThreadContext,
       draftId,
@@ -401,6 +415,9 @@ export const BranchToolbar = memo(function BranchToolbar({
         {...(effectiveEnvModeOverride ? { effectiveEnvModeOverride } : {})}
         {...(activeThreadBranchOverride !== undefined ? { activeThreadBranchOverride } : {})}
         {...(onActiveThreadBranchOverrideChange ? { onActiveThreadBranchOverrideChange } : {})}
+        {...(activeThreadWorktreePathOverride !== undefined
+          ? { activeWorktreePathOverride: activeThreadWorktreePathOverride }
+          : {})}
         startFromOrigin={startFromOrigin}
         onStartFromOriginChange={onStartFromOriginChange}
         {...(onCheckoutPullRequestRequest ? { onCheckoutPullRequestRequest } : {})}

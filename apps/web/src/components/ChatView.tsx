@@ -1139,6 +1139,14 @@ function ChatViewContent(props: ChatViewProps) {
   const [pendingServerThreadEnvMode, setPendingServerThreadEnvMode] =
     useState<DraftThreadEnvMode | null>(null);
   const [pendingServerThreadBranch, setPendingServerThreadBranch] = useState<string | null>();
+  // Optimistic worktree path for a fresh server thread that just picked an
+  // existing worktree, mirroring `pendingServerThreadBranch`. It closes the
+  // window before `updateThreadMetadata` resolves: without it a racing first
+  // send sees `worktreePath === null` and spawns a brand-new worktree, and the
+  // branch picker runs git in the main checkout instead of the chosen worktree.
+  const [pendingServerThreadWorktreePath, setPendingServerThreadWorktreePath] = useState<
+    string | null
+  >();
   const [
     pendingServerThreadStartFromOriginByThreadId,
     setPendingServerThreadStartFromOriginByThreadId,
@@ -3603,6 +3611,14 @@ function ChatViewContent(props: ChatViewProps) {
     canOverrideServerThreadEnvMode && pendingServerThreadBranch !== undefined
       ? pendingServerThreadBranch
       : (activeThread?.branch ?? null);
+  // Worktree path the thread will actually run in, reflecting an optimistic
+  // "existing worktree" pick before the metadata round-trip lands. Once the
+  // server persists the path, `canOverrideServerThreadEnvMode` flips false and
+  // this falls back to the real thread state.
+  const effectiveActiveWorktreePath =
+    canOverrideServerThreadEnvMode && pendingServerThreadWorktreePath !== undefined
+      ? pendingServerThreadWorktreePath
+      : (activeThread?.worktreePath ?? null);
   const startFromOrigin = isLocalDraftThread
     ? (draftThread?.startFromOrigin ?? false)
     : canOverrideServerThreadEnvMode
@@ -3617,6 +3633,7 @@ function ChatViewContent(props: ChatViewProps) {
   useEffect(() => {
     setPendingServerThreadEnvMode(null);
     setPendingServerThreadBranch(undefined);
+    setPendingServerThreadWorktreePath(undefined);
   }, [activeThread?.id]);
 
   useEffect(() => {
@@ -3625,6 +3642,7 @@ function ChatViewContent(props: ChatViewProps) {
     }
     setPendingServerThreadEnvMode(null);
     setPendingServerThreadBranch(undefined);
+    setPendingServerThreadWorktreePath(undefined);
   }, [canOverrideServerThreadEnvMode]);
 
   useEffect(() => {
@@ -3987,15 +4005,18 @@ function ChatViewContent(props: ChatViewProps) {
     if (!activeProject) return;
     const threadIdForSend = activeThread.id;
     const isFirstMessage = !isServerThread || activeThread.messages.length === 0;
+    // Respect an optimistically-picked existing worktree: if one is pending we
+    // must not spawn a fresh worktree while its metadata update is in flight.
+    const worktreePathForSend = effectiveActiveWorktreePath;
     const baseBranchForWorktree =
-      isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath
+      isFirstMessage && sendEnvMode === "worktree" && !worktreePathForSend
         ? activeThreadBranch
         : null;
 
     // In worktree mode, require an explicit base branch so we don't silently
     // fall back to local execution when branch selection is missing.
     const shouldCreateWorktree =
-      isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath;
+      isFirstMessage && sendEnvMode === "worktree" && !worktreePathForSend;
     if (shouldCreateWorktree && !activeThreadBranch) {
       setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");
       return;
@@ -4747,6 +4768,7 @@ function ChatViewContent(props: ChatViewProps) {
     activeProject,
     activeProposedPlan,
     activeThreadBranch,
+    effectiveActiveWorktreePath,
     activeThread,
     beginLocalDispatch,
     activeEnvironmentUnavailable,
@@ -5233,6 +5255,9 @@ function ChatViewContent(props: ChatViewProps) {
                         ? {
                             activeThreadBranchOverride: activeThreadBranch,
                             onActiveThreadBranchOverrideChange: setPendingServerThreadBranch,
+                            activeThreadWorktreePathOverride: effectiveActiveWorktreePath,
+                            onActiveThreadWorktreePathOverrideChange:
+                              setPendingServerThreadWorktreePath,
                           }
                         : {})}
                       envLocked={envLocked}

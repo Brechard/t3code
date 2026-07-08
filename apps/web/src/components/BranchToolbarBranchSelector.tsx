@@ -67,6 +67,7 @@ interface BranchToolbarBranchSelectorProps {
   effectiveEnvModeOverride?: "local" | "worktree";
   activeThreadBranchOverride?: string | null;
   onActiveThreadBranchOverrideChange?: (refName: string | null) => void;
+  activeWorktreePathOverride?: string | null;
   startFromOrigin: boolean;
   onStartFromOriginChange: (startFromOrigin: boolean) => void;
   onCheckoutPullRequestRequest?: (reference: string) => void;
@@ -101,6 +102,7 @@ export function BranchToolbarBranchSelector({
   effectiveEnvModeOverride,
   activeThreadBranchOverride,
   onActiveThreadBranchOverrideChange,
+  activeWorktreePathOverride,
   startFromOrigin,
   onStartFromOriginChange,
   onCheckoutPullRequestRequest,
@@ -144,7 +146,13 @@ export function BranchToolbarBranchSelector({
     activeThreadBranchOverride !== undefined
       ? activeThreadBranchOverride
       : (serverThread?.branch ?? draftThread?.branch ?? null);
-  const activeWorktreePath = serverThread?.worktreePath ?? draftThread?.worktreePath ?? null;
+  // An optimistic "existing worktree" pick must steer branch git ops to the
+  // chosen worktree immediately; otherwise `branchCwd` falls back to the main
+  // checkout until the metadata round-trip lands.
+  const activeWorktreePath =
+    activeWorktreePathOverride !== undefined
+      ? activeWorktreePathOverride
+      : (serverThread?.worktreePath ?? draftThread?.worktreePath ?? null);
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const branchCwd = activeWorktreePath ?? activeProjectCwd;
   const hasServerThread = serverThread !== null;
