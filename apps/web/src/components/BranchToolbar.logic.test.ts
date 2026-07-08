@@ -2,6 +2,7 @@ import { EnvironmentId, type VcsRef } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import {
   dedupeRemoteBranchesWithLocalMatches,
+  deriveExistingWorktreeOptions,
   deriveLocalBranchNameFromRemoteRef,
   resolveEnvironmentOptionLabel,
   resolveBranchSelectionTarget,
@@ -16,6 +17,52 @@ import {
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
 const remoteEnvironmentId = EnvironmentId.make("environment-remote");
+
+describe("deriveExistingWorktreeOptions", () => {
+  const ref = (
+    name: string,
+    worktreePath: string | null,
+  ): Pick<VcsRef, "name" | "worktreePath"> => ({
+    name,
+    worktreePath,
+  });
+
+  it("lists worktrees from refs, excluding main checkout and the current worktree", () => {
+    const options = deriveExistingWorktreeOptions({
+      refs: [
+        ref("main", "/repo"), // main checkout — excluded
+        ref("feature/current", "/home/.t3/worktrees/repo/t3code-current"), // active — excluded
+        ref("t3code/aaa", "/home/.t3/worktrees/repo/t3code-aaa"),
+        ref("fix/bbb", "/home/.t3/worktrees/repo/t3code-bbb"),
+        ref("origin/remote-only", null), // no worktree — excluded
+      ],
+      activeProjectCwd: "/repo",
+      activeWorktreePath: "/home/.t3/worktrees/repo/t3code-current",
+    });
+    expect(options).toEqual([
+      {
+        branch: "t3code/aaa",
+        worktreePath: "/home/.t3/worktrees/repo/t3code-aaa",
+        folderName: "t3code-aaa",
+      },
+      {
+        branch: "fix/bbb",
+        worktreePath: "/home/.t3/worktrees/repo/t3code-bbb",
+        folderName: "t3code-bbb",
+      },
+    ]);
+  });
+
+  it("dedupes by worktree path and returns empty when none qualify", () => {
+    expect(
+      deriveExistingWorktreeOptions({
+        refs: [ref("main", "/repo"), ref("HEAD", "/repo")],
+        activeProjectCwd: "/repo",
+        activeWorktreePath: null,
+      }),
+    ).toEqual([]);
+  });
+});
 
 describe("resolveDraftEnvModeAfterBranchChange", () => {
   it("switches to local mode when returning from an existing worktree to the main worktree", () => {

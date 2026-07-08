@@ -1,9 +1,56 @@
 import type { EnvironmentId, VcsRef, ProjectId } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { formatWorktreePathForDisplay } from "../worktreeCleanup";
 export {
   dedupeRemoteBranchesWithLocalMatches,
   deriveLocalBranchNameFromRemoteRef,
 } from "@t3tools/shared/git";
+
+/**
+ * An existing git worktree that a thread can be started in. Derived from the
+ * branch ref list (each ref carries its `worktreePath` from `git worktree
+ * list`), so it surfaces worktrees created by t3code AND by other tools
+ * (JetBrains/git/etc.) as long as the worktree has a checked-out branch.
+ */
+/** Prefix used to encode an existing-worktree choice as a Select/Menu value. */
+export const EXISTING_WORKTREE_VALUE_PREFIX = "existing-worktree:";
+
+export interface ExistingWorktreeOption {
+  /** The branch checked out in the worktree (used to bind the thread). */
+  branch: string;
+  /** Absolute worktree path (used as the thread's cwd). */
+  worktreePath: string;
+  /** Short label — the worktree's folder name (e.g. `t3code-4e609bb8`). */
+  folderName: string;
+}
+
+/**
+ * Collect the existing worktrees a thread could be started in, from the branch
+ * refs. Excludes the project's main checkout and the currently-active worktree
+ * (those are already covered by the "Current checkout" option). Deduped by
+ * worktree path and sorted by folder name.
+ */
+export function deriveExistingWorktreeOptions(input: {
+  refs: ReadonlyArray<Pick<VcsRef, "name" | "worktreePath">>;
+  activeProjectCwd: string | null;
+  activeWorktreePath: string | null;
+}): ExistingWorktreeOption[] {
+  const { refs, activeProjectCwd, activeWorktreePath } = input;
+  const byPath = new Map<string, ExistingWorktreeOption>();
+  for (const ref of refs) {
+    const worktreePath = ref.worktreePath;
+    if (!worktreePath) continue;
+    if (worktreePath === activeProjectCwd) continue;
+    if (worktreePath === activeWorktreePath) continue;
+    if (byPath.has(worktreePath)) continue;
+    byPath.set(worktreePath, {
+      branch: ref.name,
+      worktreePath,
+      folderName: formatWorktreePathForDisplay(worktreePath),
+    });
+  }
+  return [...byPath.values()].sort((a, b) => a.folderName.localeCompare(b.folderName));
+}
 
 export interface EnvironmentOption {
   environmentId: EnvironmentId;
