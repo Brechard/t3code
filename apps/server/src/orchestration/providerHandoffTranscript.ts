@@ -63,11 +63,13 @@ function truncate(value: string, max: number): string {
  * This key groups them so only the richest single line survives per call.
  */
 function toolCallGroupKey(activity: OrchestrationThreadActivity, payload: Record<string, unknown>) {
-  const item = asRecord(asRecord(payload.data)?.item);
+  const data = asRecord(payload.data);
+  const item = asRecord(data?.item);
   return (
     asNonEmptyString(payload.toolCallId) ??
     asNonEmptyString(payload.callId) ??
     asNonEmptyString(payload.id) ??
+    asNonEmptyString(data?.toolCallId) ??
     asNonEmptyString(item?.id) ??
     activity.id
   );
@@ -120,8 +122,10 @@ function toolCommand(payload: Record<string, unknown>): string | null {
 }
 
 function toolExitCode(payload: Record<string, unknown>): number | null {
+  const rawOutput = asRecord(asRecord(payload.data)?.rawOutput);
   return (
     asFiniteNumber(toolItem(payload)?.exitCode) ??
+    asFiniteNumber(rawOutput?.exitCode) ??
     stripExitMarker(asNonEmptyString(payload.detail)).exitCode
   );
 }
@@ -188,6 +192,11 @@ function toolOutput(payload: Record<string, unknown>, command: string | null): s
     data?.output,
     item?.stdout,
     data?.stdout,
+    // stderr matters most for failed commands, whose diagnostics often land
+    // only there — otherwise a non-zero exit would carry no error text.
+    rawOutput?.stderr,
+    item?.stderr,
+    data?.stderr,
     // `detail` doubles as output only when it isn't just the command label.
     detailText && detailText !== command ? detailText : null,
   ];

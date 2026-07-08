@@ -270,7 +270,10 @@ export function threadHasStarted(thread: Thread | null | undefined): boolean {
 // a handoff and starts a fresh provider session with the prior conversation
 // replayed as context.
 export function getStartedThreadModelChangeBlockReason(input: {
-  providers: ReadonlyArray<Pick<ServerProvider, "instanceId" | "requiresNewThreadForModelChange">>;
+  providers: ReadonlyArray<
+    Pick<ServerProvider, "instanceId" | "requiresNewThreadForModelChange"> &
+      Partial<Pick<ServerProvider, "driver" | "continuation">>
+  >;
   hasStartedSession: boolean;
   currentModelSelection: ModelSelection;
   currentProviderInstanceId?: ModelSelection["instanceId"] | null | undefined;
@@ -283,18 +286,35 @@ export function getStartedThreadModelChangeBlockReason(input: {
     ...input.currentModelSelection,
     instanceId: input.currentProviderInstanceId ?? input.currentModelSelection.instanceId,
   };
-  if (currentModelSelection.instanceId !== input.nextModelSelection.instanceId) {
-    // Cross-instance selection is a provider handoff, not an in-thread model
-    // change; the server starts a fresh provider session for it.
-    return null;
-  }
-  if (currentModelSelection.model === input.nextModelSelection.model) {
-    return null;
-  }
   const currentProvider = input.providers.find(
     (snapshot) => snapshot.instanceId === currentModelSelection.instanceId,
   );
-  if (currentProvider?.requiresNewThreadForModelChange !== true) {
+  const nextProvider = input.providers.find(
+    (snapshot) => snapshot.instanceId === input.nextModelSelection.instanceId,
+  );
+
+  if (currentModelSelection.instanceId !== input.nextModelSelection.instanceId) {
+    // Cross-instance: the server treats this as a fresh-session handoff — and
+    // does not apply `requiresNewThreadForModelChange` — UNLESS the two
+    // instances share a driver and continuation group (i.e. the same resumable
+    // provider thread), in which case it is really an in-session model change.
+    const sameDriver =
+      currentProvider?.driver !== undefined && currentProvider.driver === nextProvider?.driver;
+    const currentKey = currentProvider?.continuation?.groupKey ?? null;
+    const nextKey = nextProvider?.continuation?.groupKey ?? null;
+    const sameContinuation = currentKey !== null && currentKey === nextKey;
+    if (!sameDriver || !sameContinuation) {
+      return null;
+    }
+    // Falls through to the in-session block check below.
+  } else if (currentModelSelection.model === input.nextModelSelection.model) {
+    return null;
+  }
+
+  if (
+    currentProvider?.requiresNewThreadForModelChange !== true &&
+    nextProvider?.requiresNewThreadForModelChange !== true
+  ) {
     return null;
   }
   return {

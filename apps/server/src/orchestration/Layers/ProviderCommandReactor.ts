@@ -395,7 +395,12 @@ const make = Effect.gen(function* () {
       activeSession !== undefined &&
       activeSession.providerInstanceId !== undefined
         ? activeSession.providerInstanceId
-        : thread.modelSelection.instanceId;
+        : // Prefer the last-bound session's provider over the thread's stored
+          // modelSelection: the selection may already have been advanced to the
+          // new provider (e.g. persisted before the turn, or after a prior
+          // handoff) while the thread physically last ran on the old one. Using
+          // the session keeps cross-provider handoff detectable after a restart.
+          (thread.session?.providerInstanceId ?? thread.modelSelection.instanceId);
     const desiredModelSelection = requestedModelSelection ?? thread.modelSelection;
     const desiredInstanceId = desiredModelSelection.instanceId;
     const currentInfo = yield* providerService.getInstanceInfo(currentInstanceId).pipe(
@@ -461,10 +466,11 @@ const make = Effect.gen(function* () {
         requestedModelSelection,
       });
     }
-    const hasPriorAssistantContext = thread.messages.some(
-      (message) => message.role === "assistant" && message.text.trim().length > 0,
-    );
-    const handedOff = isProviderHandoff && hasPriorAssistantContext;
+    // Replay prior context on any provider handoff. The renderer itself
+    // returns `undefined` when there is genuinely nothing to hand off, so we
+    // must not gate on an assistant message specifically — a thread with only
+    // user messages and/or tool activity still has context worth carrying.
+    const handedOff = isProviderHandoff;
     const persistHandoffModelSelection = Effect.gen(function* () {
       if (!isProviderHandoff) {
         return;
@@ -561,11 +567,10 @@ const make = Effect.gen(function* () {
         });
       });
 
-    // Emitted once per turn before the session is (re)started so the notice
-    // renders regardless of which path handles the change — an in-session
-    // model swap (no restart), a session restart, or a cross-provider handoff.
-    yield* appendModelChangedNotice;
-
+    // The model-changed notice is emitted only *after* a session is confirmed
+    // alive on each success path below (in-session no-op, restart, or fresh
+    // start). Emitting it up front would leave a "switched" notice behind if
+    // the (re)start then failed.
     const existingSessionThreadId =
       thread.session && thread.session.status !== "stopped" && activeSession ? thread.id : null;
     if (existingSessionThreadId) {
@@ -593,6 +598,9 @@ const make = Effect.gen(function* () {
         !shouldRestartForModelChange &&
         !shouldRestartForModelSelectionChange
       ) {
+        // In-session model change (no restart) — the live session already
+        // reflects it, so the notice is safe to record here.
+        yield* appendModelChangedNotice;
         return { sessionThreadId: existingSessionThreadId, handedOff: false };
       }
 
@@ -634,12 +642,14 @@ const make = Effect.gen(function* () {
       });
       yield* bindSessionToThread(restartedSession);
       yield* persistHandoffModelSelection;
+      yield* appendModelChangedNotice;
       return { sessionThreadId: restartedSession.threadId, handedOff };
     }
 
     const startedSession = yield* startProviderSession(undefined);
     yield* bindSessionToThread(startedSession);
     yield* persistHandoffModelSelection;
+    yield* appendModelChangedNotice;
     return { sessionThreadId: startedSession.threadId, handedOff };
   });
 

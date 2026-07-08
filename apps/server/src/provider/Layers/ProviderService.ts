@@ -929,44 +929,53 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         }
       }
 
-      const sessions: ProviderSession[] = [];
+      // Dedupe by threadId. During a cross-instance handoff two live sessions
+      // can briefly coexist for one thread (the new one starts before the
+      // stale one is stopped). The persisted binding names the authoritative
+      // instance, so a session that matches it always wins; a mismatched
+      // (stale) session is only kept if nothing authoritative is present. This
+      // guarantees at most one session per threadId for downstream `.find()`.
+      const resultByThreadId = new Map<
+        ThreadId,
+        { readonly session: ProviderSession; readonly bindingMatched: boolean }
+      >();
       for (const session of activeSessions) {
         const binding = bindingsByThreadId.get(session.threadId);
+        const existing = resultByThreadId.get(session.threadId);
         if (!binding) {
-          sessions.push(session);
+          if (!existing) {
+            resultByThreadId.set(session.threadId, { session, bindingMatched: false });
+          }
           continue;
         }
 
-        const overrides: {
-          resumeCursor?: ProviderSession["resumeCursor"];
-          runtimeMode?: ProviderSession["runtimeMode"];
-          providerInstanceId?: ProviderSession["providerInstanceId"];
-        } = {};
-        overrides.providerInstanceId = dieOnMissingBindingInstanceId(
+        const bindingInstanceId = dieOnMissingBindingInstanceId(
           "ProviderService.listSessions",
           binding,
         );
-        if (
-          binding.provider !== session.provider ||
-          overrides.providerInstanceId !== session.providerInstanceId
-        ) {
-          // The persisted binding does not describe this session. This is
-          // expected transiently while a thread hands off to a different
-          // provider instance (the new session starts before the binding is
-          // rewritten and stale sessions are stopped). Surface the live
-          // session as-is instead of applying the mismatched binding.
-          sessions.push(session);
-          continue;
+        const matchesBinding =
+          binding.provider === session.provider && bindingInstanceId === session.providerInstanceId;
+        if (matchesBinding) {
+          const overrides: {
+            resumeCursor?: ProviderSession["resumeCursor"];
+            runtimeMode?: ProviderSession["runtimeMode"];
+            providerInstanceId?: ProviderSession["providerInstanceId"];
+          } = { providerInstanceId: bindingInstanceId };
+          if (session.resumeCursor === undefined && binding.resumeCursor !== undefined) {
+            overrides.resumeCursor = binding.resumeCursor;
+          }
+          if (binding.runtimeMode !== undefined) {
+            overrides.runtimeMode = binding.runtimeMode;
+          }
+          resultByThreadId.set(session.threadId, {
+            session: Object.assign({}, session, overrides),
+            bindingMatched: true,
+          });
+        } else if (!existing || !existing.bindingMatched) {
+          resultByThreadId.set(session.threadId, { session, bindingMatched: false });
         }
-        if (session.resumeCursor === undefined && binding.resumeCursor !== undefined) {
-          overrides.resumeCursor = binding.resumeCursor;
-        }
-        if (binding.runtimeMode !== undefined) {
-          overrides.runtimeMode = binding.runtimeMode;
-        }
-        sessions.push(Object.assign({}, session, overrides));
       }
-      return sessions;
+      return [...resultByThreadId.values()].map((entry) => entry.session);
     },
   );
 
