@@ -62,6 +62,26 @@ describe("deriveExistingWorktreeOptions", () => {
       }),
     ).toEqual([]);
   });
+
+  it("excludes and dedupes on a canonical path spelling (separators / trailing slash)", () => {
+    const options = deriveExistingWorktreeOptions({
+      refs: [
+        ref("main", "/repo/"), // main checkout, trailing slash — still excluded
+        ref("feature/current", "C:\\wt\\current"), // active, backslashes — still excluded
+        ref("t3code/aaa", "/home/wt/t3code-aaa"),
+        ref("t3code/aaa-dupe", "/home/wt/t3code-aaa/"), // same dir, trailing slash — deduped
+      ],
+      activeProjectCwd: "/repo",
+      activeWorktreePath: "C:/wt/current",
+    });
+    expect(options).toEqual([
+      {
+        branch: "t3code/aaa",
+        worktreePath: "/home/wt/t3code-aaa",
+        folderName: "t3code-aaa",
+      },
+    ]);
+  });
 });
 
 describe("resolveDraftEnvModeAfterBranchChange", () => {

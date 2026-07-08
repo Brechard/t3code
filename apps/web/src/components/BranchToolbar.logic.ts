@@ -1,6 +1,6 @@
 import type { EnvironmentId, VcsRef, ProjectId } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { formatWorktreePathForDisplay } from "../worktreeCleanup";
+import { canonicalizeWorktreePath, formatWorktreePathForDisplay } from "../worktreeCleanup";
 export {
   dedupeRemoteBranchesWithLocalMatches,
   deriveLocalBranchNameFromRemoteRef,
@@ -36,14 +36,21 @@ export function deriveExistingWorktreeOptions(input: {
   activeWorktreePath: string | null;
 }): ExistingWorktreeOption[] {
   const { refs, activeProjectCwd, activeWorktreePath } = input;
+  // Compare on a canonical form (separators/trailing slash normalized) so a
+  // worktree spelled differently by `git worktree list` and client state is
+  // still excluded/deduped instead of leaking into the list.
+  const canonicalProjectCwd = canonicalizeWorktreePath(activeProjectCwd);
+  const canonicalActiveWorktree = canonicalizeWorktreePath(activeWorktreePath);
   const byPath = new Map<string, ExistingWorktreeOption>();
   for (const ref of refs) {
     const worktreePath = ref.worktreePath;
     if (!worktreePath) continue;
-    if (worktreePath === activeProjectCwd) continue;
-    if (worktreePath === activeWorktreePath) continue;
-    if (byPath.has(worktreePath)) continue;
-    byPath.set(worktreePath, {
+    const canonical = canonicalizeWorktreePath(worktreePath);
+    if (!canonical) continue;
+    if (canonical === canonicalProjectCwd) continue;
+    if (canonical === canonicalActiveWorktree) continue;
+    if (byPath.has(canonical)) continue;
+    byPath.set(canonical, {
       branch: ref.name,
       worktreePath,
       folderName: formatWorktreePathForDisplay(worktreePath),
