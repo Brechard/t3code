@@ -252,6 +252,46 @@ describe("renderProviderHandoffPrelude", () => {
     expect(prelude!.length).toBeLessThan(2_000);
   });
 
+  it("prefers the terminal completed event even when an in-progress update is longer", () => {
+    // A verbose `tool.updated` (streaming partial output, no exit code) must not
+    // shadow the shorter but authoritative `tool.completed` line that carries
+    // the real exit code and final output.
+    const verboseStreaming = "z".repeat(400);
+    const prelude = renderProviderHandoffPrelude({
+      messages: [message("m1", "user", "run it", "2026-01-01T00:00:00.000Z")],
+      activities: [
+        activity({
+          id: "a1",
+          kind: "tool.updated",
+          summary: "Running",
+          createdAt: "2026-01-01T00:00:01.000Z",
+          payload: {
+            itemType: "command_execution",
+            data: { item: { id: "call-1", command: "flaky", aggregatedOutput: verboseStreaming } },
+          },
+        }),
+        activity({
+          id: "a2",
+          kind: "tool.completed",
+          summary: "Ran command",
+          createdAt: "2026-01-01T00:00:02.000Z",
+          payload: {
+            itemType: "command_execution",
+            data: {
+              item: { id: "call-1", command: "flaky", exitCode: 129, aggregatedOutput: "boom" },
+            },
+          },
+        }),
+      ],
+    });
+    expect(prelude).toBeDefined();
+    // Exactly one line for call-1, sourced from the completed event.
+    expect(prelude!.match(/\[\$\] flaky/g)?.length).toBe(1);
+    expect(prelude).toContain("[$] flaky (exit 129)");
+    expect(prelude).toContain("boom");
+    expect(prelude).not.toContain(verboseStreaming);
+  });
+
   it("still renders a tool trail when there are no textual messages", () => {
     const prelude = renderProviderHandoffPrelude({
       messages: [],

@@ -83,6 +83,16 @@ function isToolTrailActivity(activity: OrchestrationThreadActivity): boolean {
   );
 }
 
+/**
+ * A tool call's terminal lifecycle event (`tool.completed` / `task.completed`)
+ * carries the real exit code and output; an in-progress `tool.updated` does not.
+ * When collapsing a group we prefer the terminal event so a verbose partial
+ * update can't shadow the shorter-but-authoritative final result.
+ */
+function isTerminalToolActivity(activity: OrchestrationThreadActivity): boolean {
+  return activity.kind === "tool.completed" || activity.kind === "task.completed";
+}
+
 function asFiniteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -289,9 +299,12 @@ function buildToolTrailLine(activity: OrchestrationThreadActivity): string | nul
 function collectToolTrailEntries(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): TranscriptEntry[] {
-  // Keep the single most detailed line per tool call so the terminal state
-  // (which carries the output) wins over its earlier lifecycle events.
-  const byGroup = new Map<string, TranscriptEntry>();
+  // Keep one line per tool call. A terminal event (tool.completed /
+  // task.completed) carries the authoritative exit code and output, so it
+  // always wins over a non-terminal tool.updated — even a verbose in-progress
+  // update that happens to be longer. Ties (same terminality) fall back to the
+  // most detailed (longest) line.
+  const byGroup = new Map<string, { entry: TranscriptEntry; terminal: boolean }>();
   for (const activity of activities) {
     if (!isToolTrailActivity(activity)) {
       continue;
@@ -301,12 +314,17 @@ function collectToolTrailEntries(
       continue;
     }
     const key = toolCallGroupKey(activity, asRecord(activity.payload) ?? {});
+    const terminal = isTerminalToolActivity(activity);
     const existing = byGroup.get(key);
-    if (!existing || line.length > existing.text.length) {
-      byGroup.set(key, { createdAt: activity.createdAt, text: line });
+    const shouldReplace =
+      !existing ||
+      (terminal && !existing.terminal) ||
+      (terminal === existing.terminal && line.length > existing.entry.text.length);
+    if (shouldReplace) {
+      byGroup.set(key, { entry: { createdAt: activity.createdAt, text: line }, terminal });
     }
   }
-  return Array.from(byGroup.values());
+  return Array.from(byGroup.values()).map((value) => value.entry);
 }
 
 /**
