@@ -283,9 +283,12 @@ function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
 const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
 // Upper bound on how long worktree creation waits for an AI-generated name
-// before falling back to the client's temporary hash branch. Kept short so a
-// slow model never stalls the first send.
-const WORKTREE_NAME_GENERATION_TIMEOUT = Duration.seconds(6);
+// before falling back to the client's temporary hash branch. Naming is forced
+// to a fast reasoning effort (below); measured cold-spawn cost for a codex-mini
+// slug is ~8s, so 15s gives real headroom to land reliably while still bailing
+// if it's stuck. The folder name only happens once, at creation, and can't be
+// fixed afterward, so it's worth the short wait.
+const WORKTREE_NAME_GENERATION_TIMEOUT = Duration.seconds(15);
 
 const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [ORCHESTRATION_WS_METHODS.dispatchCommand, AuthOrchestrationOperateScope],
@@ -876,12 +879,26 @@ const makeWsRpcLayer = (
               const messageText = command.message.text.trim();
               if (messageText.length > 0) {
                 const attachments = command.message.attachments;
+                // Generating a 2-6 word branch slug is trivial; force a fast
+                // reasoning effort so a user's global `xhigh` text-gen setting
+                // doesn't blow past the budget and leave the folder as a hash.
+                // (The async first-turn rename would still fix the git branch,
+                // but the on-disk folder can't be renamed after creation.)
+                const namingModelSelection = {
+                  ...settings.textGenerationModelSelection,
+                  options: [
+                    ...(settings.textGenerationModelSelection.options ?? []).filter(
+                      (option) => option.id !== "reasoningEffort",
+                    ),
+                    { id: "reasoningEffort", value: "low" as const },
+                  ],
+                };
                 const generatedBranch = yield* textGeneration
                   .generateBranchName({
                     cwd: projectCwd,
                     message: messageText,
                     ...(attachments.length > 0 ? { attachments } : {}),
-                    modelSelection: settings.textGenerationModelSelection,
+                    modelSelection: namingModelSelection,
                   })
                   .pipe(
                     Effect.timeoutOption(WORKTREE_NAME_GENERATION_TIMEOUT),
