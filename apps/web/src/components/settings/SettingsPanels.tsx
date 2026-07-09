@@ -412,6 +412,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin
         ? ["New worktrees start from origin"]
         : []),
+      ...(settings.worktreeLocation !== DEFAULT_UNIFIED_SETTINGS.worktreeLocation
+        ? ["Worktree location"]
+        : []),
       ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
         ? ["Add project base directory"]
         : []),
@@ -431,6 +434,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.addProjectBaseDirectory,
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
+      settings.worktreeLocation,
       settings.diffIgnoreWhitespace,
       settings.automaticGitFetchInterval,
       settings.enableAssistantStreaming,
@@ -462,6 +466,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       automaticGitFetchInterval: DEFAULT_UNIFIED_SETTINGS.automaticGitFetchInterval,
       defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
       newWorktreesStartFromOrigin: DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,
+      worktreeLocation: DEFAULT_UNIFIED_SETTINGS.worktreeLocation,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
@@ -798,6 +803,45 @@ export function GeneralSettingsPanel() {
         ) : null}
 
         <SettingsRow
+          title="Worktree location"
+          description="Where new git worktrees are created. Next to the project keeps them in a visible sibling folder you can open directly in an IDE."
+          resetAction={
+            settings.worktreeLocation !== DEFAULT_UNIFIED_SETTINGS.worktreeLocation ? (
+              <SettingResetButton
+                label="worktree location"
+                onClick={() =>
+                  updateSettings({ worktreeLocation: DEFAULT_UNIFIED_SETTINGS.worktreeLocation })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.worktreeLocation}
+              onValueChange={(value) => {
+                if (value === "global" || value === "sibling") {
+                  updateSettings({ worktreeLocation: value });
+                }
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-44" aria-label="Worktree location">
+                <SelectValue>
+                  {settings.worktreeLocation === "sibling" ? "Next to project" : "Global (~/.t3)"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem hideIndicator value="global">
+                  Global (~/.t3)
+                </SelectItem>
+                <SelectItem hideIndicator value="sibling">
+                  Next to project
+                </SelectItem>
+              </SelectPopup>
+            </Select>
+          }
+        />
+
+        <SettingsRow
           title="Add project starts in"
           description='Leave empty to use "~/" when the Add Project browser opens.'
           resetAction={
@@ -879,7 +923,7 @@ export function GeneralSettingsPanel() {
 
         <SettingsRow
           title="Text generation model"
-          description="Configure the model used for generated commit messages, PR titles, and similar Git text."
+          description="Configure the model used for generated commit messages, PR titles, worktree names, and similar Git text."
           resetAction={
             isGitWritingModelDirty ? (
               <SettingResetButton

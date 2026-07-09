@@ -102,6 +102,14 @@ export const DEFAULT_CLIENT_SETTINGS: ClientSettings = Schema.decodeSync(ClientS
 export const ThreadEnvMode = Schema.Literals(["local", "worktree"]);
 export type ThreadEnvMode = typeof ThreadEnvMode.Type;
 
+// Where new git worktrees are created. `global` keeps them under the shared
+// ~/.t3/worktrees home (the default, hidden). `sibling` places them in a
+// visible folder next to the repo — `<parent>/<repo>.worktrees/<name>` —
+// git-style, so they open cleanly in an IDE and don't pollute git status.
+export const WorktreeLocation = Schema.Literals(["global", "sibling"]);
+export type WorktreeLocation = typeof WorktreeLocation.Type;
+export const DEFAULT_WORKTREE_LOCATION = "global" as const satisfies WorktreeLocation;
+
 const makeBinaryPathSetting = (fallback: string) =>
   TrimmedString.pipe(
     Schema.decodeTo(
@@ -377,6 +385,9 @@ export const ServerSettings = Schema.Struct({
   newWorktreesStartFromOrigin: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
+  worktreeLocation: WorktreeLocation.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_WORKTREE_LOCATION)),
+  ),
   addProjectBaseDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   textGenerationModelSelection: ModelSelection.pipe(
     Schema.withDecodingDefault(
@@ -508,6 +519,7 @@ export const ServerSettingsPatch = Schema.Struct({
   automaticGitFetchInterval: Schema.optionalKey(Schema.DurationFromMillis),
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvMode),
   newWorktreesStartFromOrigin: Schema.optionalKey(Schema.Boolean),
+  worktreeLocation: Schema.optionalKey(WorktreeLocation),
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
   observability: Schema.optionalKey(

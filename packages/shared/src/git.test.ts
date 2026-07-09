@@ -3,10 +3,12 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   applyGitStatusStreamEvent,
+  buildGeneratedWorktreeBranchName,
   buildTemporaryWorktreeBranchName,
   isTemporaryWorktreeBranch,
   normalizeGitRemoteUrl,
   parseGitHubRepositoryNameWithOwnerFromRemoteUrl,
+  resolveUniqueWorktreeBranchName,
   WORKTREE_BRANCH_PREFIX,
 } from "./git.ts";
 
@@ -75,6 +77,51 @@ describe("isTemporaryWorktreeBranch", () => {
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/feature/demo`)).toBe(false);
     expect(isTemporaryWorktreeBranch("main")).toBe(false);
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/deadbeef-extra`)).toBe(false);
+  });
+});
+
+describe("buildGeneratedWorktreeBranchName", () => {
+  it("turns an AI suggestion into a sanitized t3code/<slug> branch", () => {
+    expect(buildGeneratedWorktreeBranchName("Add OAuth login")).toBe(
+      `${WORKTREE_BRANCH_PREFIX}/add-oauth-login`,
+    );
+    expect(buildGeneratedWorktreeBranchName('"Fix: the flaky test!"')).toBe(
+      `${WORKTREE_BRANCH_PREFIX}/fix-the-flaky-test`,
+    );
+  });
+
+  it("strips an existing prefix and refs/heads and never yields a bare prefix", () => {
+    expect(buildGeneratedWorktreeBranchName(`${WORKTREE_BRANCH_PREFIX}/already-prefixed`)).toBe(
+      `${WORKTREE_BRANCH_PREFIX}/already-prefixed`,
+    );
+    expect(buildGeneratedWorktreeBranchName("refs/heads/Some-Work")).toBe(
+      `${WORKTREE_BRANCH_PREFIX}/some-work`,
+    );
+    expect(buildGeneratedWorktreeBranchName("!!!")).toBe(`${WORKTREE_BRANCH_PREFIX}/update`);
+  });
+
+  it("produces a non-temporary branch so it bypasses the async rename", () => {
+    expect(isTemporaryWorktreeBranch(buildGeneratedWorktreeBranchName("Add OAuth login"))).toBe(
+      false,
+    );
+  });
+});
+
+describe("resolveUniqueWorktreeBranchName", () => {
+  it("keeps the clean name when there is no collision", () => {
+    expect(
+      resolveUniqueWorktreeBranchName(["main", "feature/x"], `${WORKTREE_BRANCH_PREFIX}/add-login`),
+    ).toBe(`${WORKTREE_BRANCH_PREFIX}/add-login`);
+  });
+
+  it("appends the first free numeric suffix on collision (case-insensitive)", () => {
+    const existing = [
+      `${WORKTREE_BRANCH_PREFIX}/add-login`,
+      `${WORKTREE_BRANCH_PREFIX}/ADD-LOGIN-2`,
+    ];
+    expect(resolveUniqueWorktreeBranchName(existing, `${WORKTREE_BRANCH_PREFIX}/add-login`)).toBe(
+      `${WORKTREE_BRANCH_PREFIX}/add-login-3`,
+    );
   });
 });
 

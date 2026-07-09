@@ -91,6 +91,7 @@ import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
+import * as TextGeneration from "./textGeneration/TextGeneration.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
@@ -114,6 +115,11 @@ import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as SessionStore from "./auth/SessionStore.ts";
 import { failEnvironmentAuthInvalid, failEnvironmentInternal } from "./auth/http.ts";
 import * as RelayClient from "@t3tools/shared/relayClient";
+import {
+  buildGeneratedWorktreeBranchName,
+  resolveUniqueWorktreeBranchName,
+} from "@t3tools/shared/git";
+import * as Path from "effect/Path";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -276,6 +282,11 @@ function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
 
 const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
+// Upper bound on how long worktree creation waits for an AI-generated name
+// before falling back to the client's temporary hash branch. Kept short so a
+// slow model never stalls the first send.
+const WORKTREE_NAME_GENERATION_TIMEOUT = Duration.seconds(6);
+
 const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [ORCHESTRATION_WS_METHODS.dispatchCommand, AuthOrchestrationOperateScope],
   [ORCHESTRATION_WS_METHODS.getTurnDiff, AuthOrchestrationReadScope],
@@ -401,6 +412,8 @@ const makeWsRpcLayer = (
       const keybindings = yield* Keybindings.Keybindings;
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
       const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
+      const textGeneration = yield* TextGeneration.TextGeneration;
+      const pathService = yield* Path.Path;
       const review = yield* ReviewService.ReviewService;
       const vcsProvisioning = yield* VcsProvisioningService.VcsProvisioningService;
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
@@ -836,25 +849,86 @@ const makeWsRpcLayer = (
             }
 
             if (bootstrap?.prepareWorktree) {
+              const projectCwd = bootstrap.prepareWorktree.projectCwd;
               let worktreeBaseRef = bootstrap.prepareWorktree.baseBranch;
               if (bootstrap.prepareWorktree.startFromOrigin) {
                 yield* gitWorkflow.fetchRemote({
-                  cwd: bootstrap.prepareWorktree.projectCwd,
+                  cwd: projectCwd,
                   remoteName: "origin",
                 });
                 const resolvedRemoteBase = yield* gitWorkflow.resolveRemoteTrackingCommit({
-                  cwd: bootstrap.prepareWorktree.projectCwd,
+                  cwd: projectCwd,
                   refName: bootstrap.prepareWorktree.baseBranch,
                   fallbackRemoteName: "origin",
                 });
                 worktreeBaseRef = resolvedRemoteBase.commitSha;
               }
+
+              const settings = yield* serverSettings.getSettings;
+
+              // Name the worktree from the first message so the branch AND the
+              // on-disk folder read as the task (e.g. `t3code/add-oauth-login`)
+              // instead of a random hash. Generation is bounded by a short
+              // timeout; on timeout/failure we keep the client's temporary hash
+              // branch, and the async first-turn rename still upgrades the
+              // branch (not the folder) later as a backstop.
+              let worktreeBranch = bootstrap.prepareWorktree.branch;
+              const messageText = command.message.text.trim();
+              if (messageText.length > 0) {
+                const attachments = command.message.attachments;
+                const generatedBranch = yield* textGeneration
+                  .generateBranchName({
+                    cwd: projectCwd,
+                    message: messageText,
+                    ...(attachments.length > 0 ? { attachments } : {}),
+                    modelSelection: settings.textGenerationModelSelection,
+                  })
+                  .pipe(
+                    Effect.timeoutOption(WORKTREE_NAME_GENERATION_TIMEOUT),
+                    Effect.map(
+                      Option.match({
+                        onNone: () => null,
+                        onSome: (result) => buildGeneratedWorktreeBranchName(result.branch),
+                      }),
+                    ),
+                    Effect.catchCause((cause) =>
+                      Effect.logWarning("worktree name generation failed; using fallback branch", {
+                        threadId: command.threadId,
+                        cwd: projectCwd,
+                        cause: Cause.pretty(cause),
+                      }).pipe(Effect.as(null)),
+                    ),
+                  );
+                if (generatedBranch) {
+                  const existingRefNames = yield* gitWorkflow.listRefs({ cwd: projectCwd }).pipe(
+                    Effect.map((result) => result.refs.map((ref) => ref.name)),
+                    Effect.orElseSucceed(() => [] as string[]),
+                  );
+                  worktreeBranch = resolveUniqueWorktreeBranchName(
+                    existingRefNames,
+                    generatedBranch,
+                  );
+                }
+              }
+
+              // Placement: a visible sibling folder next to the repo
+              // (`<parent>/<repo>.worktrees`) when configured, else the global
+              // ~/.t3 home. `undefined` lets the driver use its default.
+              const worktreeBaseDir =
+                settings.worktreeLocation === "sibling"
+                  ? pathService.join(
+                      pathService.dirname(projectCwd),
+                      `${pathService.basename(projectCwd)}.worktrees`,
+                    )
+                  : undefined;
+
               const worktree = yield* gitWorkflow.createWorktree({
-                cwd: bootstrap.prepareWorktree.projectCwd,
+                cwd: projectCwd,
                 refName: worktreeBaseRef,
-                newRefName: bootstrap.prepareWorktree.branch,
+                newRefName: worktreeBranch,
                 baseRefName: bootstrap.prepareWorktree.baseBranch,
                 path: null,
+                ...(worktreeBaseDir ? { baseDir: worktreeBaseDir } : {}),
               });
               targetWorktreePath = worktree.worktree.path;
               yield* orchestrationEngine.dispatch({

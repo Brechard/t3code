@@ -139,6 +139,11 @@ export const VcsCreateWorktreeInput = Schema.Struct({
   newRefName: Schema.optional(TrimmedNonEmptyStringSchema),
   baseRefName: Schema.optional(TrimmedNonEmptyStringSchema),
   path: Schema.NullOr(TrimmedNonEmptyStringSchema),
+  // Parent directory that will contain the branch-named worktree leaf folder.
+  // Defaults to `<worktreesDir>/<repo>` when omitted (the global ~/.t3 home);
+  // the caller passes an explicit parent (e.g. `<parent>/<repo>.worktrees`) to
+  // honor the `worktreeLocation` setting. Ignored when `path` is provided.
+  baseDir: Schema.optional(TrimmedNonEmptyStringSchema),
 });
 export type VcsCreateWorktreeInput = typeof VcsCreateWorktreeInput.Type;
 

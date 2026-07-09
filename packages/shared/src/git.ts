@@ -98,6 +98,44 @@ export function isTemporaryWorktreeBranch(refName: string): boolean {
 }
 
 /**
+ * Turn an AI-suggested worktree name into a `t3code/<slug>` branch. Strips any
+ * `refs/heads/` or existing `t3code/` prefix and sanitizes the remainder, so
+ * both the git branch and the derived worktree folder read as the AI name
+ * (e.g. `t3code/add-oauth-login`) instead of a random hash.
+ */
+export function buildGeneratedWorktreeBranchName(raw: string): string {
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/^refs\/heads\//, "");
+  const withoutPrefix = normalized.startsWith(`${WORKTREE_BRANCH_PREFIX}/`)
+    ? normalized.slice(`${WORKTREE_BRANCH_PREFIX}/`.length)
+    : normalized;
+  return `${WORKTREE_BRANCH_PREFIX}/${sanitizeBranchFragment(withoutPrefix)}`;
+}
+
+/**
+ * Resolve a `t3code/<slug>` worktree branch that doesn't collide with an
+ * existing ref, appending a numeric suffix when needed. Keeps the AI name
+ * clean (no suffix) in the common no-collision case.
+ */
+export function resolveUniqueWorktreeBranchName(
+  existingBranchNames: readonly string[],
+  preferred: string,
+): string {
+  const base = preferred.trim();
+  const existing = new Set(existingBranchNames.map((name) => name.trim().toLowerCase()));
+  if (!existing.has(base.toLowerCase())) {
+    return base;
+  }
+  let suffix = 2;
+  while (existing.has(`${base}-${suffix}`.toLowerCase())) {
+    suffix += 1;
+  }
+  return `${base}-${suffix}`;
+}
+
+/**
  * Normalize a git remote URL into a stable comparison key.
  */
 export function normalizeGitRemoteUrl(value: string): string {
