@@ -902,18 +902,39 @@ const makeWsRpcLayer = (
                   })
                   .pipe(
                     Effect.timeoutOption(WORKTREE_NAME_GENERATION_TIMEOUT),
-                    Effect.map(
+                    // Always log the outcome so a hash folder is never a silent
+                    // mystery: a timeout (None) and a generation error are the
+                    // two ways the folder ends up with a hash name instead of
+                    // the AI one — both are surfaced in server-child.log.
+                    Effect.flatMap(
                       Option.match({
-                        onNone: () => null,
-                        onSome: (result) => buildGeneratedWorktreeBranchName(result.branch),
+                        onNone: () =>
+                          Effect.logWarning(
+                            "worktree name generation timed out; folder will use the hash name",
+                            {
+                              threadId: command.threadId,
+                              cwd: projectCwd,
+                              timeoutMs: Duration.toMillis(WORKTREE_NAME_GENERATION_TIMEOUT),
+                            },
+                          ).pipe(Effect.as(null)),
+                        onSome: (result) => {
+                          const branch = buildGeneratedWorktreeBranchName(result.branch);
+                          return Effect.logInfo("worktree name generated at creation", {
+                            threadId: command.threadId,
+                            branch,
+                          }).pipe(Effect.as(branch));
+                        },
                       }),
                     ),
                     Effect.catchCause((cause) =>
-                      Effect.logWarning("worktree name generation failed; using fallback branch", {
-                        threadId: command.threadId,
-                        cwd: projectCwd,
-                        cause: Cause.pretty(cause),
-                      }).pipe(Effect.as(null)),
+                      Effect.logWarning(
+                        "worktree name generation failed; folder will use the hash name",
+                        {
+                          threadId: command.threadId,
+                          cwd: projectCwd,
+                          cause: Cause.pretty(cause),
+                        },
+                      ).pipe(Effect.as(null)),
                     ),
                   );
                 if (generatedBranch) {
