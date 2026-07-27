@@ -256,5 +256,76 @@ it.layer(TestLayer)("ProjectFaviconResolverLive", (it) => {
         expect(resolved).toContain("public/brand/logo.svg");
       }),
     );
+
+    it.effect("resolves icon from PWA manifest.json", () =>
+      Effect.gen(function* () {
+        const resolver = yield* ProjectFaviconResolver.ProjectFaviconResolver;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(
+          cwd,
+          "manifest.json",
+          JSON.stringify({
+            icons: [{ src: "/icon-512.png", sizes: "512x512", type: "image/png" }],
+          }),
+        );
+        yield* writeTextFile(cwd, "public/icon-512.png", "png");
+
+        const resolved = yield* resolver.resolvePath(cwd);
+
+        expect(resolved).not.toBeNull();
+        expect(resolved).toContain("public/icon-512.png");
+      }),
+    );
+
+    it.effect("prefers larger manifest icon by declared size", () =>
+      Effect.gen(function* () {
+        const resolver = yield* ProjectFaviconResolver.ProjectFaviconResolver;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(
+          cwd,
+          "manifest.json",
+          JSON.stringify({
+            icons: [
+              { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+              { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+            ],
+          }),
+        );
+        yield* writeTextFile(cwd, "public/icon-192.png", "png");
+        yield* writeTextFile(cwd, "public/icon-512.png", "png");
+
+        const resolved = yield* resolver.resolvePath(cwd);
+
+        expect(resolved).not.toBeNull();
+        expect(resolved).toContain("public/icon-512.png");
+      }),
+    );
+
+    it.effect("falls back to directory scan for common asset folders", () =>
+      Effect.gen(function* () {
+        const resolver = yield* ProjectFaviconResolver.ProjectFaviconResolver;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "images/icon.png", "png");
+
+        const resolved = yield* resolver.resolvePath(cwd);
+
+        expect(resolved).not.toBeNull();
+        expect(resolved).toContain("images/icon.png");
+      }),
+    );
+
+    it.effect("directory scan respects name and extension priority", () =>
+      Effect.gen(function* () {
+        const resolver = yield* ProjectFaviconResolver.ProjectFaviconResolver;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "images/icon.png", "png");
+        yield* writeTextFile(cwd, "images/favicon.ico", "ico");
+
+        const resolved = yield* resolver.resolvePath(cwd);
+
+        expect(resolved).not.toBeNull();
+        expect(resolved).toContain("images/favicon.ico");
+      }),
+    );
   });
 });
