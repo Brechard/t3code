@@ -148,8 +148,14 @@ function extractIconHref(source: string): string | null {
 
 function parseIconSize(sizes: string | undefined): number {
   if (!sizes) return 0;
-  const match = sizes.match(/\b(\d+)x\d+\b/);
-  return match ? Number(match[1]) : 0;
+  let maxSize = 0;
+  for (const part of sizes.split(/\s+/)) {
+    const match = part.match(/^(\d+)x\d+$/);
+    if (match) {
+      maxSize = Math.max(maxSize, Number(match[1]));
+    }
+  }
+  return maxSize;
 }
 
 const optionOnNotFound = <A, R>(
@@ -247,18 +253,7 @@ export const make = Effect.gen(function* () {
         return null;
       }
 
-      const entries = yield* optionOnNotFound(fileSystem.readDirectory(absoluteDir)).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProjectFaviconResolutionError({
-              operation: "scan-directory",
-              workspaceRoot: projectCwd,
-              relativePath: dir,
-              absolutePath: absoluteDir,
-              cause,
-            }),
-        ),
-      );
+      const entries = yield* Effect.option(fileSystem.readDirectory(absoluteDir));
       if (Option.isNone(entries)) return null;
 
       let best: {
@@ -272,23 +267,13 @@ export const make = Effect.gen(function* () {
       } | null = null;
 
       for (const entry of entries.value) {
-        const priority = candidatePriority.get(entry);
+        const key = dir ? `${dir}/${entry}` : entry;
+        const priority = candidatePriority.get(key);
         if (!priority) continue;
 
         const absolutePath = path.join(absoluteDir, entry);
         const relativePath = dir ? path.join(dir, entry) : entry;
-        const stats = yield* optionOnNotFound(fileSystem.stat(absolutePath)).pipe(
-          Effect.mapError(
-            (cause) =>
-              new ProjectFaviconResolutionError({
-                operation: "stat-candidate",
-                workspaceRoot: projectCwd,
-                relativePath,
-                absolutePath,
-                cause,
-              }),
-          ),
-        );
+        const stats = yield* Effect.option(fileSystem.stat(absolutePath));
         if (Option.isNone(stats) || stats.value.type !== "File") continue;
 
         if (
@@ -316,7 +301,8 @@ export const make = Effect.gen(function* () {
       IMAGE_DIR_CANDIDATES.forEach((candidateDir, dirIdx) => {
         IMAGE_NAME_CANDIDATES.forEach((name, nameIdx) => {
           IMAGE_EXTENSIONS.forEach((ext, extIdx) => {
-            candidatePriority.set(`${name}${ext}`, { dirIdx, nameIdx, extIdx });
+            const key = candidateDir ? `${candidateDir}/${name}${ext}` : `${name}${ext}`;
+            candidatePriority.set(key, { dirIdx, nameIdx, extIdx });
           });
         });
       });
@@ -385,12 +371,14 @@ export const make = Effect.gen(function* () {
     );
     if (Option.isNone(source)) return null;
 
-    let manifest: { icons?: ReadonlyArray<{ src?: string; sizes?: string }> };
+    let parsed: unknown;
     try {
-      manifest = JSON.parse(source.value) as typeof manifest;
+      parsed = JSON.parse(source.value);
     } catch {
       return null;
     }
+    if (!parsed || typeof parsed !== "object") return null;
+    const manifest = parsed as { icons?: ReadonlyArray<{ src?: string; sizes?: string }> };
     if (!Array.isArray(manifest.icons)) return null;
 
     let bestIcon: string | null = null;
