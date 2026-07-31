@@ -20,6 +20,7 @@ import { isBrowserPreviewFile, openFileInPreview } from "~/browser/openFileInPre
 import { useAssetUrlState } from "~/assets/assetUrls";
 import ChatMarkdown from "~/components/ChatMarkdown";
 import { OpenInPicker } from "~/components/chat/OpenInPicker";
+import { editorProjectKey } from "~/editorPreferences.logic";
 import { useClientSettings } from "~/hooks/useSettings";
 import { useTheme } from "~/hooks/useTheme";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "~/hooks/useLocalStorage";
@@ -795,6 +796,10 @@ export default function FilePreviewPanel({
   const canOpenInBrowser =
     relativePath !== null && isPreviewSupportedInRuntime() && isBrowserPreviewFile(relativePath);
   const absolutePath = relativePath ? resolvePathLinkTarget(relativePath, cwd) : null;
+  const projectKey = useMemo(
+    () => editorProjectKey({ environmentId, workspaceRoot: cwd }),
+    [cwd, environmentId],
+  );
   const breadcrumbs = useMemo(
     () => (relativePath ? fileBreadcrumbs(projectName, relativePath) : []),
     [projectName, relativePath],
@@ -886,6 +891,7 @@ export default function FilePreviewPanel({
               keybindings={keybindings}
               availableEditors={availableEditors}
               openInCwd={absolutePath}
+              projectKey={projectKey}
               compact
               enableShortcut={false}
             />
