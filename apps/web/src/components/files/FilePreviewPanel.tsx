@@ -20,7 +20,6 @@ import { isBrowserPreviewFile, openFileInPreview } from "~/browser/openFileInPre
 import { useAssetUrlState } from "~/assets/assetUrls";
 import ChatMarkdown from "~/components/ChatMarkdown";
 import { OpenInPicker } from "~/components/chat/OpenInPicker";
-import { editorProjectKey } from "~/editorPreferences.logic";
 import { useClientSettings } from "~/hooks/useSettings";
 import { useTheme } from "~/hooks/useTheme";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "~/hooks/useLocalStorage";
@@ -68,6 +67,12 @@ import {
 interface FilePreviewPanelProps {
   environmentId: EnvironmentId;
   cwd: string;
+  /**
+   * Physical project key for the owning project. Passed in rather than derived
+   * from `cwd`, which is the worktree path for a worktree thread and would key
+   * editor overrides to something the rest of the UI never reads.
+   */
+  projectKey: string | null;
   projectName: string;
   relativePath: string | null;
   threadRef: ScopedThreadRef;
@@ -748,6 +753,7 @@ function initialExplorerOpen(): boolean {
 export default function FilePreviewPanel({
   environmentId,
   cwd,
+  projectKey,
   projectName,
   relativePath,
   threadRef,
@@ -796,10 +802,6 @@ export default function FilePreviewPanel({
   const canOpenInBrowser =
     relativePath !== null && isPreviewSupportedInRuntime() && isBrowserPreviewFile(relativePath);
   const absolutePath = relativePath ? resolvePathLinkTarget(relativePath, cwd) : null;
-  const projectKey = useMemo(
-    () => editorProjectKey({ environmentId, workspaceRoot: cwd }),
-    [cwd, environmentId],
-  );
   const breadcrumbs = useMemo(
     () => (relativePath ? fileBreadcrumbs(projectName, relativePath) : []),
     [projectName, relativePath],

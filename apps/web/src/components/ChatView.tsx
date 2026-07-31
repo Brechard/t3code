@@ -5700,6 +5700,7 @@ function ChatViewContent(props: ChatViewProps) {
           key={`${activeProject.environmentId}:${activeWorkspaceRoot}`}
           environmentId={activeProject.environmentId}
           cwd={activeWorkspaceRoot}
+          projectKey={openInProjectKey}
           projectName={activeProject.title}
           threadRef={activeThreadRef}
           composerDraftTarget={composerDraftTarget}

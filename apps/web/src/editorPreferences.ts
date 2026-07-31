@@ -17,6 +17,7 @@ import {
   resolveEditorForProject,
   type EditorPreferences,
 } from "./editorPreferences.logic";
+import { useComposerDraftStore } from "./composerDraftStore";
 import { getClientSettings, useClientSettings, useUpdateClientSettings } from "./hooks/useSettings";
 import { appAtomRegistry } from "./rpc/atomRegistry";
 import { environmentProjects } from "./state/projects";
@@ -40,9 +41,16 @@ const LEGACY_LAST_EDITOR_KEY = "t3code:last-editor";
 let legacyDefaultEditorRead = false;
 let legacyDefaultEditor: EditorId | null = null;
 
+// Both halves swallow storage failures: this is migration cleanup for a value
+// that may be malformed or unreadable, and it must never take down the
+// components that read preferences or block a settings write.
 function readLegacyDefaultEditor(): EditorId | null {
   if (!legacyDefaultEditorRead) {
-    legacyDefaultEditor = getLocalStorageItem(LEGACY_LAST_EDITOR_KEY, EditorId);
+    try {
+      legacyDefaultEditor = getLocalStorageItem(LEGACY_LAST_EDITOR_KEY, EditorId);
+    } catch {
+      legacyDefaultEditor = null;
+    }
     legacyDefaultEditorRead = true;
   }
   return legacyDefaultEditor;
@@ -51,7 +59,11 @@ function readLegacyDefaultEditor(): EditorId | null {
 function forgetLegacyDefaultEditor(): void {
   legacyDefaultEditor = null;
   legacyDefaultEditorRead = true;
-  removeLocalStorageItem(LEGACY_LAST_EDITOR_KEY);
+  try {
+    removeLocalStorageItem(LEGACY_LAST_EDITOR_KEY);
+  } catch {
+    // The in-memory flag above already stops it being read again this session.
+  }
 }
 
 export function selectEditorPreferences(settings: ClientSettings): EditorPreferences {
@@ -72,10 +84,16 @@ export function useEditorPreferences(): EditorPreferences {
  */
 export function readEditorProjectKeyForThread(threadRef: ScopedThreadRef | null): string | null {
   if (!threadRef) return null;
-  const shell = appAtomRegistry.get(environmentThreadShells.threadShellAtom(threadRef));
-  if (!shell) return null;
+  // A draft thread has no server shell until its first send, so fall back to
+  // the draft session — otherwise every pre-send open ignores the project's
+  // editor and silently uses the global default.
+  const projectId =
+    appAtomRegistry.get(environmentThreadShells.threadShellAtom(threadRef))?.projectId ??
+    useComposerDraftStore.getState().getDraftThreadByRef(threadRef)?.projectId ??
+    null;
+  if (!projectId) return null;
   const project = appAtomRegistry.get(
-    environmentProjects.projectAtom(scopeProjectRef(threadRef.environmentId, shell.projectId)),
+    environmentProjects.projectAtom(scopeProjectRef(threadRef.environmentId, projectId)),
   );
   return editorProjectKey(project);
 }
