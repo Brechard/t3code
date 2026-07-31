@@ -1639,6 +1639,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             >
               {props.project ? <ProjectFavicon project={props.project} className="size-4" /> : null}
             </span>
+            {props.projectDisplayName ? (
+              <span className="min-w-0 max-w-[25%] shrink truncate text-xs text-secondary-label/70 transition-colors group-focus-within/sidebar-row:text-secondary-label group-hover/sidebar-row:text-secondary-label">
+                {props.projectDisplayName}
+              </span>
+            ) : null}
             {draftIndicator}
             {title}
             {pinIndicator}
