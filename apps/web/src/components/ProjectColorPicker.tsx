@@ -3,7 +3,7 @@
 // rest; "Auto" deletes the override and hands the project back to its derived
 // default.
 import { PipetteIcon, RotateCcwIcon } from "lucide-react";
-import { useCallback, type CSSProperties, type PointerEvent } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type PointerEvent } from "react";
 
 import {
   MAX_PROJECT_COLOR_HUE,
@@ -56,20 +56,26 @@ function Swatch(props: {
   );
 }
 
-function HueStrip(props: {
+export function HueStrip(props: {
   readonly hue: ProjectColorHue;
   readonly onChange: (hue: ProjectColorHue) => void;
+  readonly onCommit: (hue: ProjectColorHue) => void;
 }) {
-  const { onChange } = props;
+  const { onChange, onCommit } = props;
+
+  const hueFromEvent = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (bounds.width === 0) return null;
+    const ratio = (event.clientX - bounds.left) / bounds.width;
+    return clampHue(Math.min(1, Math.max(0, ratio)) * MAX_PROJECT_COLOR_HUE);
+  }, []);
 
   const updateFromEvent = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
-      const bounds = event.currentTarget.getBoundingClientRect();
-      if (bounds.width === 0) return;
-      const ratio = (event.clientX - bounds.left) / bounds.width;
-      onChange(clampHue(Math.min(1, Math.max(0, ratio)) * MAX_PROJECT_COLOR_HUE));
+      const nextHue = hueFromEvent(event);
+      if (nextHue !== null) onChange(nextHue);
     },
-    [onChange],
+    [hueFromEvent, onChange],
   );
 
   return (
@@ -96,10 +102,10 @@ function HueStrip(props: {
           const step = event.shiftKey ? 10 : 1;
           if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
             event.preventDefault();
-            onChange(clampHue(props.hue - step));
+            onCommit(clampHue(props.hue - step));
           } else if (event.key === "ArrowRight" || event.key === "ArrowUp") {
             event.preventDefault();
-            onChange(clampHue(props.hue + step));
+            onCommit(clampHue(props.hue + step));
           }
         }}
         onPointerDown={(event) => {
@@ -109,6 +115,13 @@ function HueStrip(props: {
         onPointerMove={(event) => {
           if (event.currentTarget.hasPointerCapture(event.pointerId)) {
             updateFromEvent(event);
+          }
+        }}
+        onPointerUp={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            const nextHue = hueFromEvent(event);
+            if (nextHue !== null) onCommit(nextHue);
+            event.currentTarget.releasePointerCapture(event.pointerId);
           }
         }}
       >
@@ -129,7 +142,7 @@ function HueStrip(props: {
         onChange={(event) => {
           const next = Number.parseInt(event.currentTarget.value, 10);
           if (Number.isNaN(next)) return;
-          onChange(clampHue(next));
+          onCommit(clampHue(next));
         }}
         className="h-8 w-full rounded-md border border-input bg-background px-2 font-mono text-xs text-foreground outline-none transition-colors focus:border-ring"
         spellCheck={false}
@@ -153,6 +166,16 @@ export function ProjectColorPicker(props: {
   readonly onSelect: (hue: ProjectColorHue) => void;
   readonly onReset: () => void;
 }) {
+  const [draftHue, setDraftHue] = useState(props.hue);
+  useEffect(() => setDraftHue(props.hue), [props.hue]);
+  const previewHue = useCallback((hue: ProjectColorHue) => setDraftHue(hue), []);
+  const commitHue = useCallback(
+    (hue: ProjectColorHue) => {
+      setDraftHue(hue);
+      props.onSelect(hue);
+    },
+    [props.onSelect],
+  );
   const customSelected =
     props.hasOverride && !PROJECT_COLOR_PALETTE.some((entry) => entry.hue === props.hue);
 
@@ -187,7 +210,7 @@ export function ProjectColorPicker(props: {
         />
         <PopoverPopup side="bottom" align="start" sideOffset={6}>
           <div className="w-52">
-            <HueStrip hue={props.hue} onChange={props.onSelect} />
+            <HueStrip hue={draftHue} onChange={previewHue} onCommit={commitHue} />
           </div>
         </PopoverPopup>
       </Popover>
