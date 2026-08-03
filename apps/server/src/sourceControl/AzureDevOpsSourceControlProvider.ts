@@ -79,10 +79,14 @@ export const make = Effect.gen(function* () {
     kind: "azure-devops",
     listChangeRequests: (input) => {
       const source = SourceControlProvider.sourceControlRefFromInput(input);
+      const repositoryContext = input.context
+        ? AzureDevOpsCli.parseAzureDevOpsRemoteUrl(input.context.remoteUrl)
+        : undefined;
       return azure
         .listPullRequests({
           cwd: input.cwd,
           headSelector: input.headSelector,
+          ...(repositoryContext ? { repositoryContext } : {}),
           ...(source !== undefined ? { source } : {}),
           state: input.state,
           ...(input.limit !== undefined ? { limit: input.limit } : {}),

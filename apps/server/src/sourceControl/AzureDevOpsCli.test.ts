@@ -33,6 +33,18 @@ afterEach(() => {
   mockRun.mockReset();
 });
 
+it("parses the Azure DevOps SSH clone URL used by Azure Repos", () => {
+  expect(
+    AzureDevOpsCli.parseAzureDevOpsRemoteUrl(
+      "git@ssh.dev.azure.com:v3/ClubTidy/ClubTidy/ClubTidy.Web.BackOffice",
+    ),
+  ).toEqual({
+    organization: "ClubTidy",
+    project: "ClubTidy",
+    repository: "ClubTidy.Web.BackOffice",
+  });
+});
+
 describe("AzureDevOpsCli.layer", () => {
   it.effect("parses pull request view output", () =>
     Effect.gen(function* () {
@@ -176,6 +188,52 @@ describe("AzureDevOpsCli.layer", () => {
           "feature/merged",
           "--status",
           "completed",
+          "--top",
+          "10",
+          "--only-show-errors",
+          "--output",
+          "json",
+        ],
+        cwd: "/repo",
+        timeoutMs: 30_000,
+      });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("uses explicit repository arguments when Azure cannot detect an SSH remote", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(Effect.succeed(processOutput("[]")));
+
+      const az = yield* AzureDevOpsCli.AzureDevOpsCli;
+      yield* az.listPullRequests({
+        cwd: "/repo",
+        headSelector: "t3code/promo-referral-communications",
+        state: "open",
+        limit: 10,
+        repositoryContext: {
+          organization: "ClubTidy",
+          project: "ClubTidy",
+          repository: "ClubTidy.Web.BackOffice",
+        },
+      });
+
+      expect(mockRun).toHaveBeenCalledWith({
+        operation: "AzureDevOpsCli.execute",
+        command: "az",
+        args: [
+          "repos",
+          "pr",
+          "list",
+          "--organization",
+          "https://dev.azure.com/ClubTidy",
+          "--project",
+          "ClubTidy",
+          "--repository",
+          "ClubTidy.Web.BackOffice",
+          "--source-branch",
+          "t3code/promo-referral-communications",
+          "--status",
+          "active",
           "--top",
           "10",
           "--only-show-errors",

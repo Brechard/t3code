@@ -46,6 +46,41 @@ it.effect("maps Azure DevOps PR summaries into provider-neutral change requests"
   }),
 );
 
+it.effect("passes the SSH remote repository context to Azure CLI PR listing", () =>
+  Effect.gen(function* () {
+    let listInput:
+      | Parameters<AzureDevOpsCli.AzureDevOpsCli["Service"]["listPullRequests"]>[0]
+      | undefined;
+    const provider = yield* makeProvider({
+      listPullRequests: (input) => {
+        listInput = input;
+        return Effect.succeed([]);
+      },
+    });
+
+    yield* provider.listChangeRequests({
+      cwd: "/repo",
+      context: {
+        provider: {
+          kind: "azure-devops",
+          name: "Azure DevOps",
+          baseUrl: "https://dev.azure.com",
+        },
+        remoteName: "origin",
+        remoteUrl: "git@ssh.dev.azure.com:v3/ClubTidy/ClubTidy/ClubTidy.Web.BackOffice",
+      },
+      headSelector: "t3code/promo-referral-communications",
+      state: "open",
+    });
+
+    assert.deepStrictEqual(listInput?.repositoryContext, {
+      organization: "ClubTidy",
+      project: "ClubTidy",
+      repository: "ClubTidy.Web.BackOffice",
+    });
+  }),
+);
+
 it.effect("adds change-request context while retaining Azure CLI causes", () =>
   Effect.gen(function* () {
     const cause = new AzureDevOpsCli.AzureDevOpsCommandFailedError({

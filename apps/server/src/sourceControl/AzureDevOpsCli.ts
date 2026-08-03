@@ -21,6 +21,86 @@ import * as SourceControlProvider from "./SourceControlProvider.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+export interface AzureDevOpsRepositoryContext {
+  readonly organization: string;
+  readonly project: string;
+  readonly repository: string;
+}
+
+function decodeRemotePathSegment(segment: string): string | null {
+  try {
+    const decoded = decodeURIComponent(segment).trim();
+    return decoded.length > 0 ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
+export function parseAzureDevOpsRemoteUrl(
+  remoteUrl: string,
+): AzureDevOpsRepositoryContext | undefined {
+  const trimmed = remoteUrl.trim();
+  let segments: ReadonlyArray<string>;
+
+  if (trimmed.startsWith("git@")) {
+    const separatorIndex = trimmed.indexOf(":");
+    if (separatorIndex <= "git@".length) {
+      return undefined;
+    }
+
+    const host = trimmed.slice("git@".length, separatorIndex).toLowerCase();
+    if (host !== "ssh.dev.azure.com") {
+      return undefined;
+    }
+
+    segments = trimmed
+      .slice(separatorIndex + 1)
+      .split("/")
+      .filter((segment) => segment.length > 0);
+  } else {
+    try {
+      const url = new URL(trimmed);
+      if (url.hostname.toLowerCase() !== "dev.azure.com") {
+        return undefined;
+      }
+      segments = url.pathname.split("/").filter((segment) => segment.length > 0);
+    } catch {
+      return undefined;
+    }
+  }
+
+  const isSshClonePath = segments[0]?.toLowerCase() === "v3";
+  const isHttpClonePath = segments[2]?.toLowerCase() === "_git";
+  const [organizationSegment, projectSegment, repositorySegment] = isSshClonePath
+    ? [segments[1], segments[2], segments[3]]
+    : isHttpClonePath
+      ? [segments[0], segments[1], segments[3]]
+      : [];
+
+  const organization = organizationSegment ? decodeRemotePathSegment(organizationSegment) : null;
+  const project = projectSegment ? decodeRemotePathSegment(projectSegment) : null;
+  const repository = repositorySegment
+    ? decodeRemotePathSegment(repositorySegment.replace(/\.git$/iu, ""))
+    : null;
+
+  return organization && project && repository ? { organization, project, repository } : undefined;
+}
+
+function repositoryDetectionArgs(
+  repositoryContext: AzureDevOpsRepositoryContext | undefined,
+): ReadonlyArray<string> {
+  return repositoryContext
+    ? [
+        "--organization",
+        `https://dev.azure.com/${repositoryContext.organization}`,
+        "--project",
+        repositoryContext.project,
+        "--repository",
+        repositoryContext.repository,
+      ]
+    : ["--detect", "true"];
+}
+
 const azureDevOpsCommandErrorFields = {
   operation: Schema.Literal("execute"),
   command: Schema.Literal("az"),
@@ -206,6 +286,7 @@ export class AzureDevOpsCli extends Context.Service<
     readonly listPullRequests: (input: {
       readonly cwd: string;
       readonly headSelector: string;
+      readonly repositoryContext?: AzureDevOpsRepositoryContext;
       readonly source?: SourceControlProvider.SourceControlRefSelector;
       readonly state: "open" | "closed" | "merged" | "all";
       readonly limit?: number;
@@ -375,8 +456,7 @@ export const make = Effect.gen(function* () {
           "repos",
           "pr",
           "list",
-          "--detect",
-          "true",
+          ...repositoryDetectionArgs(input.repositoryContext),
           "--source-branch",
           SourceControlProvider.sourceBranch(input),
           "--status",
