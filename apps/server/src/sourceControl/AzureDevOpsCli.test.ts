@@ -35,13 +35,11 @@ afterEach(() => {
 
 it("parses the Azure DevOps SSH clone URL used by Azure Repos", () => {
   expect(
-    AzureDevOpsCli.parseAzureDevOpsRemoteUrl(
-      "git@ssh.dev.azure.com:v3/ClubTidy/ClubTidy/ClubTidy.Web.BackOffice",
-    ),
+    AzureDevOpsCli.parseAzureDevOpsRemoteUrl("git@ssh.dev.azure.com:v3/acme/project/repo"),
   ).toEqual({
-    organization: "ClubTidy",
-    project: "ClubTidy",
-    repository: "ClubTidy.Web.BackOffice",
+    organization: "acme",
+    project: "project",
+    repository: "repo",
   });
 });
 
@@ -207,13 +205,13 @@ describe("AzureDevOpsCli.layer", () => {
       const az = yield* AzureDevOpsCli.AzureDevOpsCli;
       yield* az.listPullRequests({
         cwd: "/repo",
-        headSelector: "t3code/promo-referral-communications",
+        headSelector: "feature/source-control",
         state: "open",
         limit: 10,
         repositoryContext: {
-          organization: "ClubTidy",
-          project: "ClubTidy",
-          repository: "ClubTidy.Web.BackOffice",
+          organization: "acme",
+          project: "project",
+          repository: "repo",
         },
       });
 
@@ -225,13 +223,13 @@ describe("AzureDevOpsCli.layer", () => {
           "pr",
           "list",
           "--organization",
-          "https://dev.azure.com/ClubTidy",
+          "https://dev.azure.com/acme",
           "--project",
-          "ClubTidy",
+          "project",
           "--repository",
-          "ClubTidy.Web.BackOffice",
+          "repo",
           "--source-branch",
-          "t3code/promo-referral-communications",
+          "feature/source-control",
           "--status",
           "active",
           "--top",

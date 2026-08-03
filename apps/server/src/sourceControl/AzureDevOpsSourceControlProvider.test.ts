@@ -67,16 +67,16 @@ it.effect("passes the SSH remote repository context to Azure CLI PR listing", ()
           baseUrl: "https://dev.azure.com",
         },
         remoteName: "origin",
-        remoteUrl: "git@ssh.dev.azure.com:v3/ClubTidy/ClubTidy/ClubTidy.Web.BackOffice",
+        remoteUrl: "git@ssh.dev.azure.com:v3/acme/project/repo",
       },
-      headSelector: "t3code/promo-referral-communications",
+      headSelector: "feature/source-control",
       state: "open",
     });
 
     assert.deepStrictEqual(listInput?.repositoryContext, {
-      organization: "ClubTidy",
-      project: "ClubTidy",
-      repository: "ClubTidy.Web.BackOffice",
+      organization: "acme",
+      project: "project",
+      repository: "repo",
     });
   }),
 );
