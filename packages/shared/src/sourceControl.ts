@@ -176,7 +176,9 @@ function isGitLabHost(host: string): boolean {
 }
 
 function isAzureDevOpsHost(host: string): boolean {
-  return host === "dev.azure.com" || host.endsWith(".visualstudio.com");
+  return (
+    host === "dev.azure.com" || host === "ssh.dev.azure.com" || host.endsWith(".visualstudio.com")
+  );
 }
 
 function isBitbucketHost(host: string): boolean {
@@ -212,7 +214,7 @@ export function detectSourceControlProviderFromRemoteUrl(
     return {
       kind: "azure-devops",
       name: "Azure DevOps",
-      baseUrl: toBaseUrl(host),
+      baseUrl: toBaseUrl(hostname === "ssh.dev.azure.com" ? "dev.azure.com" : host),
     };
   }
 

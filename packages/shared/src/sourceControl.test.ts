@@ -53,6 +53,13 @@ describe("detectSourceControlProviderFromRemoteUrl", () => {
       detectSourceControlProviderFromRemoteUrl("https://dev.azure.com/org/project/_git/repo")?.kind,
     ).toBe("azure-devops");
     expect(
+      detectSourceControlProviderFromRemoteUrl("git@ssh.dev.azure.com:v3/org/project/repo"),
+    ).toEqual({
+      kind: "azure-devops",
+      name: "Azure DevOps",
+      baseUrl: "https://dev.azure.com",
+    });
+    expect(
       detectSourceControlProviderFromRemoteUrl("git@bitbucket.org:workspace/repo.git")?.kind,
     ).toBe("bitbucket");
   });
