@@ -84,16 +84,35 @@ function repositorySelectorCoordinates(
   };
 }
 
+/** Parses an organization/project/repository selector without relying on Git remote detection. */
+function qualifiedRepositorySelectorCoordinates(
+  repository: string,
+): AzureDevOpsRepositoryContext | undefined {
+  const parts = repository
+    .split("/")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  const organization = parts.at(-3);
+  const project = parts.at(-2);
+  const repositoryName = parts.at(-1);
+  return organization && project && repositoryName
+    ? { organization, project, repository: repositoryName }
+    : undefined;
+}
+
 /** Builds repository-show arguments while retaining the CLI's fallback repository selector. */
 function repositoryShowArgs(
   repositoryContext: AzureDevOpsRepositoryContext | undefined,
   repository: string,
 ): ReadonlyArray<string> {
-  if (repositoryContext === undefined) {
+  const selectedRepository =
+    repositoryContext === undefined
+      ? qualifiedRepositorySelectorCoordinates(repository)
+      : repositorySelectorCoordinates(repositoryContext, repository);
+  if (selectedRepository === undefined) {
     return ["--detect", "true", "--repository", repository];
   }
 
-  const selectedRepository = repositorySelectorCoordinates(repositoryContext, repository);
   return [
     "--organization",
     `https://dev.azure.com/${selectedRepository.organization}`,

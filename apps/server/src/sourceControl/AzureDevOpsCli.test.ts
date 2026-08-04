@@ -353,6 +353,53 @@ describe("AzureDevOpsCli.layer", () => {
     }).pipe(Effect.provide(layer)),
   );
 
+  it.effect("resolves qualified repository selectors without remote context", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              name: "fork-repo",
+              webUrl: "https://dev.azure.com/acme/fork-project/_git/fork-repo",
+              remoteUrl: "https://dev.azure.com/acme/fork-project/_git/fork-repo",
+              sshUrl: "git@ssh.dev.azure.com:v3/acme/fork-project/fork-repo",
+              project: {
+                name: "fork-project",
+              },
+            }),
+          ),
+        ),
+      );
+
+      const az = yield* AzureDevOpsCli.AzureDevOpsCli;
+      yield* az.getRepositoryCloneUrls({
+        cwd: "/repo",
+        repository: "acme/fork-project/fork-repo",
+      });
+
+      expect(mockRun).toHaveBeenCalledWith({
+        operation: "AzureDevOpsCli.execute",
+        command: "az",
+        args: [
+          "repos",
+          "show",
+          "--organization",
+          "https://dev.azure.com/acme",
+          "--project",
+          "fork-project",
+          "--repository",
+          "fork-repo",
+          "--only-show-errors",
+          "--output",
+          "json",
+        ],
+        cwd: "/repo",
+        timeoutMs: 30_000,
+      });
+    }).pipe(Effect.provide(layer)),
+  );
+
   it.effect("creates repositories through Azure Repos", () =>
     Effect.gen(function* () {
       mockRun.mockReturnValueOnce(
