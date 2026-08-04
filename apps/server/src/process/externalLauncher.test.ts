@@ -155,6 +155,71 @@ it.effect("discovers editors through the service API", () =>
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
+it.effect("opens a terminal at the directory holding the launch target", () =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-terminals-" });
+    yield* fileSystem.writeFileString(path.join(binDir, "ghostty"), "#!/bin/sh\n");
+    yield* fileSystem.chmod(path.join(binDir, "ghostty"), 0o755);
+    const workspace = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-workspace-" });
+    const file = path.join(workspace, "index.ts");
+    yield* fileSystem.writeFileString(file, "");
+
+    let spawned: ChildProcess.StandardCommand | undefined;
+    yield* Effect.gen(function* () {
+      const launcher = yield* ExternalLauncher.ExternalLauncher;
+      // A file with a position, as the "open this config file" flows send.
+      yield* launcher.launchEditor({ editor: "ghostty", cwd: `${file}:12:4` });
+    }).pipe(
+      Effect.provide(
+        testLayer({
+          platform: "linux",
+          env: { PATH: binDir },
+          onSpawn: (command) => {
+            spawned = command;
+          },
+        }),
+      ),
+    );
+
+    assert.ok(spawned);
+    assert.equal(spawned.command, "ghostty");
+    assert.deepEqual(spawned.args, [`--working-directory=${workspace}`]);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect("opens a CLI-less macOS terminal through its app bundle", () =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-terminals-" });
+    yield* fileSystem.writeFileString(path.join(binDir, "open"), "#!/bin/sh\n");
+    yield* fileSystem.chmod(path.join(binDir, "open"), 0o755);
+    const workspace = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-workspace-" });
+
+    let spawned: ChildProcess.StandardCommand | undefined;
+    yield* Effect.gen(function* () {
+      const launcher = yield* ExternalLauncher.ExternalLauncher;
+      yield* launcher.launchEditor({ editor: "apple-terminal", cwd: workspace });
+    }).pipe(
+      Effect.provide(
+        testLayer({
+          platform: "darwin",
+          env: { PATH: binDir },
+          onSpawn: (command) => {
+            spawned = command;
+          },
+        }),
+      ),
+    );
+
+    assert.ok(spawned);
+    assert.equal(spawned.command, "open");
+    assert.deepEqual(spawned.args, ["-a", "Terminal", workspace]);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
 it.effect("rejects unknown editors through the service API", () =>
   Effect.gen(function* () {
     const launcher = yield* ExternalLauncher.ExternalLauncher;
