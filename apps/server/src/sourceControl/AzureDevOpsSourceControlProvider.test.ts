@@ -141,6 +141,7 @@ it.effect("passes the SSH remote repository context to Azure CLI checkout", () =
       repository: "repo",
     });
     assert.strictEqual(checkoutInput?.remoteName, "origin");
+    assert.strictEqual(checkoutInput?.remoteUrl, sshRepositoryContext.remoteUrl);
   }),
 );
 

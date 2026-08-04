@@ -623,6 +623,7 @@ describe("AzureDevOpsCli.layer", () => {
         cwd: "/repo",
         reference: "42",
         repositoryContext,
+        remoteUrl: "https://dev.azure.com/acme/project/_git/repo",
       });
 
       expect(mockRun.mock.calls.map(([input]) => input)).toEqual([
@@ -649,7 +650,7 @@ describe("AzureDevOpsCli.layer", () => {
           command: "git",
           args: [
             "fetch",
-            "git@ssh.dev.azure.com:v3/acme/fork-project/fork-repo",
+            "https://dev.azure.com/acme/fork-project/_git/fork-repo",
             "+refs/heads/feature/source-control",
           ],
           cwd: "/repo",

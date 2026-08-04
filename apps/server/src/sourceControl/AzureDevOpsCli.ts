@@ -382,6 +382,7 @@ export class AzureDevOpsCli extends Context.Service<
       readonly reference: string;
       readonly repositoryContext?: AzureDevOpsRepositoryContext;
       readonly remoteName?: string;
+      readonly remoteUrl?: string;
     }) => Effect.Effect<void, AzureDevOpsCliError>;
   }
 >()("t3/sourceControl/AzureDevOpsCli") {}
@@ -449,6 +450,29 @@ function parseRepositorySpecifier(repository: string): {
     project: parts.length > 1 ? (parts.at(-2) ?? null) : null,
     name: parts.at(-1) ?? repository.trim(),
   };
+}
+
+/** Returns whether a Git remote uses an SSH transport. */
+function isSshRemoteUrl(remoteUrl: string | undefined): boolean {
+  const trimmed = remoteUrl?.trim() ?? "";
+  return /^git@/iu.test(trimmed) || /^ssh:\/\//iu.test(trimmed);
+}
+
+/** Chooses a fork clone URL that matches the local repository's Git transport. */
+function forkRepositoryRemote(input: {
+  readonly pullRequest: NormalizedAzureDevOpsPullRequestRecord;
+  readonly remoteName: string;
+  readonly remoteUrl?: string;
+}): string {
+  const sshUrl = input.pullRequest.sourceRepositorySshUrl;
+  const httpsUrl = input.pullRequest.sourceRepositoryRemoteUrl;
+  if (isSshRemoteUrl(input.remoteUrl)) {
+    return sshUrl ?? httpsUrl ?? input.remoteName;
+  }
+  if (input.remoteUrl !== undefined) {
+    return httpsUrl ?? sshUrl ?? input.remoteName;
+  }
+  return sshUrl ?? httpsUrl ?? input.remoteName;
 }
 
 function decodeAzureDevOpsJson<S extends Schema.Top>(
@@ -711,7 +735,11 @@ export const make = Effect.gen(function* () {
               stage: "fetch",
               args: [
                 "fetch",
-                pullRequest.sourceRepositoryUrl ?? remoteName,
+                forkRepositoryRemote({
+                  pullRequest,
+                  remoteName,
+                  ...(input.remoteUrl !== undefined ? { remoteUrl: input.remoteUrl } : {}),
+                }),
                 `+refs/heads/${branch}`,
               ],
             });

@@ -15,8 +15,10 @@ export interface NormalizedAzureDevOpsPullRequestRecord {
   readonly headRefName: string;
   readonly state: "open" | "closed" | "merged";
   readonly updatedAt: Option.Option<DateTime.Utc>;
-  /** Clone URL for a fork source repository, when Azure reports one. */
-  readonly sourceRepositoryUrl?: string;
+  /** HTTPS clone URL for a fork source repository, when Azure reports one. */
+  readonly sourceRepositoryRemoteUrl?: string;
+  /** SSH clone URL for a fork source repository, when Azure reports one. */
+  readonly sourceRepositorySshUrl?: string;
 }
 
 const AzureDevOpsPullRequestSchema = Schema.Struct({
@@ -149,8 +151,8 @@ function normalizeAzureDevOpsPullRequestRecord(
   raw: Schema.Schema.Type<typeof AzureDevOpsPullRequestSchema>,
 ): NormalizedAzureDevOpsPullRequestRecord {
   const forkRepository = raw.forkSource?.repository;
-  const sourceRepositoryUrl =
-    trimOptionalString(forkRepository?.sshUrl) ?? trimOptionalString(forkRepository?.remoteUrl);
+  const sourceRepositoryRemoteUrl = trimOptionalString(forkRepository?.remoteUrl);
+  const sourceRepositorySshUrl = trimOptionalString(forkRepository?.sshUrl);
 
   return {
     number: raw.pullRequestId,
@@ -162,7 +164,8 @@ function normalizeAzureDevOpsPullRequestRecord(
     updatedAt: (raw.closedDate ?? Option.none()).pipe(
       Option.orElse(() => raw.creationDate ?? Option.none()),
     ),
-    ...(sourceRepositoryUrl ? { sourceRepositoryUrl } : {}),
+    ...(sourceRepositoryRemoteUrl ? { sourceRepositoryRemoteUrl } : {}),
+    ...(sourceRepositorySshUrl ? { sourceRepositorySshUrl } : {}),
   };
 }
 
