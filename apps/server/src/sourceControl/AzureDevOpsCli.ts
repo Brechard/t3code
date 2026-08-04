@@ -228,6 +228,7 @@ export class AzureDevOpsGitCommandFailedError extends Schema.TaggedErrorClass<Az
   "AzureDevOpsGitCommandFailedError",
   {
     operation: Schema.Literal("checkoutPullRequest"),
+    stage: Schema.Literals(["fetch", "checkout"]),
     command: Schema.Literal("git"),
     cwd: Schema.String,
     argumentCount: NonNegativeInt,
@@ -235,11 +236,11 @@ export class AzureDevOpsGitCommandFailedError extends Schema.TaggedErrorClass<Az
   },
 ) {
   get detail(): string {
-    return "Git checkout command failed.";
+    return `Git ${this.stage} command failed.`;
   }
 
   override get message(): string {
-    return `Azure DevOps Git command failed in ${this.operation}: ${this.detail}`;
+    return `Azure DevOps Git ${this.stage} command failed in ${this.operation}: ${this.detail}`;
   }
 }
 
@@ -503,7 +504,11 @@ export const make = Effect.gen(function* () {
     });
 
   /** Runs one git step of the SSH-safe pull-request checkout flow. */
-  const runGit = (input: { readonly cwd: string; readonly args: ReadonlyArray<string> }) =>
+  const runGit = (input: {
+    readonly cwd: string;
+    readonly stage: "fetch" | "checkout";
+    readonly args: ReadonlyArray<string>;
+  }) =>
     process
       .run({
         operation: "AzureDevOpsCli.checkoutPullRequest",
@@ -516,6 +521,7 @@ export const make = Effect.gen(function* () {
           (cause) =>
             new AzureDevOpsGitCommandFailedError({
               operation: "checkoutPullRequest",
+              stage: input.stage,
               command: "git",
               cwd: input.cwd,
               argumentCount: input.args.length,
@@ -702,13 +708,18 @@ export const make = Effect.gen(function* () {
           return Effect.gen(function* () {
             yield* runGit({
               cwd: input.cwd,
+              stage: "fetch",
               args: [
                 "fetch",
                 pullRequest.sourceRepositoryUrl ?? remoteName,
                 `+refs/heads/${branch}`,
               ],
             });
-            yield* runGit({ cwd: input.cwd, args: ["checkout", "-B", branch, "FETCH_HEAD"] });
+            yield* runGit({
+              cwd: input.cwd,
+              stage: "checkout",
+              args: ["checkout", "-B", branch, "FETCH_HEAD"],
+            });
           });
         }),
       );
