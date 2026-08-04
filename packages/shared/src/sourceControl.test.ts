@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   detectSourceControlProviderFromRemoteUrl,
   getChangeRequestTerminologyForKind,
+  parseAzureDevOpsRepositoryCoordinates,
   resolveChangeRequestPresentation,
 } from "./sourceControl.ts";
 
@@ -80,6 +81,27 @@ describe("detectSourceControlProviderFromRemoteUrl", () => {
       kind: "unknown",
       name: "self-hosted.example.test:8443",
       baseUrl: "https://self-hosted.example.test:8443",
+    });
+  });
+});
+
+describe("parseAzureDevOpsRepositoryCoordinates", () => {
+  it("parses SSH and HTTPS Azure Repos clone URLs", () => {
+    expect(
+      parseAzureDevOpsRepositoryCoordinates("git@ssh.dev.azure.com:v3/acme/project/repo"),
+    ).toEqual({
+      organization: "acme",
+      project: "project",
+      repository: "repo",
+    });
+    expect(
+      parseAzureDevOpsRepositoryCoordinates(
+        "https://dev.azure.com/acme/fork-project/_git/fork-repo",
+      ),
+    ).toEqual({
+      organization: "acme",
+      project: "fork-project",
+      repository: "fork-repo",
     });
   });
 });

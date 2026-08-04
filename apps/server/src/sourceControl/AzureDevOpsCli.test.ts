@@ -322,7 +322,7 @@ describe("AzureDevOpsCli.layer", () => {
       const az = yield* AzureDevOpsCli.AzureDevOpsCli;
       const result = yield* az.getRepositoryCloneUrls({
         cwd: "/repo",
-        repository: "requested-repo",
+        repository: "acme/fork-project/fork-repo",
         repositoryContext: { ...repositoryContext, repository: "working-repo" },
       });
 
@@ -340,9 +340,9 @@ describe("AzureDevOpsCli.layer", () => {
           "--organization",
           "https://dev.azure.com/acme",
           "--project",
-          "project",
+          "fork-project",
           "--repository",
-          "requested-repo",
+          "fork-repo",
           "--only-show-errors",
           "--output",
           "json",

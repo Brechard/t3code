@@ -56,6 +56,45 @@ it.effect("maps Azure DevOps PR summaries into provider-neutral change requests"
   }),
 );
 
+it.effect("preserves Azure DevOps fork identity in change requests", () =>
+  Effect.gen(function* () {
+    const provider = yield* makeProvider({
+      getPullRequest: () =>
+        Effect.succeed({
+          number: 42,
+          title: "Add Azure provider",
+          url: "https://dev.azure.com/acme/project/_git/repo/pullrequest/42",
+          baseRefName: "main",
+          headRefName: "feature/source-control",
+          state: "open",
+          updatedAt: Option.none(),
+          isCrossRepository: true,
+          headRepositoryNameWithOwner: "acme/fork-project/fork-repo",
+          headRepositoryOwnerLogin: "acme",
+        }),
+    });
+
+    const changeRequest = yield* provider.getChangeRequest({
+      cwd: "/repo",
+      reference: "42",
+    });
+
+    assert.deepStrictEqual(changeRequest, {
+      provider: "azure-devops",
+      number: 42,
+      title: "Add Azure provider",
+      url: "https://dev.azure.com/acme/project/_git/repo/pullrequest/42",
+      baseRefName: "main",
+      headRefName: "feature/source-control",
+      state: "open",
+      updatedAt: Option.none(),
+      isCrossRepository: true,
+      headRepositoryNameWithOwner: "acme/fork-project/fork-repo",
+      headRepositoryOwnerLogin: "acme",
+    });
+  }),
+);
+
 it.effect("passes the SSH remote repository context to Azure CLI PR lookup", () =>
   Effect.gen(function* () {
     let getInput:

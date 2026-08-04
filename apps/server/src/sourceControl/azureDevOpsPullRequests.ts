@@ -6,6 +6,7 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import { PositiveInt, TrimmedNonEmptyString } from "@t3tools/contracts";
 import { decodeJsonResult, formatSchemaError } from "@t3tools/shared/schemaJson";
+import { parseAzureDevOpsRepositoryCoordinates } from "@t3tools/shared/sourceControl";
 
 export interface NormalizedAzureDevOpsPullRequestRecord {
   readonly number: number;
@@ -15,6 +16,9 @@ export interface NormalizedAzureDevOpsPullRequestRecord {
   readonly headRefName: string;
   readonly state: "open" | "closed" | "merged";
   readonly updatedAt: Option.Option<DateTime.Utc>;
+  readonly isCrossRepository?: boolean;
+  readonly headRepositoryNameWithOwner?: string | null;
+  readonly headRepositoryOwnerLogin?: string | null;
   /** HTTPS clone URL for a fork source repository, when Azure reports one. */
   readonly sourceRepositoryRemoteUrl?: string;
   /** SSH clone URL for a fork source repository, when Azure reports one. */
@@ -153,6 +157,13 @@ function normalizeAzureDevOpsPullRequestRecord(
   const forkRepository = raw.forkSource?.repository;
   const sourceRepositoryRemoteUrl = trimOptionalString(forkRepository?.remoteUrl);
   const sourceRepositorySshUrl = trimOptionalString(forkRepository?.sshUrl);
+  const sourceRepositoryCoordinates = parseAzureDevOpsRepositoryCoordinates(
+    sourceRepositoryRemoteUrl ?? sourceRepositorySshUrl,
+  );
+  const headRepositoryNameWithOwner = sourceRepositoryCoordinates
+    ? `${sourceRepositoryCoordinates.organization}/${sourceRepositoryCoordinates.project}/${sourceRepositoryCoordinates.repository}`
+    : null;
+  const headRepositoryOwnerLogin = sourceRepositoryCoordinates?.organization ?? null;
 
   return {
     number: raw.pullRequestId,
@@ -164,6 +175,13 @@ function normalizeAzureDevOpsPullRequestRecord(
     updatedAt: (raw.closedDate ?? Option.none()).pipe(
       Option.orElse(() => raw.creationDate ?? Option.none()),
     ),
+    ...(sourceRepositoryCoordinates
+      ? {
+          isCrossRepository: true,
+          headRepositoryNameWithOwner,
+          headRepositoryOwnerLogin,
+        }
+      : {}),
     ...(sourceRepositoryRemoteUrl ? { sourceRepositoryRemoteUrl } : {}),
     ...(sourceRepositorySshUrl ? { sourceRepositorySshUrl } : {}),
   };

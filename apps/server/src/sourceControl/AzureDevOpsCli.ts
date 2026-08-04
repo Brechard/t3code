@@ -10,6 +10,10 @@ import {
   type SourceControlRepositoryVisibility,
   type VcsError,
 } from "@t3tools/contracts";
+import {
+  parseAzureDevOpsRepositoryCoordinates,
+  type AzureDevOpsRepositoryCoordinates,
+} from "@t3tools/shared/sourceControl";
 
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import {
@@ -22,71 +26,13 @@ import * as SourceControlProvider from "./SourceControlProvider.ts";
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 /** Identifies the Azure DevOps repository targeted by a CLI request. */
-export interface AzureDevOpsRepositoryContext {
-  readonly organization: string;
-  readonly project: string;
-  readonly repository: string;
-}
-
-/** Decodes one URL path segment, returning null for malformed or empty values. */
-function decodeRemotePathSegment(segment: string): string | null {
-  try {
-    const decoded = decodeURIComponent(segment).trim();
-    return decoded.length > 0 ? decoded : null;
-  } catch {
-    return null;
-  }
-}
+export type AzureDevOpsRepositoryContext = AzureDevOpsRepositoryCoordinates;
 
 /** Extracts repository coordinates from an Azure DevOps SSH or HTTPS clone URL. */
 export function parseAzureDevOpsRemoteUrl(
   remoteUrl: string,
 ): AzureDevOpsRepositoryContext | undefined {
-  const trimmed = remoteUrl.trim();
-  let segments: ReadonlyArray<string>;
-
-  if (trimmed.startsWith("git@")) {
-    const separatorIndex = trimmed.indexOf(":");
-    if (separatorIndex <= "git@".length) {
-      return undefined;
-    }
-
-    const host = trimmed.slice("git@".length, separatorIndex).toLowerCase();
-    if (host !== "ssh.dev.azure.com") {
-      return undefined;
-    }
-
-    segments = trimmed
-      .slice(separatorIndex + 1)
-      .split("/")
-      .filter((segment) => segment.length > 0);
-  } else {
-    try {
-      const url = new URL(trimmed);
-      if (url.hostname.toLowerCase() !== "dev.azure.com") {
-        return undefined;
-      }
-      segments = url.pathname.split("/").filter((segment) => segment.length > 0);
-    } catch {
-      return undefined;
-    }
-  }
-
-  const isSshClonePath = segments[0]?.toLowerCase() === "v3";
-  const isHttpClonePath = segments[2]?.toLowerCase() === "_git";
-  const [organizationSegment, projectSegment, repositorySegment] = isSshClonePath
-    ? [segments[1], segments[2], segments[3]]
-    : isHttpClonePath
-      ? [segments[0], segments[1], segments[3]]
-      : [];
-
-  const organization = organizationSegment ? decodeRemotePathSegment(organizationSegment) : null;
-  const project = projectSegment ? decodeRemotePathSegment(projectSegment) : null;
-  const repository = repositorySegment
-    ? decodeRemotePathSegment(repositorySegment.replace(/\.git$/iu, ""))
-    : null;
-
-  return organization && project && repository ? { organization, project, repository } : undefined;
+  return parseAzureDevOpsRepositoryCoordinates(remoteUrl);
 }
 
 /** Builds explicit Azure CLI repository arguments when remote detection is unreliable. */
@@ -114,21 +60,48 @@ function repositoryOrganizationArgs(
     : ["--detect", "true"];
 }
 
+/** Resolves a repository selector against the current Azure organization and project. */
+function repositorySelectorCoordinates(
+  repositoryContext: AzureDevOpsRepositoryContext,
+  repository: string,
+): AzureDevOpsRepositoryContext {
+  const parts = repository
+    .split("/")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  const repositoryName = parts.at(-1) ?? repositoryContext.repository;
+  const project =
+    parts.length > 1 ? (parts.at(-2) ?? repositoryContext.project) : repositoryContext.project;
+  const organization =
+    parts.length > 2
+      ? (parts.at(-3) ?? repositoryContext.organization)
+      : repositoryContext.organization;
+
+  return {
+    organization,
+    project,
+    repository: repositoryName,
+  };
+}
+
 /** Builds repository-show arguments while retaining the CLI's fallback repository selector. */
 function repositoryShowArgs(
   repositoryContext: AzureDevOpsRepositoryContext | undefined,
   repository: string,
 ): ReadonlyArray<string> {
-  return repositoryContext
-    ? [
-        "--organization",
-        `https://dev.azure.com/${repositoryContext.organization}`,
-        "--project",
-        repositoryContext.project,
-        "--repository",
-        repository,
-      ]
-    : ["--detect", "true", "--repository", repository];
+  if (repositoryContext === undefined) {
+    return ["--detect", "true", "--repository", repository];
+  }
+
+  const selectedRepository = repositorySelectorCoordinates(repositoryContext, repository);
+  return [
+    "--organization",
+    `https://dev.azure.com/${selectedRepository.organization}`,
+    "--project",
+    selectedRepository.project,
+    "--repository",
+    selectedRepository.repository,
+  ];
 }
 
 const azureDevOpsCommandErrorFields = {
