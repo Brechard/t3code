@@ -322,8 +322,8 @@ describe("AzureDevOpsCli.layer", () => {
       const az = yield* AzureDevOpsCli.AzureDevOpsCli;
       const result = yield* az.getRepositoryCloneUrls({
         cwd: "/repo",
-        repository: "repo",
-        repositoryContext,
+        repository: "requested-repo",
+        repositoryContext: { ...repositoryContext, repository: "working-repo" },
       });
 
       assert.deepStrictEqual(result, {
@@ -342,7 +342,7 @@ describe("AzureDevOpsCli.layer", () => {
           "--project",
           "project",
           "--repository",
-          "repo",
+          "requested-repo",
           "--only-show-errors",
           "--output",
           "json",
@@ -574,19 +574,90 @@ describe("AzureDevOpsCli.layer", () => {
         {
           operation: "AzureDevOpsCli.checkoutPullRequest",
           command: "git",
-          args: ["fetch", "origin", "refs/heads/feature/source-control"],
+          args: ["fetch", "origin", "+refs/heads/feature/source-control"],
           cwd: "/repo",
         },
         {
           operation: "AzureDevOpsCli.checkoutPullRequest",
           command: "git",
-          args: ["checkout", "feature/source-control"],
+          args: ["checkout", "-B", "feature/source-control", "FETCH_HEAD"],
+          cwd: "/repo",
+        },
+      ]);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("checks out a pull request from an Azure DevOps fork repository", () =>
+    Effect.gen(function* () {
+      mockRun
+        .mockReturnValueOnce(
+          Effect.succeed(
+            processOutput(
+              // @effect-diagnostics-next-line preferSchemaOverJson:off
+              JSON.stringify({
+                pullRequestId: 42,
+                title: "Add Azure provider",
+                sourceRefName: "refs/heads/feature/source-control",
+                targetRefName: "refs/heads/main",
+                status: "active",
+                forkSource: {
+                  repository: {
+                    remoteUrl: "https://dev.azure.com/acme/fork-project/_git/fork-repo",
+                    sshUrl: "git@ssh.dev.azure.com:v3/acme/fork-project/fork-repo",
+                  },
+                },
+                _links: {
+                  web: {
+                    href: "https://dev.azure.com/acme/project/_git/repo/pullrequest/42",
+                  },
+                },
+              }),
+            ),
+          ),
+        )
+        .mockReturnValueOnce(Effect.succeed(processOutput("")))
+        .mockReturnValueOnce(Effect.succeed(processOutput("")));
+
+      const az = yield* AzureDevOpsCli.AzureDevOpsCli;
+      yield* az.checkoutPullRequest({
+        cwd: "/repo",
+        reference: "42",
+        repositoryContext,
+      });
+
+      expect(mockRun.mock.calls.map(([input]) => input)).toEqual([
+        {
+          operation: "AzureDevOpsCli.execute",
+          command: "az",
+          args: [
+            "repos",
+            "pr",
+            "show",
+            "--organization",
+            "https://dev.azure.com/acme",
+            "--id",
+            "42",
+            "--only-show-errors",
+            "--output",
+            "json",
+          ],
+          cwd: "/repo",
+          timeoutMs: 30_000,
+        },
+        {
+          operation: "AzureDevOpsCli.checkoutPullRequest",
+          command: "git",
+          args: [
+            "fetch",
+            "git@ssh.dev.azure.com:v3/acme/fork-project/fork-repo",
+            "+refs/heads/feature/source-control",
+          ],
           cwd: "/repo",
         },
         {
           operation: "AzureDevOpsCli.checkoutPullRequest",
           command: "git",
-          args: ["pull", "origin", "feature/source-control"],
+          args: ["checkout", "-B", "feature/source-control", "FETCH_HEAD"],
           cwd: "/repo",
         },
       ]);

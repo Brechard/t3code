@@ -120,7 +120,14 @@ function repositoryShowArgs(
   repository: string,
 ): ReadonlyArray<string> {
   return repositoryContext
-    ? repositoryDetectionArgs(repositoryContext)
+    ? [
+        "--organization",
+        `https://dev.azure.com/${repositoryContext.organization}`,
+        "--project",
+        repositoryContext.project,
+        "--repository",
+        repository,
+      ]
     : ["--detect", "true", "--repository", repository];
 }
 
@@ -232,7 +239,7 @@ export class AzureDevOpsGitCommandFailedError extends Schema.TaggedErrorClass<Az
   }
 
   override get message(): string {
-    return `Azure DevOps CLI failed in ${this.operation}: ${this.detail}`;
+    return `Azure DevOps Git command failed in ${this.operation}: ${this.detail}`;
   }
 }
 
@@ -695,10 +702,13 @@ export const make = Effect.gen(function* () {
           return Effect.gen(function* () {
             yield* runGit({
               cwd: input.cwd,
-              args: ["fetch", remoteName, `refs/heads/${branch}`],
+              args: [
+                "fetch",
+                pullRequest.sourceRepositoryUrl ?? remoteName,
+                `+refs/heads/${branch}`,
+              ],
             });
-            yield* runGit({ cwd: input.cwd, args: ["checkout", branch] });
-            yield* runGit({ cwd: input.cwd, args: ["pull", remoteName, branch] });
+            yield* runGit({ cwd: input.cwd, args: ["checkout", "-B", branch, "FETCH_HEAD"] });
           });
         }),
       );
