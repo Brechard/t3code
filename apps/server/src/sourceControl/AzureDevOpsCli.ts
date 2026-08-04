@@ -21,12 +21,14 @@ import * as SourceControlProvider from "./SourceControlProvider.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+/** Identifies the Azure DevOps repository targeted by a CLI request. */
 export interface AzureDevOpsRepositoryContext {
   readonly organization: string;
   readonly project: string;
   readonly repository: string;
 }
 
+/** Decodes one URL path segment, returning null for malformed or empty values. */
 function decodeRemotePathSegment(segment: string): string | null {
   try {
     const decoded = decodeURIComponent(segment).trim();
@@ -36,6 +38,7 @@ function decodeRemotePathSegment(segment: string): string | null {
   }
 }
 
+/** Extracts repository coordinates from an Azure DevOps SSH or HTTPS clone URL. */
 export function parseAzureDevOpsRemoteUrl(
   remoteUrl: string,
 ): AzureDevOpsRepositoryContext | undefined {
@@ -86,6 +89,7 @@ export function parseAzureDevOpsRemoteUrl(
   return organization && project && repository ? { organization, project, repository } : undefined;
 }
 
+/** Builds explicit Azure CLI repository arguments when remote detection is unreliable. */
 function repositoryDetectionArgs(
   repositoryContext: AzureDevOpsRepositoryContext | undefined,
 ): ReadonlyArray<string> {
