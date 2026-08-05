@@ -252,6 +252,12 @@ it.effect("opens a CLI-less macOS terminal through its app bundle", () =>
     yield* fileSystem.writeFileString(path.join(binDir, "open"), "#!/bin/sh\n");
     yield* fileSystem.chmod(path.join(binDir, "open"), 0o755);
     const workspace = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-workspace-" });
+    // The bundle lives under a temp HOME so the test does not depend on the
+    // machine it runs on having Terminal.app.
+    const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-home-" });
+    yield* fileSystem.makeDirectory(path.join(home, "Applications", "Terminal.app"), {
+      recursive: true,
+    });
 
     let spawned: ChildProcess.StandardCommand | undefined;
     yield* Effect.gen(function* () {
@@ -261,7 +267,7 @@ it.effect("opens a CLI-less macOS terminal through its app bundle", () =>
       Effect.provide(
         testLayer({
           platform: "darwin",
-          env: { PATH: binDir },
+          env: { PATH: binDir, HOME: home },
           onSpawn: (command) => {
             spawned = command;
           },

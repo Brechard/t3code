@@ -435,8 +435,14 @@ const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
   }
 
   // No CLI at all: a GUI-only bundle handed the path to open, which is how the
-  // macOS terminals (Terminal, iTerm, Warp) take a working directory.
+  // macOS terminals (Terminal, iTerm, Warp) take a working directory. The
+  // bundle is checked first because `open` detaches with stdio ignored, so a
+  // missing app would otherwise look like success and simply do nothing.
   if (macAppName && platform === "darwin") {
+    if (!(yield* isMacAppAvailable(macAppName, env))) {
+      return yield* new ExternalLauncherUnsupportedEditorError({ editor: input.editor });
+    }
+
     return {
       editor: editorDef.id,
       target,
