@@ -202,21 +202,31 @@ const isMacAppAvailable = Effect.fn("externalLauncher.isMacAppAvailable")(functi
  * The launch target is whatever the caller wanted opened, which may carry a
  * `:line:column` suffix and may be a file rather than a directory — a terminal
  * takes neither, so strip the position and step up to the containing folder.
+ *
+ * The target is tested as-is first: a colon is legal in a POSIX directory
+ * name, so stripping a position before looking would send a real directory
+ * named `project:12` to its parent instead.
  */
 const resolveWorkingDirectory = Effect.fn("externalLauncher.resolveWorkingDirectory")(function* (
   target: string,
 ): Effect.fn.Return<string, never, FileSystem.FileSystem | Path.Path> {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const candidate = Option.match(parseTargetPathAndPosition(target), {
+  const isDirectory = (candidate: string) =>
+    fileSystem.stat(candidate).pipe(
+      Effect.map((info) => info.type === "Directory"),
+      Effect.orElseSucceed(() => false),
+    );
+
+  if (yield* isDirectory(target)) {
+    return target;
+  }
+
+  const withoutPosition = Option.match(parseTargetPathAndPosition(target), {
     onNone: () => target,
     onSome: (parsed) => parsed.path,
   });
-  const isDirectory = yield* fileSystem.stat(candidate).pipe(
-    Effect.map((info) => info.type === "Directory"),
-    Effect.orElseSucceed(() => false),
-  );
-  return isDirectory ? candidate : path.dirname(candidate);
+  return (yield* isDirectory(withoutPosition)) ? withoutPosition : path.dirname(withoutPosition);
 });
 
 function encodeUtf16LeBase64(input: string): string {
@@ -402,7 +412,12 @@ const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
 
   if (editorDef.commands) {
     const resolved = yield* resolveAvailableCommand(editorDef.commands, env);
-    if (Option.isNone(resolved) && macAppName && (yield* isMacAppAvailable(macAppName, env))) {
+    if (
+      Option.isNone(resolved) &&
+      macAppName &&
+      platform === "darwin" &&
+      (yield* isMacAppAvailable(macAppName, env))
+    ) {
       return {
         editor: editorDef.id,
         target,
