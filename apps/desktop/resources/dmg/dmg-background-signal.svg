@@ -1,0 +1,77 @@
+<svg width="1080" height="760" viewBox="0 0 540 380" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="brand-bg" x1="0" y1="0" x2="540" y2="380" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F4F4F5"/>
+      <stop offset="0.58" stop-color="#FAFAFA"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <linearGradient id="brand-card" x1="32" y1="112" x2="508" y2="262" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#09090B"/>
+      <stop offset="1" stop-color="#151519"/>
+    </linearGradient>
+    <linearGradient id="brand-route" x1="170" y1="220" x2="370" y2="220" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A89AFB" stop-opacity="0.35"/>
+      <stop offset="0.5" stop-color="#8B7CF6"/>
+      <stop offset="1" stop-color="#A89AFB" stop-opacity="0.35"/>
+    </linearGradient>
+    <radialGradient id="brand-glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(270 220) rotate(90) scale(88 218)">
+      <stop stop-color="#8B7CF6" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#8B7CF6" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="brand-card-clip">
+      <rect x="32" y="112" width="476" height="150" rx="18"/>
+    </clipPath>
+    <filter id="brand-card-shadow" x="12" y="92" width="516" height="196" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#18181B" flood-opacity="0.16"/>
+    </filter>
+  </defs>
+
+  <rect width="540" height="380" fill="url(#brand-bg)"/>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, sans-serif">
+    <text x="32" y="39" font-size="11" font-weight="750" letter-spacing="1.9" fill="#18181B">T3 CODE</text>
+    <path d="M104 29V42" stroke="#D4D4D8"/>
+    <text x="117" y="39" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8.5" font-weight="600" letter-spacing="1.3" fill="#71717A">BY T3 TOOLS</text>
+    <text x="508" y="39" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8.5" letter-spacing="1.1" fill="#71717A">T3.CODES</text>
+
+    <text x="32" y="68" font-size="17" font-weight="650" letter-spacing="-0.25" fill="#18181B">The control plane for coding agents.</text>
+    <text x="32" y="88" font-size="9.5" fill="#71717A">Open source. Bring your own subscription.</text>
+  </g>
+
+  <g filter="url(#brand-card-shadow)">
+    <rect x="32" y="112" width="476" height="150" rx="18" fill="url(#brand-card)"/>
+    <rect x="32.5" y="112.5" width="475" height="149" rx="17.5" stroke="#FFFFFF" stroke-opacity="0.1"/>
+  </g>
+
+  <g clip-path="url(#brand-card-clip)">
+    <rect x="32" y="112" width="476" height="150" fill="url(#brand-glow)"/>
+    <g opacity="0.18" stroke="#FFFFFF" stroke-width="0.5">
+      <path d="M32 151H508M32 190H508M32 229H508"/>
+      <path d="M82 112V262M130 112V262M178 112V262M226 112V262M274 112V262M322 112V262M370 112V262M418 112V262M466 112V262"/>
+    </g>
+    <circle cx="470" cy="132" r="84" fill="#8B7CF6" fill-opacity="0.05"/>
+  </g>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+    <circle cx="54" cy="134" r="3" fill="#8B7CF6"/>
+    <text x="66" y="137" font-size="8" font-weight="600" letter-spacing="1.2" fill="#A1A1AA">INSTALL / MACOS</text>
+    <text x="486" y="137" text-anchor="end" font-size="8" letter-spacing="1" fill="#71717A">READY</text>
+  </g>
+
+  <path d="M170 220H370" stroke="#8B7CF6" stroke-opacity="0.14" stroke-width="10"/>
+  <path d="M170 220H370" stroke="url(#brand-route)" stroke-width="1.5" stroke-dasharray="2 6"/>
+  <path d="M259 211L270 220L259 229M270 220H284" stroke="#FAFAFA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="170" cy="220" r="2.5" fill="#A89AFB"/>
+  <circle cx="370" cy="220" r="2.5" fill="#A89AFB"/>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, sans-serif">
+    <text x="270" y="319" text-anchor="middle" font-size="10" font-weight="700" letter-spacing="1.6" fill="#27272A">DRAG T3 CODE INTO APPLICATIONS</text>
+    <text x="270" y="340" text-anchor="middle" font-size="9" fill="#71717A">Then launch T3 Code from your Applications folder.</text>
+  </g>
+
+  <path d="M32 356H508" stroke="#E4E4E7"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="7.5" letter-spacing="1" fill="#A1A1AA">
+    <text x="32" y="371">T3 TOOLS, INC.</text>
+    <text x="508" y="371" text-anchor="end">DESKTOP · WEB · MOBILE</text>
+  </g>
+</svg>

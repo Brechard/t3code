@@ -2039,6 +2039,26 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     };
   }
 
+  if (platform === "mac" && target === "dmg") {
+    buildConfig.dmg = {
+      // Give the themed installer its own Finder volume name. Finder caches
+      // DMG window backgrounds by volume name, so reusing a generic name can
+      // make a newly built background look unchanged during testing.
+      title: `${resolveDesktopProductName(version)} ${version} Installer`,
+      background: "dmg/dmg-background-signal.png",
+      window: {
+        width: 540,
+        height: 380,
+      },
+      contents: [
+        { x: 130, y: 220, type: "file" },
+        { x: 410, y: 220, type: "link", path: "/Applications" },
+      ],
+      iconSize: 80,
+      iconTextSize: 12,
+    };
+  }
+
   if (platform === "linux") {
     buildConfig.linux = {
       target: [target],

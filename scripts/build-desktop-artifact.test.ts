@@ -463,6 +463,17 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "**/node_modules/.bin",
         "**/node_modules/.bin/**",
       ]);
+      assert.deepStrictEqual(mac.dmg, {
+        title: "T3 Code (Alpha) 1.2.3 Installer",
+        background: "dmg/dmg-background-signal.png",
+        window: { width: 540, height: 380 },
+        contents: [
+          { x: 130, y: 220, type: "file" },
+          { x: 410, y: 220, type: "link", path: "/Applications" },
+        ],
+        iconSize: 80,
+        iconTextSize: 12,
+      });
       // Linux must register the renderer schemes so the generated .desktop
       // entry advertises MimeType=x-scheme-handler/t3code; for OAuth deep links.
       assert.deepStrictEqual((linux.linux as Record<string, unknown>).protocols, [
