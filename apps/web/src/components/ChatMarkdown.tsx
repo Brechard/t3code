@@ -1453,13 +1453,16 @@ function ChatMarkdown({
   const openFileInPanel = useCallback(
     (workspaceRelativePath: string, line: number | undefined) => {
       if (!threadRef) return;
+      // Claimed for every open, not just the ones that look something up: a
+      // path that opens synchronously still has to supersede a lookup already
+      // in flight, or that lookup lands afterwards and takes the panel back.
+      const isLatestLookup = claimWorkspaceBasenameLookup();
       const openAt = (path: string) =>
         useRightPanelStore.getState().openFile(threadRef, path, line);
       if (!cwd || !needsWorkspaceBasenameLookup(workspaceRelativePath)) {
         openAt(workspaceRelativePath);
         return;
       }
-      const isLatestLookup = claimWorkspaceBasenameLookup();
       void (async () => {
         const result = await searchProjectEntries({
           environmentId: threadRef.environmentId,
