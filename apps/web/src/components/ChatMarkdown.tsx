@@ -90,6 +90,13 @@ import { usePreparedConnection } from "../state/session";
 import { previewEnvironment } from "../state/preview";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
+import { projectEnvironment } from "../state/projects";
+import {
+  claimWorkspaceBasenameLookup,
+  needsWorkspaceBasenameLookup,
+  pickWorkspaceBasenameMatch,
+  WORKSPACE_BASENAME_LOOKUP_LIMIT,
+} from "../workspaceBasenameLookup";
 import { useOpenChangeRequestLink } from "~/lib/openPullRequestLink";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { isPreviewSupportedInRuntime } from "../previewStateStore";
@@ -791,6 +798,7 @@ interface MarkdownFileLinkProps {
   theme: "light" | "dark";
   threadRef?: ScopedThreadRef | undefined;
   onOpen: (targetPath: string) => Promise<AtomCommandResult<unknown, unknown>>;
+  onOpenInPanel: (workspaceRelativePath: string, line: number | undefined) => void;
   onOpenInBrowser?: (() => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
   className?: string | undefined;
 }
@@ -1093,6 +1101,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
   theme,
   threadRef,
   onOpen,
+  onOpenInPanel,
   onOpenInBrowser,
   className,
 }: MarkdownFileLinkProps) {
@@ -1136,8 +1145,8 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
       handleOpenInEditor();
       return;
     }
-    useRightPanelStore.getState().openFile(threadRef, workspaceRelativePath, line);
-  }, [handleOpenInEditor, line, threadRef, workspaceRelativePath]);
+    onOpenInPanel(workspaceRelativePath, line);
+  }, [handleOpenInEditor, line, onOpenInPanel, threadRef, workspaceRelativePath]);
 
   const handleOpenInBrowser = useCallback(() => {
     if (!onOpenInBrowser) {
@@ -1313,6 +1322,7 @@ function areMarkdownFileLinkPropsEqual(
     previous.theme === next.theme &&
     previous.threadRef === next.threadRef &&
     previous.onOpen === next.onOpen &&
+    previous.onOpenInPanel === next.onOpenInPanel &&
     previous.onOpenInBrowser === next.onOpenInBrowser &&
     previous.className === next.className
   );
@@ -1330,6 +1340,9 @@ function ChatMarkdown({
 }: ChatMarkdownProps) {
   const { resolvedTheme } = useTheme();
   const createAssetUrl = useAtomQueryRunner(assetEnvironment.createUrl, {
+    reportFailure: false,
+  });
+  const searchProjectEntries = useAtomQueryRunner(projectEnvironment.searchEntries, {
     reportFailure: false,
   });
   const openPreview = useAtomCommand(previewEnvironment.open, {
@@ -1434,6 +1447,40 @@ function ChatMarkdown({
     },
     [createAssetUrl, openPreview, preparedConnection, threadRef],
   );
+  // `ChatView.tsx:3301` names a file without saying where it lives, so the link
+  // resolver can only place it at the workspace root and the read fails there.
+  // Ask the workspace index for the real location before opening the surface.
+  const openFileInPanel = useCallback(
+    (workspaceRelativePath: string, line: number | undefined) => {
+      if (!threadRef) return;
+      const openAt = (path: string) =>
+        useRightPanelStore.getState().openFile(threadRef, path, line);
+      if (!cwd || !needsWorkspaceBasenameLookup(workspaceRelativePath)) {
+        openAt(workspaceRelativePath);
+        return;
+      }
+      const isLatestLookup = claimWorkspaceBasenameLookup();
+      void (async () => {
+        const result = await searchProjectEntries({
+          environmentId: threadRef.environmentId,
+          input: {
+            cwd,
+            query: workspaceRelativePath,
+            limit: WORKSPACE_BASENAME_LOOKUP_LIMIT,
+            kind: "file",
+          },
+        });
+        const match =
+          result._tag === "Success"
+            ? pickWorkspaceBasenameMatch(workspaceRelativePath, result.value.entries)
+            : null;
+        // A click that landed after this one already owns the panel.
+        if (!isLatestLookup()) return;
+        openAt(match ?? workspaceRelativePath);
+      })();
+    },
+    [cwd, searchProjectEntries, threadRef],
+  );
   /* eslint-disable react/no-unstable-nested-components -- ReactMarkdown requires component
    * renderers that close over this message's metadata. useMemo keeps them stable until that
    * metadata changes. */
@@ -1467,6 +1514,7 @@ function ChatMarkdown({
           theme={resolvedTheme}
           threadRef={threadRef}
           onOpen={openInPreferredEditor}
+          onOpenInPanel={openFileInPanel}
           onOpenInBrowser={
             threadRef &&
             isPreviewSupportedInRuntime() &&
@@ -1685,6 +1733,7 @@ function ChatMarkdown({
     isStreaming,
     markdownFileLinkMetaByHref,
     onTaskListChange,
+    openFileInPanel,
     openInPreferredEditor,
     openExternalLinkInPreview,
     openMarkdownFileInPreview,
