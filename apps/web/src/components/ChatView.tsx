@@ -78,6 +78,12 @@ import {
   collapseExpandedComposerCursor,
   parseStandaloneComposerSlashCommand,
 } from "../composer-logic";
+import { resolveComposerMentionFileTarget } from "../composerMentionFileTarget";
+import {
+  needsWorkspaceBasenameLookup,
+  pickWorkspaceBasenameMatch,
+  WORKSPACE_BASENAME_LOOKUP_LIMIT,
+} from "../workspaceBasenameLookup";
 import {
   derivePendingApprovals,
   derivePendingUserInputs,
@@ -322,6 +328,7 @@ import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { RightPanelSheet } from "./RightPanelSheet";
 import { previewEnvironment } from "../state/preview";
 import { useAtomCommand } from "../state/use-atom-command";
+import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { Button } from "./ui/button";
 import {
   AlertDialog,
@@ -1195,6 +1202,9 @@ function ChatViewContent(props: ChatViewProps) {
   );
   const routeThreadKey = useMemo(() => scopedThreadKey(routeThreadRef), [routeThreadRef]);
   const updateProject = useAtomCommand(projectEnvironment.update, { reportFailure: false });
+  const searchProjectEntries = useAtomQueryRunner(projectEnvironment.searchEntries, {
+    reportFailure: false,
+  });
   const upsertKeybinding = useAtomCommand(serverEnvironment.upsertKeybinding, {
     reportFailure: false,
   });
@@ -3266,6 +3276,40 @@ function ChatViewContent(props: ChatViewProps) {
       useRightPanelStore.getState().openFile(activeThreadRef, relativePath);
     },
     [activeProject, activeThreadRef],
+  );
+  // A composer mention chip opens its file the same way a rendered chat file
+  // link does, so a reference you just wrote is readable before you send it.
+  // A hand-written mention can name a file without saying where it lives, so
+  // it goes through the same workspace-index lookup chat links use.
+  const openMentionFileSurface = useCallback(
+    (mentionPath: string) => {
+      if (!activeThreadRef || !activeProject) return;
+      const target = resolveComposerMentionFileTarget(mentionPath, activeWorkspaceRoot);
+      if (!target) return;
+      const openAt = (path: string) =>
+        useRightPanelStore.getState().openFile(activeThreadRef, path, target.line, target.endLine);
+      if (!activeWorkspaceRoot || !needsWorkspaceBasenameLookup(target.relativePath)) {
+        openAt(target.relativePath);
+        return;
+      }
+      void (async () => {
+        const result = await searchProjectEntries({
+          environmentId: activeThreadRef.environmentId,
+          input: {
+            cwd: activeWorkspaceRoot,
+            query: target.relativePath,
+            limit: WORKSPACE_BASENAME_LOOKUP_LIMIT,
+            kind: "file",
+          },
+        });
+        const match =
+          result._tag === "Success"
+            ? pickWorkspaceBasenameMatch(target.relativePath, result.value.entries)
+            : null;
+        openAt(match ?? target.relativePath);
+      })();
+    },
+    [activeProject, activeThreadRef, activeWorkspaceRoot, searchProjectEntries],
   );
   // The thread's own change request, placed against the project it belongs to. Without a
   // project there is nothing to resolve it against, so the caller falls back to the browser.
@@ -6104,6 +6148,7 @@ function ChatViewContent(props: ChatViewProps) {
             activeRightPanelSurface.kind === "file" ? activeRightPanelSurface.relativePath : null
           }
           revealLine={activeFileSurface?.revealLine ?? null}
+          revealEndLine={activeFileSurface?.revealEndLine ?? null}
           revealRequestId={activeFileSurface?.revealRequestId ?? 0}
           onOpenFile={openFileSurface}
           onPendingChange={handleFilePendingChange}
@@ -6352,6 +6397,7 @@ function ChatViewContent(props: ChatViewProps) {
                             keybindings={keybindings}
                             terminalOpen={Boolean(terminalUiState.terminalOpen)}
                             gitCwd={gitCwd}
+                            onOpenMentionFile={openMentionFileSurface}
                             promptRef={promptRef}
                             composerImagesRef={composerImagesRef}
                             composerTerminalContextsRef={composerTerminalContextsRef}

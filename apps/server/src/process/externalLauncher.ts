@@ -65,7 +65,9 @@ interface TargetPathAndPosition {
   readonly column: Option.Option<string>;
 }
 
-const TARGET_WITH_POSITION_PATTERN = /^(.*?):(\d+)(?::(\d+))?$/;
+// `path:12`, `path:12:5`, and the span form `path:12-40`. An editor opens at a
+// span's first line, so its end is matched to be stripped, never captured.
+const TARGET_WITH_POSITION_PATTERN = /^(.*?):(\d+)(?::(\d+)|-\d+)?$/;
 const POWERSHELL_ARGUMENTS_PREFIX = [
   "-NoProfile",
   "-NonInteractive",
