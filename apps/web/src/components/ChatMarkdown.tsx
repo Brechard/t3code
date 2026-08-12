@@ -1447,15 +1447,13 @@ function ChatMarkdown({
     },
     [createAssetUrl, openPreview, preparedConnection, threadRef],
   );
-  // `ChatView.tsx:3301` names a file without saying where it lives, so the link
-  // resolver can only place it at the workspace root and the read fails there.
-  // Ask the workspace index for the real location before opening the surface.
+  // A bare filename resolves to the workspace root, which is rarely where the
+  // file is, so ask the index before opening.
   const openFileInPanel = useCallback(
     (workspaceRelativePath: string, line: number | undefined) => {
       if (!threadRef) return;
-      // Claimed for every open, not just the ones that look something up: a
-      // path that opens synchronously still has to supersede a lookup already
-      // in flight, or that lookup lands afterwards and takes the panel back.
+      // Claimed on every open so a synchronous one supersedes a lookup already
+      // in flight.
       const isLatestLookup = claimWorkspaceBasenameLookup();
       const openAt = (path: string) =>
         useRightPanelStore.getState().openFile(threadRef, path, line);
@@ -1477,7 +1475,6 @@ function ChatMarkdown({
           result._tag === "Success"
             ? pickWorkspaceBasenameMatch(workspaceRelativePath, result.value.entries)
             : null;
-        // A click that landed after this one already owns the panel.
         if (!isLatestLookup()) return;
         openAt(match ?? workspaceRelativePath);
       })();
