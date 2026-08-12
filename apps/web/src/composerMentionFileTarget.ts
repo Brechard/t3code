@@ -10,8 +10,13 @@ export interface ComposerMentionFileTarget {
 function toPosixPath(path: string): string {
   const normalized = path.replaceAll("\\", "/");
   // Windows drive paths pick up a leading slash on the way through URL-ish
-  // plumbing (`/C:/repo`); the workspace root never carries one.
-  return /^\/[A-Za-z]:\//.test(normalized) ? normalized.slice(1) : normalized;
+  // plumbing (`/C:/repo`); the workspace root never carries one. The drive
+  // letter itself is case-insensitive, so it is folded to make the containment
+  // check below comparable without folding the rest of the path.
+  const withoutLeadingSlash = /^\/[A-Za-z]:\//.test(normalized) ? normalized.slice(1) : normalized;
+  return /^[A-Za-z]:\//.test(withoutLeadingSlash)
+    ? `${withoutLeadingSlash[0]?.toUpperCase() ?? ""}${withoutLeadingSlash.slice(1)}`
+    : withoutLeadingSlash;
 }
 
 function collapseDotSegments(path: string): string {
@@ -49,9 +54,16 @@ export function resolveComposerMentionFileTarget(
   if (!path) return null;
 
   const absolute = collapseDotSegments(toPosixPath(resolvePathLinkTarget(path, workspaceRoot)));
-  const root = collapseDotSegments(toPosixPath(workspaceRoot)).replace(/\/+$/, "");
-  if (!root) return null;
-  if (!absolute.toLowerCase().startsWith(`${root.toLowerCase()}/`)) return null;
+  const normalizedRoot = collapseDotSegments(toPosixPath(workspaceRoot));
+  // A workspace rooted at `/` strips to nothing, which would leave every
+  // mention inert; the empty prefix is what makes the check below read `/x`
+  // as the relative `x`.
+  const root = normalizedRoot === "/" ? "" : normalizedRoot.replace(/\/+$/, "");
+  if (!root && normalizedRoot !== "/") return null;
+  // Compared exactly: folding case would accept `/users/dev/repo/x.ts` against
+  // a `/Users/dev/repo` root on a case-sensitive filesystem and hand the panel
+  // a path from outside the workspace.
+  if (!absolute.startsWith(`${root}/`)) return null;
 
   const relativePath = absolute.slice(root.length + 1);
   if (!relativePath) return null;

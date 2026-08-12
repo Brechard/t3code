@@ -92,6 +92,7 @@ import { useAtomCommand } from "../state/use-atom-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { projectEnvironment } from "../state/projects";
 import {
+  claimWorkspaceBasenameLookup,
   needsWorkspaceBasenameLookup,
   pickWorkspaceBasenameMatch,
   WORKSPACE_BASENAME_LOOKUP_LIMIT,
@@ -1465,6 +1466,7 @@ function ChatMarkdown({
         openAt(workspaceRelativePath);
         return;
       }
+      const isLatestLookup = claimWorkspaceBasenameLookup();
       void (async () => {
         const result = await searchProjectEntries({
           environmentId: threadRef.environmentId,
@@ -1479,6 +1481,8 @@ function ChatMarkdown({
           result._tag === "Success"
             ? pickWorkspaceBasenameMatch(workspaceRelativePath, result.value.entries)
             : null;
+        // A click that landed after this one already owns the panel.
+        if (!isLatestLookup()) return;
         openAt(match ?? workspaceRelativePath);
       })();
     },

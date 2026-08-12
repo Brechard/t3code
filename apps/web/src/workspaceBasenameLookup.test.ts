@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  claimWorkspaceBasenameLookup,
   needsWorkspaceBasenameLookup,
   pickWorkspaceBasenameMatch,
 } from "./workspaceBasenameLookup";
@@ -39,6 +40,21 @@ describe("pickWorkspaceBasenameMatch", () => {
     ).toBe("apps/web/src/components/components");
   });
 
+  it("prefers the exactly-cased file over a case-only twin", () => {
+    expect(
+      pickWorkspaceBasenameMatch("foo.ts", [
+        { path: "src/Foo.ts", kind: "file" },
+        { path: "src/foo.ts", kind: "file" },
+      ]),
+    ).toBe("src/foo.ts");
+  });
+
+  it("falls back to case-insensitive when only the casing differs", () => {
+    expect(pickWorkspaceBasenameMatch("chatview.tsx", entries)).toBe(
+      "apps/web/src/components/ChatView.tsx",
+    );
+  });
+
   it("returns null when nothing matches the name", () => {
     expect(pickWorkspaceBasenameMatch("ChatView.tsx", [])).toBeNull();
     expect(
@@ -46,5 +62,23 @@ describe("pickWorkspaceBasenameMatch", () => {
         { path: "apps/web/src/components/ChatHeader.tsx", kind: "file" },
       ]),
     ).toBeNull();
+  });
+});
+
+describe("claimWorkspaceBasenameLookup", () => {
+  it("keeps only the newest claim, whatever order the lookups settle in", () => {
+    const first = claimWorkspaceBasenameLookup();
+    const second = claimWorkspaceBasenameLookup();
+
+    // The older lookup answering last must not reopen the panel behind the
+    // newer one.
+    expect(second()).toBe(true);
+    expect(first()).toBe(false);
+  });
+
+  it("stays valid while it is the only claim", () => {
+    const only = claimWorkspaceBasenameLookup();
+    expect(only()).toBe(true);
+    expect(only()).toBe(true);
   });
 });

@@ -164,6 +164,47 @@ it.effect("opens a line span at its first line", () =>
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
+// `--goto` takes `path:line[:column]`, so a span has to be rebuilt rather than
+// passed through; the raw `path:20-40` would be read as part of the filename.
+it.effect("hands goto editors a span as path:line", () =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    yield* fileSystem.writeFileString(path.join(binDir, "code"), "#!/bin/sh\n");
+    yield* fileSystem.chmod(path.join(binDir, "code"), 0o755);
+
+    const launch = (target: string) =>
+      Effect.gen(function* () {
+        let spawned: ChildProcess.StandardCommand | undefined;
+        yield* Effect.gen(function* () {
+          const launcher = yield* ExternalLauncher.ExternalLauncher;
+          yield* launcher.launchEditor({ editor: "vscode", cwd: target });
+        }).pipe(
+          Effect.provide(
+            testLayer({
+              platform: "linux",
+              env: { PATH: binDir },
+              onSpawn: (command) => {
+                spawned = command;
+              },
+            }),
+          ),
+        );
+        return spawned;
+      });
+
+    const spanLaunch = yield* launch("/workspace/src/index.ts:20-40");
+    assert.ok(spanLaunch);
+    assert.deepEqual(spanLaunch.args, ["--goto", "/workspace/src/index.ts:20"]);
+
+    // Every other shape still reaches the editor exactly as before.
+    const columnLaunch = yield* launch("/workspace/src/index.ts:20:5");
+    assert.ok(columnLaunch);
+    assert.deepEqual(columnLaunch.args, ["--goto", "/workspace/src/index.ts:20:5"]);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
 it.effect("discovers editors through the service API", () =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;

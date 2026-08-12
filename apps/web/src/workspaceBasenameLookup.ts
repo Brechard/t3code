@@ -16,6 +16,28 @@
  */
 export const WORKSPACE_BASENAME_LOOKUP_LIMIT = 25;
 
+/**
+ * Sequence for in-flight lookups. Two clicks on bare filenames can be resolving
+ * at once, and nothing guarantees the index answers them in order — so an older
+ * answer landing last would move the panel off the file the user asked for.
+ *
+ * One counter covers every caller on purpose: they all open the same visible
+ * panel, so "newest click wins" is the behaviour regardless of which one
+ * started the lookup.
+ */
+let latestLookupSequence = 0;
+
+/**
+ * Claims the newest lookup. Call the returned predicate once the search
+ * settles: false means a later click has superseded this one and its result
+ * must be dropped.
+ */
+export function claimWorkspaceBasenameLookup(): () => boolean {
+  latestLookupSequence += 1;
+  const claimed = latestLookupSequence;
+  return () => claimed === latestLookupSequence;
+}
+
 export interface WorkspaceEntryCandidate {
   readonly path: string;
   readonly kind: "file" | "directory";
@@ -45,11 +67,15 @@ export function pickWorkspaceBasenameMatch(
   basename: string,
   entries: ReadonlyArray<WorkspaceEntryCandidate>,
 ): string | null {
-  const target = basename.trim().toLowerCase();
+  const target = basename.trim();
   if (!target) return null;
-  for (const entry of entries) {
-    if (entry.kind !== "file") continue;
-    if (basenameOfPath(entry.path).toLowerCase() === target) return entry.path;
-  }
-  return null;
+  const files = entries.filter((entry) => entry.kind === "file");
+  // Exact first: a workspace holding both `Foo.ts` and `foo.ts` must not open
+  // whichever the index happened to rank higher. The case-insensitive pass
+  // then covers a reference whose casing drifted from the file on disk, which
+  // is the common shape on macOS and Windows.
+  const exact = files.find((entry) => basenameOfPath(entry.path) === target);
+  if (exact) return exact.path;
+  const folded = target.toLowerCase();
+  return files.find((entry) => basenameOfPath(entry.path).toLowerCase() === folded)?.path ?? null;
 }

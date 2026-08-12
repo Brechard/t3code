@@ -80,6 +80,7 @@ import {
 } from "../composer-logic";
 import { resolveComposerMentionFileTarget } from "../composerMentionFileTarget";
 import {
+  claimWorkspaceBasenameLookup,
   needsWorkspaceBasenameLookup,
   pickWorkspaceBasenameMatch,
   WORKSPACE_BASENAME_LOOKUP_LIMIT,
@@ -3292,6 +3293,7 @@ function ChatViewContent(props: ChatViewProps) {
         openAt(target.relativePath);
         return;
       }
+      const isLatestLookup = claimWorkspaceBasenameLookup();
       void (async () => {
         const result = await searchProjectEntries({
           environmentId: activeThreadRef.environmentId,
@@ -3306,6 +3308,8 @@ function ChatViewContent(props: ChatViewProps) {
           result._tag === "Success"
             ? pickWorkspaceBasenameMatch(target.relativePath, result.value.entries)
             : null;
+        // A click that landed after this one already owns the panel.
+        if (!isLatestLookup()) return;
         openAt(match ?? target.relativePath);
       })();
     },
