@@ -76,6 +76,12 @@ export function pickWorkspaceBasenameMatch(
   // is the common shape on macOS and Windows.
   const exact = files.find((entry) => basenameOfPath(entry.path) === target);
   if (exact) return exact.path;
+  // Only when it is unambiguous: `FOO.ts` against both `Foo.ts` and `foo.ts`
+  // has no right answer, and picking by index rank would open one of them
+  // without saying so.
   const folded = target.toLowerCase();
-  return files.find((entry) => basenameOfPath(entry.path).toLowerCase() === folded)?.path ?? null;
+  const foldedMatches = files.filter(
+    (entry) => basenameOfPath(entry.path).toLowerCase() === folded,
+  );
+  return foldedMatches.length === 1 ? (foldedMatches[0]?.path ?? null) : null;
 }

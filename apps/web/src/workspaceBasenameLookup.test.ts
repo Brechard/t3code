@@ -55,6 +55,15 @@ describe("pickWorkspaceBasenameMatch", () => {
     );
   });
 
+  it("returns null when the case-insensitive fallback is ambiguous", () => {
+    expect(
+      pickWorkspaceBasenameMatch("FOO.ts", [
+        { path: "src/Foo.ts", kind: "file" },
+        { path: "src/foo.ts", kind: "file" },
+      ]),
+    ).toBeNull();
+  });
+
   it("returns null when nothing matches the name", () => {
     expect(pickWorkspaceBasenameMatch("ChatView.tsx", [])).toBeNull();
     expect(
