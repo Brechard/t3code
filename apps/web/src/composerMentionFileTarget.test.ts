@@ -61,6 +61,13 @@ describe("resolveComposerMentionFileTarget", () => {
     expect(resolveComposerMentionFileTarget("/users/dev/t3code/Other.ts", ROOT)).toBeNull();
   });
 
+  // The filesystem behind a drive root does not distinguish these.
+  it("matches a windows root case-insensitively", () => {
+    expect(resolveComposerMentionFileTarget("C:\\Repo\\src\\file.ts", "C:\\repo")).toEqual({
+      relativePath: "src/file.ts",
+    });
+  });
+
   it("still matches a windows root whose drive letter case differs", () => {
     expect(resolveComposerMentionFileTarget("c:\\repo\\apps\\main.tsx", "C:\\repo")).toEqual({
       relativePath: "apps/main.tsx",

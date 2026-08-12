@@ -154,7 +154,18 @@ function ComposerMentionDecorator(props: { path: string }) {
       data-composer-mention-chip="true"
       {...(onOpenMentionFile
         ? {
+            role: "button",
+            // Focusable inside the contenteditable so opening the file is not
+            // pointer-only. Enter and Space are stopped before Lexical sees
+            // them, or they would also insert into the prompt.
+            tabIndex: 0,
             onClick: (event: React.MouseEvent<HTMLSpanElement>) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onOpenMentionFile(path);
+            },
+            onKeyDown: (event: React.KeyboardEvent<HTMLSpanElement>) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
               event.preventDefault();
               event.stopPropagation();
               onOpenMentionFile(path);

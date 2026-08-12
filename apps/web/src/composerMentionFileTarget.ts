@@ -8,14 +8,11 @@ export interface ComposerMentionFileTarget {
 function toPosixPath(path: string): string {
   const normalized = path.replaceAll("\\", "/");
   // Windows drive paths pick up a leading slash on the way through URL-ish
-  // plumbing (`/C:/repo`); the workspace root never carries one. The drive
-  // letter itself is case-insensitive, so it is folded to make the containment
-  // check below comparable without folding the rest of the path.
-  const withoutLeadingSlash = /^\/[A-Za-z]:\//.test(normalized) ? normalized.slice(1) : normalized;
-  return /^[A-Za-z]:\//.test(withoutLeadingSlash)
-    ? `${withoutLeadingSlash[0]?.toUpperCase() ?? ""}${withoutLeadingSlash.slice(1)}`
-    : withoutLeadingSlash;
+  // plumbing (`/C:/repo`); the workspace root never carries one.
+  return /^\/[A-Za-z]:\//.test(normalized) ? normalized.slice(1) : normalized;
 }
+
+const WINDOWS_DRIVE_ROOT_PATTERN = /^[A-Za-z]:\//;
 
 function collapseDotSegments(path: string): string {
   const isAbsolute = path.startsWith("/");
@@ -64,10 +61,15 @@ export function resolveComposerMentionFileTarget(
   // as the relative `x`.
   const root = normalizedRoot === "/" ? "" : normalizedRoot.replace(/\/+$/, "");
   if (!root && normalizedRoot !== "/") return null;
-  // Compared exactly: folding case would accept `/users/dev/repo/x.ts` against
-  // a `/Users/dev/repo` root on a case-sensitive filesystem and hand the panel
-  // a path from outside the workspace.
-  if (!absolute.startsWith(`${root}/`)) return null;
+  // Matched the way the filesystem behind the root would: a POSIX root is
+  // case-sensitive, so folding case there would accept `/users/dev/repo/x.ts`
+  // against a `/Users/dev/repo` root and hand the panel a path from outside
+  // the workspace. A Windows drive root is case-insensitive, so comparing
+  // exactly there would reject `C:/Repo/src/x.ts` against `C:/repo`.
+  const rootIsCaseInsensitive = WINDOWS_DRIVE_ROOT_PATTERN.test(normalizedRoot);
+  const comparableAbsolute = rootIsCaseInsensitive ? absolute.toLowerCase() : absolute;
+  const comparableRoot = rootIsCaseInsensitive ? root.toLowerCase() : root;
+  if (!comparableAbsolute.startsWith(`${comparableRoot}/`)) return null;
 
   const relativePath = absolute.slice(root.length + 1);
   if (!relativePath) return null;
