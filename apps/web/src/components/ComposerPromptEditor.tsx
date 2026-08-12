@@ -155,10 +155,14 @@ function ComposerMentionDecorator(props: { path: string }) {
       {...(onOpenMentionFile
         ? {
             role: "button",
-            // Focusable inside the contenteditable so opening the file is not
-            // pointer-only. Enter and Space are stopped before Lexical sees
-            // them, or they would also insert into the prompt.
+            // Focusable so opening a file is not pointer-only; Enter and Space
+            // are stopped before Lexical inserts them into the prompt.
             tabIndex: 0,
+            // Focus follows a click on a focusable element, which would blur
+            // the editor and leave typing going nowhere.
+            onMouseDown: (event: React.MouseEvent<HTMLSpanElement>) => {
+              event.preventDefault();
+            },
             onClick: (event: React.MouseEvent<HTMLSpanElement>) => {
               event.preventDefault();
               event.stopPropagation();
