@@ -24,9 +24,15 @@ function collapseDotSegments(path: string): string {
   const segments: string[] = [];
   for (const segment of path.split("/")) {
     if (segment === "" || segment === ".") continue;
-    if (segment === ".." && segments.length > 0 && segments[segments.length - 1] !== "..") {
-      segments.pop();
-      continue;
+    if (segment === "..") {
+      if (segments.length > 0 && segments[segments.length - 1] !== "..") {
+        segments.pop();
+        continue;
+      }
+      // `/..` is `/`: an absolute path cannot climb above the root, and a
+      // surviving leading `..` would reach the file surface as a relative path
+      // that walks out of the workspace.
+      if (isAbsolute) continue;
     }
     segments.push(segment);
   }

@@ -75,6 +75,17 @@ describe("resolveComposerMentionFileTarget", () => {
     });
   });
 
+  // `/..` is `/`, so climbing past an absolute root cannot leave `..` behind
+  // for the file surface to walk.
+  it("does not let a path climb above the root it resolves against", () => {
+    expect(resolveComposerMentionFileTarget("../a/secret.ts", "/")).toEqual({
+      relativePath: "a/secret.ts",
+    });
+    expect(resolveComposerMentionFileTarget("/x/../../a/secret.ts", "/")).toEqual({
+      relativePath: "a/secret.ts",
+    });
+  });
+
   it("returns null outside the workspace, and without one", () => {
     expect(resolveComposerMentionFileTarget("/etc/hosts", ROOT)).toBeNull();
     expect(resolveComposerMentionFileTarget("../sibling/AGENTS.md", ROOT)).toBeNull();
