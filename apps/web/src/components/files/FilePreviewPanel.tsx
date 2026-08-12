@@ -191,10 +191,8 @@ function updateFileLinkReveal(
   if (line === null) return;
   const lastLine = endLine !== null && endLine > line ? endLine : line;
 
-  // Scanning what is mounted rather than querying each number keeps a span of
-  // any size to one pass, and virtualization means the rows outside the
-  // viewport are not there to mark anyway — this runs on every post-render, so
-  // they pick the mark up as they scroll in.
+  // Scanning the mounted rows keeps a span of any size to one pass; this runs
+  // on every post-render, so virtualized rows pick the mark up as they scroll in.
   for (const element of root.querySelectorAll<HTMLElement>("[data-line], [data-column-number]")) {
     const rawValue =
       element.getAttribute("data-line") ?? element.getAttribute("data-column-number");

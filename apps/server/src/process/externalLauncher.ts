@@ -65,8 +65,8 @@ interface TargetPathAndPosition {
   readonly column: Option.Option<string>;
 }
 
-// `path:12`, `path:12:5`, and the span form `path:12-40`. An editor opens at a
-// span's first line, so its end is matched to be stripped, never captured.
+// `path:12`, `path:12:5`, and `path:12-40` — a span's end is matched to strip
+// it, never captured.
 const TARGET_WITH_POSITION_PATTERN = /^(.*?):(\d+)(?::(\d+)|-\d+)?$/;
 const POWERSHELL_ARGUMENTS_PREFIX = [
   "-NoProfile",
@@ -132,9 +132,8 @@ function resolveCommandEditorArgs(
 ): ReadonlyArray<string> {
   const parsedTarget = parseTargetPathAndPosition(target);
 
-  // Every style below opens at a single line: none of these CLIs accept a
-  // `path:20-40` span, and rebuilding from the parse leaves every other shape
-  // byte-identical to the target that came in.
+  // No editor CLI accepts a `path:20-40` span; rebuilding leaves every other
+  // shape unchanged.
   const positionalTarget = Option.match(parsedTarget, {
     onNone: () => target,
     onSome: ({ path, line, column }) =>
