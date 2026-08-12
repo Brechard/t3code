@@ -78,6 +78,7 @@ import {
   collapseExpandedComposerCursor,
   parseStandaloneComposerSlashCommand,
 } from "../composer-logic";
+import { resolveComposerMentionFileTarget } from "../composerMentionFileTarget";
 import {
   derivePendingApprovals,
   derivePendingUserInputs,
@@ -3267,6 +3268,17 @@ function ChatViewContent(props: ChatViewProps) {
     },
     [activeProject, activeThreadRef],
   );
+  // A mention chip opens its file the same way a rendered chat file link does,
+  // so a reference you just wrote is readable before you send it.
+  const openMentionFileSurface = useCallback(
+    (mentionPath: string) => {
+      if (!activeThreadRef || !activeProject) return;
+      const target = resolveComposerMentionFileTarget(mentionPath, activeWorkspaceRoot);
+      if (!target) return;
+      useRightPanelStore.getState().openFile(activeThreadRef, target.relativePath, target.line);
+    },
+    [activeProject, activeThreadRef, activeWorkspaceRoot],
+  );
   // The thread's own change request, placed against the project it belongs to. Without a
   // project there is nothing to resolve it against, so the caller falls back to the browser.
   const threadRepository = activeProject?.repositoryIdentity?.displayName ?? null;
@@ -6352,6 +6364,7 @@ function ChatViewContent(props: ChatViewProps) {
                             keybindings={keybindings}
                             terminalOpen={Boolean(terminalUiState.terminalOpen)}
                             gitCwd={gitCwd}
+                            onOpenMentionFile={openMentionFileSurface}
                             promptRef={promptRef}
                             composerImagesRef={composerImagesRef}
                             composerTerminalContextsRef={composerTerminalContextsRef}
