@@ -164,6 +164,37 @@ it.effect("opens a line span at its first line", () =>
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
+// Zed takes the path as-is, so a span has to be collapsed before it is handed
+// over or it reads as part of the filename.
+it.effect("opens a span at its first line for a direct-path editor", () =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    yield* fileSystem.writeFileString(path.join(binDir, "zed"), "#!/bin/sh\n");
+    yield* fileSystem.chmod(path.join(binDir, "zed"), 0o755);
+
+    let spawned: ChildProcess.StandardCommand | undefined;
+    yield* Effect.gen(function* () {
+      const launcher = yield* ExternalLauncher.ExternalLauncher;
+      yield* launcher.launchEditor({ editor: "zed", cwd: "/workspace/src/index.ts:20-40" });
+    }).pipe(
+      Effect.provide(
+        testLayer({
+          platform: "linux",
+          env: { PATH: binDir },
+          onSpawn: (command) => {
+            spawned = command;
+          },
+        }),
+      ),
+    );
+
+    assert.ok(spawned);
+    assert.deepEqual(spawned.args, ["/workspace/src/index.ts:20"]);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
 // `--goto` takes `path:line[:column]`, so a span has to be rebuilt rather than
 // passed through; the raw `path:20-40` would be read as part of the filename.
 it.effect("hands goto editors a span as path:line", () =>

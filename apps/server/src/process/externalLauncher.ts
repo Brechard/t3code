@@ -132,23 +132,23 @@ function resolveCommandEditorArgs(
 ): ReadonlyArray<string> {
   const parsedTarget = parseTargetPathAndPosition(target);
 
+  // Every style below opens at a single line: none of these CLIs accept a
+  // `path:20-40` span, and rebuilding from the parse leaves every other shape
+  // byte-identical to the target that came in.
+  const positionalTarget = Option.match(parsedTarget, {
+    onNone: () => target,
+    onSome: ({ path, line, column }) =>
+      `${path}:${line}${Option.match(column, {
+        onNone: () => "",
+        onSome: (value) => `:${value}`,
+      })}`,
+  });
+
   switch (editor.launchStyle) {
     case "direct-path":
-      return [target];
-    // Rebuilt from the parse rather than passed through: a `path:20-40` span
-    // is not a form these CLIs accept, and the rebuilt string is identical to
-    // `target` for every other shape.
+      return [positionalTarget];
     case "goto":
-      return Option.match(parsedTarget, {
-        onNone: () => [target],
-        onSome: ({ path, line, column }) => [
-          "--goto",
-          `${path}:${line}${Option.match(column, {
-            onNone: () => "",
-            onSome: (value) => `:${value}`,
-          })}`,
-        ],
-      });
+      return Option.isSome(parsedTarget) ? ["--goto", positionalTarget] : [target];
     case "line-column":
       return Option.match(parsedTarget, {
         onNone: () => [target],
