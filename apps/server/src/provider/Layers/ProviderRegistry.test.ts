@@ -1831,6 +1831,193 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           assert.strictEqual(status.message, "Codex is disabled in T3 Code settings.");
         }),
       );
+
+      // ── workspace-scoped skills ─────────────────────────────────
+      //
+      // The registry routes `listWorkspaceSkills` to live instances and
+      // carries the caller's workspace through untouched — it has no cwd of
+      // its own that could stand in for the client's project.
+
+      const makeSkillsInstance = (input: {
+        readonly instanceId: string;
+        readonly listWorkspaceSkills?: ProviderInstance["listWorkspaceSkills"];
+      }): ProviderInstance => {
+        const driverKind = ProviderDriverKind.make("codex");
+        const instanceId = ProviderInstanceId.make(input.instanceId);
+        const provider = {
+          instanceId,
+          driver: driverKind,
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          checkedAt: "2026-06-10T00:00:00.000Z",
+          version: "1.0.0",
+          models: [],
+          slashCommands: [],
+          skills: [],
+        } as const satisfies ServerProvider;
+        return {
+          instanceId,
+          driverKind,
+          continuationIdentity: {
+            driverKind,
+            continuationKey: `codex:instance:${input.instanceId}`,
+          },
+          displayName: undefined,
+          enabled: true,
+          snapshot: {
+            maintenanceCapabilities: makeManualOnlyProviderMaintenanceCapabilities({
+              provider: driverKind,
+              packageName: null,
+            }),
+            getSnapshot: Effect.succeed(provider),
+            refresh: Effect.succeed(provider),
+            streamChanges: Stream.empty,
+          },
+          adapter: {} as ProviderInstance["adapter"],
+          textGeneration: {} as ProviderInstance["textGeneration"],
+          ...(input.listWorkspaceSkills ? { listWorkspaceSkills: input.listWorkspaceSkills } : {}),
+        } satisfies ProviderInstance;
+      };
+
+      const withSkillsRegistry = <A, E, R>(
+        instances: ReadonlyArray<ProviderInstance>,
+        use: (registry: ProviderRegistry.ProviderRegistryShape) => Effect.Effect<A, E, R>,
+      ) =>
+        Effect.gen(function* () {
+          const instanceRegistryLayer = Layer.succeed(
+            ProviderInstanceRegistry.ProviderInstanceRegistry,
+            {
+              getInstance: (instanceId) =>
+                Effect.succeed(
+                  instances.find((candidate) => candidate.instanceId === instanceId) ?? undefined,
+                ),
+              listInstances: Effect.succeed(instances),
+              listUnavailable: Effect.succeed([]),
+              streamChanges: Stream.empty,
+              subscribeChanges: Effect.flatMap(PubSub.unbounded<void>(), PubSub.subscribe),
+            },
+          );
+          const scope = yield* Scope.make();
+          yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
+          const runtimeServices = yield* Layer.build(
+            ProviderRegistryLive.pipe(
+              Layer.provideMerge(instanceRegistryLayer),
+              Layer.provideMerge(
+                ServerConfig.layerTest(process.cwd(), {
+                  prefix: "t3-provider-registry-workspace-skills-",
+                }),
+              ),
+              Layer.provideMerge(NodeServices.layer),
+            ),
+          ).pipe(Scope.provide(scope));
+          return yield* Effect.flatMap(ProviderRegistry.ProviderRegistry, use).pipe(
+            Effect.provide(runtimeServices),
+          );
+        });
+
+      it.effect("asks only the targeted instance, passing the requested workspace through", () =>
+        Effect.gen(function* () {
+          const otherCalls = yield* Ref.make(0);
+          const targeted = makeSkillsInstance({
+            instanceId: "codex_personal",
+            listWorkspaceSkills: (cwd) =>
+              Effect.succeed([
+                { name: `skill-in-${cwd}`, path: `${cwd}/.codex/skills/x`, enabled: true },
+              ]),
+          });
+          const other = makeSkillsInstance({
+            instanceId: "codex_work",
+            listWorkspaceSkills: () =>
+              Ref.update(otherCalls, (count) => count + 1).pipe(Effect.as([])),
+          });
+
+          const skills = yield* withSkillsRegistry([targeted, other], (registry) =>
+            registry.listWorkspaceSkills({
+              instanceId: ProviderInstanceId.make("codex_personal"),
+              cwd: "/repos/alpha",
+            }),
+          );
+
+          assert.deepStrictEqual(
+            skills.map((skill) => skill.name),
+            ["skill-in-/repos/alpha"],
+          );
+          assert.strictEqual(yield* Ref.get(otherCalls), 0);
+        }),
+      );
+
+      it.effect("merges every live instance when none is targeted, first name wins", () =>
+        Effect.gen(function* () {
+          const first = makeSkillsInstance({
+            instanceId: "codex_personal",
+            listWorkspaceSkills: () =>
+              Effect.succeed([
+                { name: "deploy", path: "/personal/deploy", enabled: true },
+                { name: "review", path: "/personal/review", enabled: true },
+              ]),
+          });
+          const second = makeSkillsInstance({
+            instanceId: "codex_work",
+            listWorkspaceSkills: () =>
+              Effect.succeed([{ name: "deploy", path: "/work/deploy", enabled: true }]),
+          });
+
+          const skills = yield* withSkillsRegistry([first, second], (registry) =>
+            registry.listWorkspaceSkills({ cwd: "/repos/alpha" }),
+          );
+
+          assert.deepStrictEqual(skills.map((skill) => `${skill.name}:${skill.path}`).toSorted(), [
+            "deploy:/personal/deploy",
+            "review:/personal/review",
+          ]);
+        }),
+      );
+
+      it.effect("degrades to an empty list instead of failing the caller", () =>
+        Effect.gen(function* () {
+          const withoutSkillSurface = makeSkillsInstance({ instanceId: "codex_plain" });
+          const failing = makeSkillsInstance({
+            instanceId: "codex_broken",
+            listWorkspaceSkills: () => Effect.die(new Error("driver exploded")),
+          });
+
+          // Unknown instance id.
+          assert.deepStrictEqual(
+            yield* withSkillsRegistry([withoutSkillSurface], (registry) =>
+              registry.listWorkspaceSkills({
+                instanceId: ProviderInstanceId.make("codex_missing"),
+                cwd: "/repos/alpha",
+              }),
+            ),
+            [],
+          );
+
+          // Driver with no skill surface (Grok, Cursor, OpenCode).
+          assert.deepStrictEqual(
+            yield* withSkillsRegistry([withoutSkillSurface], (registry) =>
+              registry.listWorkspaceSkills({
+                instanceId: ProviderInstanceId.make("codex_plain"),
+                cwd: "/repos/alpha",
+              }),
+            ),
+            [],
+          );
+
+          // A driver defect is logged and swallowed: the picker falls back to
+          // the snapshot rather than surfacing an RPC failure.
+          assert.deepStrictEqual(
+            yield* withSkillsRegistry([failing], (registry) =>
+              registry.listWorkspaceSkills({
+                instanceId: ProviderInstanceId.make("codex_broken"),
+                cwd: "/repos/alpha",
+              }),
+            ),
+            [],
+          );
+        }),
+      );
     });
 
     // ── checkClaudeProviderStatus tests ──────────────────────────

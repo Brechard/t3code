@@ -319,12 +319,19 @@ export function buildCodexInitializeParams(): CodexSchema.V1InitializeParams {
   };
 }
 
-const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(function* (input: {
+/**
+ * Spawn `codex app-server` and complete its initialize handshake.
+ *
+ * The returned client stays usable for as long as the caller's scope is open;
+ * closing that scope tears the child process down. Both the status probe and
+ * the workspace-scoped skills lookup go through here so there is exactly one
+ * description of how we launch the app-server.
+ */
+const openCodexAppServerClient = Effect.fn("openCodexAppServerClient")(function* (input: {
   readonly binaryPath: string;
   readonly homePath?: string;
   readonly launchArgs?: string;
   readonly cwd: string;
-  readonly customModels?: ReadonlyArray<string>;
   readonly environment?: NodeJS.ProcessEnv;
 }) {
   // `~` is not shell-expanded when env vars are set via `child_process.spawn`,
@@ -385,6 +392,19 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   const versionMatch = initialize.userAgent.match(/\/([^\s]+)/);
   const version = versionMatch ? versionMatch[1] : undefined;
 
+  return { client, version } as const;
+});
+
+const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(function* (input: {
+  readonly binaryPath: string;
+  readonly homePath?: string;
+  readonly launchArgs?: string;
+  readonly cwd: string;
+  readonly customModels?: ReadonlyArray<string>;
+  readonly environment?: NodeJS.ProcessEnv;
+}) {
+  const { client, version } = yield* openCodexAppServerClient(input);
+
   const accountResponse = yield* client.request("account/read", {});
   if (!accountResponse.account && accountResponse.requiresOpenaiAuth) {
     return {
@@ -414,6 +434,61 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
     skills: parseCodexSkillsListResponse(skillsResponse, input.cwd),
   } satisfies CodexAppServerProviderSnapshot;
 });
+
+const requestCodexWorkspaceSkills = Effect.fn("requestCodexWorkspaceSkills")(function* (input: {
+  readonly binaryPath: string;
+  readonly homePath?: string;
+  readonly launchArgs?: string;
+  readonly cwd: string;
+  readonly environment?: NodeJS.ProcessEnv;
+}) {
+  const { client } = yield* openCodexAppServerClient(input);
+  // The app-server answers `skills/list` per cwd, so unlike the snapshot probe
+  // (which asks about the server's own directory) this asks about the
+  // workspace the client is looking at.
+  const response = yield* client.request("skills/list", { cwds: [input.cwd] });
+  return parseCodexSkillsListResponse(response, input.cwd);
+});
+
+/**
+ * List the skills Codex would load for one workspace directory.
+ *
+ * Best-effort by contract: a missing binary, an unauthenticated CLI, or a slow
+ * app-server all degrade to an empty list rather than failing the caller. The
+ * picker falls back to the provider snapshot's global list in that case, so a
+ * failure here is never worse than the behaviour that preceded this lookup.
+ */
+export const listCodexWorkspaceSkills = (
+  codexSettings: CodexSettings,
+  cwd: string,
+  environment?: NodeJS.ProcessEnv,
+): Effect.Effect<
+  ReadonlyArray<ServerProviderSkill>,
+  never,
+  ChildProcessSpawner.ChildProcessSpawner
+> => {
+  if (!codexSettings.enabled) {
+    return Effect.succeed([]);
+  }
+  const resolvedEnvironment = environment ?? process.env;
+  return requestCodexWorkspaceSkills({
+    binaryPath: codexSettings.binaryPath,
+    homePath: codexSettings.homePath,
+    launchArgs: resolveCodexLaunchArgs(codexSettings.launchArgs, resolvedEnvironment),
+    cwd,
+    environment: resolvedEnvironment,
+  }).pipe(
+    Effect.scoped,
+    // A typed timeout rather than `timeoutOption` so a slow app-server is
+    // logged on the same path as a spawn failure instead of silently reading
+    // as "this workspace has no skills".
+    Effect.timeout(Duration.millis(AUTH_PROBE_TIMEOUT_MS)),
+    Effect.tapError((cause) =>
+      Effect.logDebug("codex workspace skill discovery failed", { cwd, cause }),
+    ),
+    Effect.orElseSucceed((): ReadonlyArray<ServerProviderSkill> => []),
+  );
+};
 
 const emptyCodexModelsFromSettings = (codexSettings: CodexSettings): ServerProvider["models"] => {
   const models = new Set<string>();

@@ -25,6 +25,7 @@ import type {
   ProviderDriverKind,
   ProviderInstanceEnvironment,
   ProviderInstanceId,
+  ServerProviderSkill,
 } from "@t3tools/contracts";
 import type * as Effect from "effect/Effect";
 import type * as Schema from "effect/Schema";
@@ -71,6 +72,22 @@ export interface ProviderInstance {
   readonly snapshot: ServerProviderShape;
   readonly adapter: ProviderAdapterShape<ProviderAdapterError>;
   readonly textGeneration: TextGeneration.TextGeneration["Service"];
+  /**
+   * Optional capability: enumerate the skills this instance would load for a
+   * given workspace directory.
+   *
+   * `snapshot` carries a `skills` list too, but that one is discovered once
+   * against the server's own cwd — a single process-wide directory that has
+   * nothing to do with the project a client is looking at. This capability
+   * takes the workspace in the request instead, so the answer is scoped to
+   * the caller's repo. Only drivers with a skill surface (Claude, Codex)
+   * implement it; the rest leave it undefined and callers fall back to the
+   * snapshot.
+   *
+   * Discovery is best-effort by contract: the returned effect never fails,
+   * it degrades to whatever was readable.
+   */
+  readonly listWorkspaceSkills?: (cwd: string) => Effect.Effect<ReadonlyArray<ServerProviderSkill>>;
 }
 
 export interface ProviderContinuationIdentity {

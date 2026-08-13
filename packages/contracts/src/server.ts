@@ -592,6 +592,33 @@ export const ServerProviderUpdateInput = Schema.Struct({
 });
 export type ServerProviderUpdateInput = typeof ServerProviderUpdateInput.Type;
 
+/**
+ * Request skills visible from one workspace directory.
+ *
+ * `ServerProvider.skills` is a single process-wide snapshot discovered from
+ * the server's own startup cwd, so it cannot describe the project the user is
+ * actually looking at. The workspace root therefore travels in the request:
+ * the client already resolves it (worktree path first, then the project's
+ * workspace root) and the provider registry has no access to the projects
+ * table, so the client is the only party that knows which directory to scan.
+ */
+export const ServerWorkspaceSkillsInput = Schema.Struct({
+  /**
+   * Provider instance whose driver performs discovery. When omitted the
+   * server asks every live instance and merges the results, matching the
+   * untargeted semantics of `server.refreshProviders`.
+   */
+  instanceId: Schema.optional(ProviderInstanceId),
+  /** Absolute workspace directory to scan (thread worktree or project root). */
+  cwd: TrimmedNonEmptyString,
+});
+export type ServerWorkspaceSkillsInput = typeof ServerWorkspaceSkillsInput.Type;
+
+export const ServerWorkspaceSkillsResult = Schema.Struct({
+  skills: Schema.Array(ServerProviderSkill),
+});
+export type ServerWorkspaceSkillsResult = typeof ServerWorkspaceSkillsResult.Type;
+
 export class ServerProviderUpdateError extends Schema.TaggedErrorClass<ServerProviderUpdateError>()(
   "ServerProviderUpdateError",
   {

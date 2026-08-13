@@ -1447,6 +1447,21 @@ const makeWsRpcLayer = (
             ).pipe(Effect.map((providers) => ({ providers }))),
             { "rpc.aggregate": "server" },
           ),
+        [WS_METHODS.serverListWorkspaceSkills]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListWorkspaceSkills,
+            // The workspace arrives with the request: the server holds one
+            // global cwd and no notion of which project a client is viewing,
+            // while the client already resolved the thread's worktree (or the
+            // project root) for exactly this purpose.
+            providerRegistry
+              .listWorkspaceSkills({
+                ...(input.instanceId !== undefined ? { instanceId: input.instanceId } : {}),
+                cwd: input.cwd,
+              })
+              .pipe(Effect.map((skills) => ({ skills }))),
+            { "rpc.aggregate": "server" },
+          ),
         [WS_METHODS.serverUpdateProvider]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverUpdateProvider,

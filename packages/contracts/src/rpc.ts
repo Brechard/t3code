@@ -169,6 +169,8 @@ import {
   ServerSignalProcessResult,
   ServerUpsertKeybindingInput,
   ServerUpsertKeybindingResult,
+  ServerWorkspaceSkillsInput,
+  ServerWorkspaceSkillsResult,
 } from "./server.ts";
 import {
   ResourceTelemetryHistory,
@@ -252,6 +254,7 @@ export const WS_METHODS = {
   serverProbe: "server.probe",
   serverGetConfig: "server.getConfig",
   serverRefreshProviders: "server.refreshProviders",
+  serverListWorkspaceSkills: "server.listWorkspaceSkills",
   serverUpdateProvider: "server.updateProvider",
   serverUpdateServer: "server.updateServer",
   serverUpdateServerWithProgress: "server.updateServerWithProgress",
@@ -346,6 +349,19 @@ export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProv
     instanceId: Schema.optional(ProviderInstanceId),
   }),
   success: ServerProviderUpdatedPayload,
+  error: EnvironmentAuthorizationError,
+});
+
+/**
+ * Workspace-scoped skill discovery. Unlike `ServerProvider.skills` — one
+ * global snapshot taken against the server's startup cwd — this is answered
+ * per request against the `cwd` the caller supplies, which is how a client
+ * showing project A's composer gets project A's skills. `ServerProvider.skills`
+ * stays in place as the fallback for callers that cannot resolve a workspace.
+ */
+export const WsServerListWorkspaceSkillsRpc = Rpc.make(WS_METHODS.serverListWorkspaceSkills, {
+  payload: ServerWorkspaceSkillsInput,
+  success: ServerWorkspaceSkillsResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -974,6 +990,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
+  WsServerListWorkspaceSkillsRpc,
   WsServerUpdateProviderRpc,
   WsServerUpdateServerRpc,
   WsServerUpdateServerWithProgressRpc,

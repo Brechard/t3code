@@ -50,7 +50,7 @@ import {
   updateComposerDraftSettings,
   useComposerDraft,
 } from "../../state/use-composer-drafts";
-import { useBranches } from "../../state/queries";
+import { useBranches, useWorkspaceSkills } from "../../state/queries";
 import {
   flattenQueuedThreadMessages,
   threadOutboxManager,
@@ -436,12 +436,22 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
         option.selection.instanceId === selectedModel.instanceId &&
         option.selection.model === selectedModel.model,
     ) ?? null;
+  // A draft has no worktree yet, so its workspace is the selected project's
+  // root. Asking the server for that directory's skills beats the provider
+  // snapshot, whose skills belong to the server's own startup cwd.
+  const workspaceSkills = useWorkspaceSkills({
+    environmentId: selectedProject?.environmentId ?? null,
+    instanceId: selectedModel?.instanceId ?? null,
+    cwd: selectedProject?.workspaceRoot || null,
+  });
   const selectedProviderSkills = useMemo(
     () =>
+      workspaceSkills.skills ??
       selectedEnvironmentServerConfig?.providers.find(
         (provider) => provider.instanceId === selectedModel?.instanceId,
-      )?.skills ?? [],
-    [selectedEnvironmentServerConfig, selectedModel?.instanceId],
+      )?.skills ??
+      [],
+    [selectedEnvironmentServerConfig, selectedModel?.instanceId, workspaceSkills.skills],
   );
   const setSelectedModelKey = useCallback(
     // Options ride along in the same write: a follow-up setSelectedModelOptions

@@ -75,6 +75,7 @@ import {
   removeInlineTerminalContextPlaceholder,
 } from "../../lib/terminalContext";
 import { useComposerPathSearch } from "../../lib/composerPathSearchState";
+import { useWorkspaceSkills } from "../../state/queries";
 import { type ElementContextDraft } from "../../lib/elementContext";
 import { ComposerPendingElementContexts } from "./ComposerPendingElementContexts";
 import { ComposerPendingReviewComments } from "./ComposerPendingReviewComments";
@@ -106,6 +107,9 @@ import { buildExpandedImagePreview, type ExpandedImagePreview } from "./Expanded
 import { basenameOfPath } from "../../pierre-icons";
 import { cn, randomUUID } from "~/lib/utils";
 import { Separator } from "../ui/separator";
+
+/** Stable identity so the skill-less case never re-renders the prompt editor. */
+const EMPTY_COMPOSER_SKILLS: ServerProvider["skills"] = [];
 
 type ComposerCommandMenuPosition = {
   bottom: number;
@@ -1023,6 +1027,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     cwd: isPathTrigger ? gitCwd : null,
     query: isPathTrigger ? pathTriggerQuery : null,
   });
+  // Skills come from the workspace this composer sends into, not from the
+  // provider snapshot: the server discovers `ServerProvider.skills` once
+  // against its own startup cwd, so it describes whatever directory the
+  // server was launched from rather than the user's project. `gitCwd` is
+  // that workspace — the thread's worktree when it has one, else the project
+  // root — and is already what the `@` path picker above searches.
+  //
+  // Keyed on the composer's own selected instance rather than the thread's,
+  // because the model picker below can point the next turn at a different
+  // provider. The snapshot stays the fallback while the request is in flight,
+  // when it fails, and against a server that predates the RPC, so the picker
+  // never shows less than it used to and never flickers empty.
+  const composerWorkspaceSkills = useWorkspaceSkills({
+    environmentId,
+    instanceId: selectedProviderStatus?.instanceId ?? null,
+    cwd: gitCwd,
+  });
+  const composerSkills =
+    composerWorkspaceSkills.skills ?? selectedProviderStatus?.skills ?? EMPTY_COMPOSER_SKILLS;
 
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
@@ -1082,22 +1105,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       return searchSlashCommandItems(slashCommandItems, query);
     }
     if (composerTrigger.kind === "skill") {
-      return searchProviderSkills(selectedProviderStatus?.skills ?? [], composerTrigger.query).map(
-        (skill) => ({
-          id: `skill:${selectedProvider}:${skill.name}`,
-          type: "skill" as const,
-          provider: selectedProvider,
-          skill,
-          label: formatProviderSkillDisplayName(skill),
-          description:
-            skill.shortDescription ??
-            skill.description ??
-            (skill.scope ? `${skill.scope} skill` : "Run provider skill"),
-        }),
-      );
+      return searchProviderSkills(composerSkills, composerTrigger.query).map((skill) => ({
+        id: `skill:${selectedProvider}:${skill.name}`,
+        type: "skill" as const,
+        provider: selectedProvider,
+        skill,
+        label: formatProviderSkillDisplayName(skill),
+        description:
+          skill.shortDescription ??
+          skill.description ??
+          (skill.scope ? `${skill.scope} skill` : "Run provider skill"),
+      }));
     }
     return [];
   }, [
+    composerSkills,
     composerTrigger,
     planModeUiEnabled,
     selectedProvider,
@@ -3032,7 +3054,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     ? composerTerminalContexts
                     : []
                 }
-                skills={selectedProviderStatus?.skills ?? []}
+                skills={composerSkills}
                 {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
                 onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
                 onChange={onPromptChange}

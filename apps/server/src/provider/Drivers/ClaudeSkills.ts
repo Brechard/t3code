@@ -106,15 +106,34 @@ export const discoverClaudeSkills = Effect.fn("discoverClaudeSkills")(function* 
 
   const skillsByName = new Map<string, ServerProviderSkill>();
   for (const root of roots) {
-    const entries = yield* fileSystem
-      .readDirectory(root.directory)
-      .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []));
+    // A missing skills directory is the common case (most users have no
+    // project skills), so this stays at debug — but it is logged, because an
+    // unreadable directory and an empty picker are otherwise indistinguishable.
+    const entries = yield* fileSystem.readDirectory(root.directory).pipe(
+      Effect.tapError((cause) =>
+        Effect.logDebug("claude skill root is not readable", {
+          directory: root.directory,
+          scope: root.scope,
+          cause,
+        }),
+      ),
+      Effect.orElseSucceed((): ReadonlyArray<string> => []),
+    );
 
     for (const entry of [...entries].sort()) {
       const skillPath = path.join(root.directory, entry, "SKILL.md");
-      const contents = yield* fileSystem
-        .readFileString(skillPath)
-        .pipe(Effect.orElseSucceed(() => undefined));
+      const contents = yield* fileSystem.readFileString(skillPath).pipe(
+        Effect.tapError((cause) =>
+          // Expected for non-skill entries (a stray `README.md`, a directory
+          // without `SKILL.md`); a permission error lands here too.
+          Effect.logDebug("claude skill entry has no readable SKILL.md", {
+            path: skillPath,
+            scope: root.scope,
+            cause,
+          }),
+        ),
+        Effect.orElseSucceed(() => undefined),
+      );
       if (contents === undefined) {
         continue;
       }
@@ -122,8 +141,13 @@ export const discoverClaudeSkills = Effect.fn("discoverClaudeSkills")(function* 
       const frontmatter = parseSkillFrontmatter(contents);
       // Malformed frontmatter means the skill won't load in Claude Code
       // either — skip it rather than surfacing a broken entry under its
-      // directory name.
+      // directory name. Unlike the cases above this is a real authoring
+      // mistake, so it warns: the user wrote a skill that nothing will load.
       if (frontmatter.kind === "malformed") {
+        yield* Effect.logWarning("claude skill has malformed YAML frontmatter; skipping", {
+          path: skillPath,
+          scope: root.scope,
+        });
         continue;
       }
 

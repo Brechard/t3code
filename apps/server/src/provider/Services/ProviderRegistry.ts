@@ -10,6 +10,7 @@ import type {
   ProviderInstanceId,
   ProviderDriverKind,
   ServerProvider,
+  ServerProviderSkill,
   ServerProviderUpdateState,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -47,6 +48,27 @@ export interface ProviderRegistryShape {
   readonly refreshInstance: (
     instanceId: ProviderInstanceId,
   ) => Effect.Effect<ReadonlyArray<ServerProvider>>;
+
+  /**
+   * List the skills one workspace directory exposes, asking the live
+   * instance's driver rather than reading the snapshot.
+   *
+   * `ServerProvider.skills` is discovered once against the server's own cwd —
+   * a process-wide directory fixed at startup — so it cannot answer "what
+   * skills does the project this client is viewing have?". The registry has no
+   * access to the projects table, so the workspace travels in the request and
+   * the caller (which already resolved the thread's worktree or the project's
+   * root) decides what to scan.
+   *
+   * Best-effort: unknown instances, drivers without a skill surface, and
+   * unreadable directories all resolve with an empty list instead of failing.
+   * When `instanceId` is omitted every live instance is asked and the results
+   * are merged, matching `refresh`'s untargeted semantics.
+   */
+  readonly listWorkspaceSkills: (input: {
+    readonly instanceId?: ProviderInstanceId | undefined;
+    readonly cwd: string;
+  }) => Effect.Effect<ReadonlyArray<ServerProviderSkill>>;
 
   /**
    * Resolve the maintenance capabilities owned by one live provider instance.
