@@ -1459,7 +1459,10 @@ const makeWsRpcLayer = (
                 ...(input.instanceId !== undefined ? { instanceId: input.instanceId } : {}),
                 cwd: input.cwd,
               })
-              .pipe(Effect.map((skills) => ({ skills }))),
+              // Omit the key rather than sending `[]` when discovery could not
+              // run: an absent list leaves the client on its existing fallback,
+              // an empty one would tell it this workspace has no skills.
+              .pipe(Effect.map((skills) => (skills ? { skills } : {}))),
             { "rpc.aggregate": "server" },
           ),
         [WS_METHODS.serverUpdateProvider]: (input) =>

@@ -66,6 +66,26 @@ function scoreProviderSkill(skill: ServerProviderSkill, query: string): number |
   return Math.min(...scores);
 }
 
+/** Stable identity so the skill-less case never re-renders its consumers. */
+const NO_SKILLS: ReadonlyArray<ServerProviderSkill> = [];
+
+/**
+ * Choose the skill list a composer should offer for the current workspace.
+ *
+ * `workspaceSkills` is the server's workspace-scoped answer. An array — even
+ * an empty one — means discovery ran, so it wins: this workspace really has
+ * these skills and no others. `null`/`undefined` means the server could not
+ * discover anything (the probe failed, or the request is still in flight), so
+ * we keep showing the provider snapshot's list rather than blanking the
+ * picker on a transient failure.
+ */
+export function resolveComposerSkills(
+  workspaceSkills: ReadonlyArray<ServerProviderSkill> | null | undefined,
+  snapshotSkills: ReadonlyArray<ServerProviderSkill> | undefined,
+): ReadonlyArray<ServerProviderSkill> {
+  return workspaceSkills ?? snapshotSkills ?? NO_SKILLS;
+}
+
 export function searchProviderSkills(
   skills: ReadonlyArray<ServerProviderSkill>,
   query: string,

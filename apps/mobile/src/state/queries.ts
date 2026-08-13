@@ -137,9 +137,13 @@ export function useBranches(input: {
  * The provider snapshot in `serverConfig` carries a `skills` list, but the
  * server discovers it once against its own startup cwd, so it belongs to
  * whichever directory the server was launched from rather than the project
- * being viewed. Resolves to `null` until the server answers (and if it never
- * does), which lets callers fall back to the snapshot instead of blanking the
- * picker.
+ * being viewed.
+ *
+ * `skills` is `null` whenever nothing is known: the request is in flight, it
+ * failed, or the server answered without a list because its own discovery
+ * could not run. Callers fall back to the snapshot in all three cases. An
+ * empty array is different — it means this workspace really has no skills,
+ * and the `??` fallbacks at the call sites deliberately keep it.
  */
 export function useWorkspaceSkills(input: {
   readonly environmentId: EnvironmentId | null;

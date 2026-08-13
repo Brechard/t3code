@@ -31,7 +31,11 @@ import { deepMerge } from "@t3tools/shared/Struct";
 import { createModelCapabilities } from "@t3tools/shared/model";
 import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
 
-import { checkCodexProviderStatus, type CodexAppServerProviderSnapshot } from "./CodexProvider.ts";
+import {
+  checkCodexProviderStatus,
+  listCodexWorkspaceSkills,
+  type CodexAppServerProviderSnapshot,
+} from "./CodexProvider.ts";
 import { checkClaudeProviderStatus } from "./ClaudeProvider.ts";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import * as OpenCodeRuntime from "../opencodeRuntime.ts";
@@ -1832,6 +1836,26 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
         }),
       );
 
+      it.effect("reports unknown, not empty, when codex workspace discovery cannot run", () =>
+        Effect.gen(function* () {
+          // An uninstalled CLI must not be reported as "this workspace has no
+          // skills": that would outrank the snapshot fallback every caller
+          // holds and blank the picker until the cache expired.
+          const failed = yield* listCodexWorkspaceSkills(defaultCodexSettings, "/repos/alpha").pipe(
+            Effect.provide(failingSpawnerLayer("spawn codex ENOENT")),
+          );
+          assert.strictEqual(failed, undefined);
+
+          // A disabled provider is an answer, not a failure — there is
+          // nothing to discover and nothing to fall back to.
+          const disabled = yield* listCodexWorkspaceSkills(
+            disabledCodexSettings,
+            "/repos/alpha",
+          ).pipe(Effect.provide(failingSpawnerLayer("spawn codex ENOENT")));
+          assert.deepStrictEqual(disabled, []);
+        }),
+      );
+
       // ── workspace-scoped skills ─────────────────────────────────
       //
       // The registry routes `listWorkspaceSkills` to live instances and
@@ -1941,7 +1965,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           );
 
           assert.deepStrictEqual(
-            skills.map((skill) => skill.name),
+            skills?.map((skill) => skill.name),
             ["skill-in-/repos/alpha"],
           );
           assert.strictEqual(yield* Ref.get(otherCalls), 0);
@@ -1968,33 +1992,24 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             registry.listWorkspaceSkills({ cwd: "/repos/alpha" }),
           );
 
-          assert.deepStrictEqual(skills.map((skill) => `${skill.name}:${skill.path}`).toSorted(), [
+          assert.deepStrictEqual(skills?.map((skill) => `${skill.name}:${skill.path}`).toSorted(), [
             "deploy:/personal/deploy",
             "review:/personal/review",
           ]);
         }),
       );
 
-      it.effect("degrades to an empty list instead of failing the caller", () =>
+      it.effect("reports an empty list only when a driver actually answered", () =>
         Effect.gen(function* () {
           const withoutSkillSurface = makeSkillsInstance({ instanceId: "codex_plain" });
-          const failing = makeSkillsInstance({
-            instanceId: "codex_broken",
-            listWorkspaceSkills: () => Effect.die(new Error("driver exploded")),
+          const answeringEmpty = makeSkillsInstance({
+            instanceId: "codex_empty",
+            listWorkspaceSkills: () => Effect.succeed([]),
           });
 
-          // Unknown instance id.
-          assert.deepStrictEqual(
-            yield* withSkillsRegistry([withoutSkillSurface], (registry) =>
-              registry.listWorkspaceSkills({
-                instanceId: ProviderInstanceId.make("codex_missing"),
-                cwd: "/repos/alpha",
-              }),
-            ),
-            [],
-          );
-
-          // Driver with no skill surface (Grok, Cursor, OpenCode).
+          // A driver with no skill surface at all (Grok, Cursor, OpenCode)
+          // knows there is nothing to offer — that is an answer, and the
+          // picker should render its empty state.
           assert.deepStrictEqual(
             yield* withSkillsRegistry([withoutSkillSurface], (registry) =>
               registry.listWorkspaceSkills({
@@ -2005,16 +2020,88 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             [],
           );
 
-          // A driver defect is logged and swallowed: the picker falls back to
-          // the snapshot rather than surfacing an RPC failure.
+          // So is a successful probe that found no skills in this workspace.
           assert.deepStrictEqual(
+            yield* withSkillsRegistry([answeringEmpty], (registry) =>
+              registry.listWorkspaceSkills({
+                instanceId: ProviderInstanceId.make("codex_empty"),
+                cwd: "/repos/alpha",
+              }),
+            ),
+            [],
+          );
+        }),
+      );
+
+      it.effect("reports nothing at all when no target could answer", () =>
+        Effect.gen(function* () {
+          const withoutSkillSurface = makeSkillsInstance({ instanceId: "codex_plain" });
+          const failing = makeSkillsInstance({
+            instanceId: "codex_broken",
+            listWorkspaceSkills: () => Effect.succeed(undefined),
+          });
+          const defective = makeSkillsInstance({
+            instanceId: "codex_defective",
+            listWorkspaceSkills: () => Effect.die(new Error("driver exploded")),
+          });
+
+          // An instance id nobody recognises: we learned nothing about this
+          // workspace, so say so rather than claiming it has no skills.
+          assert.strictEqual(
+            yield* withSkillsRegistry([withoutSkillSurface], (registry) =>
+              registry.listWorkspaceSkills({
+                instanceId: ProviderInstanceId.make("codex_missing"),
+                cwd: "/repos/alpha",
+              }),
+            ),
+            undefined,
+          );
+
+          // A driver that could not look (binary missing, probe timed out).
+          assert.strictEqual(
             yield* withSkillsRegistry([failing], (registry) =>
               registry.listWorkspaceSkills({
                 instanceId: ProviderInstanceId.make("codex_broken"),
                 cwd: "/repos/alpha",
               }),
             ),
-            [],
+            undefined,
+          );
+
+          // A driver defect is logged and swallowed, and counts as "unknown"
+          // for the same reason — the RPC must not fail, but it must not
+          // invent an empty answer either.
+          assert.strictEqual(
+            yield* withSkillsRegistry([defective], (registry) =>
+              registry.listWorkspaceSkills({
+                instanceId: ProviderInstanceId.make("codex_defective"),
+                cwd: "/repos/alpha",
+              }),
+            ),
+            undefined,
+          );
+        }),
+      );
+
+      it.effect("merges the instances that answered when only some fail", () =>
+        Effect.gen(function* () {
+          const answering = makeSkillsInstance({
+            instanceId: "codex_personal",
+            listWorkspaceSkills: () =>
+              Effect.succeed([{ name: "deploy", path: "/personal/deploy", enabled: true }]),
+          });
+          const failing = makeSkillsInstance({
+            instanceId: "codex_work",
+            listWorkspaceSkills: () => Effect.succeed(undefined),
+          });
+
+          const skills = yield* withSkillsRegistry([failing, answering], (registry) =>
+            registry.listWorkspaceSkills({ cwd: "/repos/alpha" }),
+          );
+
+          assert.deepStrictEqual(
+            skills?.map((skill) => skill.name),
+            ["deploy"],
           );
         }),
       );

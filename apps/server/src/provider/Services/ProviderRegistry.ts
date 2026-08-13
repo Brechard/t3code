@@ -60,15 +60,19 @@ export interface ProviderRegistryShape {
    * the caller (which already resolved the thread's worktree or the project's
    * root) decides what to scan.
    *
-   * Best-effort: unknown instances, drivers without a skill surface, and
-   * unreadable directories all resolve with an empty list instead of failing.
-   * When `instanceId` is omitted every live instance is asked and the results
+   * Best-effort, and never fails. `undefined` means nothing could be
+   * discovered — an unknown instance, or every asked driver failing — and
+   * tells the caller to keep using whatever it had. A list, including an
+   * empty one, is an answer: drivers without a skill surface legitimately
+   * report `[]`, as does a workspace that really has no skills.
+   *
+   * When `instanceId` is omitted every live instance is asked and the answers
    * are merged, matching `refresh`'s untargeted semantics.
    */
   readonly listWorkspaceSkills: (input: {
     readonly instanceId?: ProviderInstanceId | undefined;
     readonly cwd: string;
-  }) => Effect.Effect<ReadonlyArray<ServerProviderSkill>>;
+  }) => Effect.Effect<ReadonlyArray<ServerProviderSkill> | undefined>;
 
   /**
    * Resolve the maintenance capabilities owned by one live provider instance.

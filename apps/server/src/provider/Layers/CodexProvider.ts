@@ -453,17 +453,20 @@ const requestCodexWorkspaceSkills = Effect.fn("requestCodexWorkspaceSkills")(fun
 /**
  * List the skills Codex would load for one workspace directory.
  *
- * Best-effort by contract: a missing binary, an unauthenticated CLI, or a slow
- * app-server all degrade to an empty list rather than failing the caller. The
- * picker falls back to the provider snapshot's global list in that case, so a
- * failure here is never worse than the behaviour that preceded this lookup.
+ * Best-effort by contract, and careful about which kind of "no skills" it
+ * reports: a missing binary, an unauthenticated CLI, or a slow app-server
+ * yield `undefined` — "we could not look" — so callers keep falling back to
+ * the provider snapshot's global list. An empty array is reserved for answers
+ * we actually got: a disabled provider, or an app-server that listed nothing
+ * for this workspace. Returning `[]` for a failed probe would suppress every
+ * fallback downstream and blank the picker on a transient error.
  */
 export const listCodexWorkspaceSkills = (
   codexSettings: CodexSettings,
   cwd: string,
   environment?: NodeJS.ProcessEnv,
 ): Effect.Effect<
-  ReadonlyArray<ServerProviderSkill>,
+  ReadonlyArray<ServerProviderSkill> | undefined,
   never,
   ChildProcessSpawner.ChildProcessSpawner
 > => {
@@ -486,7 +489,7 @@ export const listCodexWorkspaceSkills = (
     Effect.tapError((cause) =>
       Effect.logDebug("codex workspace skill discovery failed", { cwd, cause }),
     ),
-    Effect.orElseSucceed((): ReadonlyArray<ServerProviderSkill> => []),
+    Effect.orElseSucceed((): ReadonlyArray<ServerProviderSkill> | undefined => undefined),
   );
 };
 

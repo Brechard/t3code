@@ -69,12 +69,14 @@ it.layer(NodeServices.layer)("workspace-scoped skills", (it) => {
 
       // Both scopes show up, and the project scope is whichever workspace was
       // asked about — not one process-wide directory picked at startup.
+      const alphaSkills = yield* listWorkspaceSkills(alpha);
+      const betaSkills = yield* listWorkspaceSkills(beta);
       assert.deepStrictEqual(
-        (yield* listWorkspaceSkills(alpha)).map((skill) => `${skill.scope}:${skill.name}`),
+        alphaSkills?.map((skill) => `${skill.scope}:${skill.name}`),
         ["project:alpha-deploy", "user:global-review"],
       );
       assert.deepStrictEqual(
-        (yield* listWorkspaceSkills(beta)).map((skill) => `${skill.scope}:${skill.name}`),
+        betaSkills?.map((skill) => `${skill.scope}:${skill.name}`),
         ["project:beta-deploy", "user:global-review"],
       );
     }),
@@ -102,9 +104,9 @@ it.layer(NodeServices.layer)("workspace-scoped skills", (it) => {
       const listWorkspaceSkills = yield* makeClaudeWorkspaceSkills(configDir);
       const skills = yield* listWorkspaceSkills(workspace);
 
-      assert.strictEqual(skills.length, 1);
-      assert.strictEqual(skills[0]?.scope, "project");
-      assert.strictEqual(skills[0]?.description, "Project deploy.");
+      assert.strictEqual(skills?.length, 1);
+      assert.strictEqual(skills?.[0]?.scope, "project");
+      assert.strictEqual(skills?.[0]?.description, "Project deploy.");
     }),
   );
 
@@ -127,7 +129,7 @@ it.layer(NodeServices.layer)("workspace-scoped skills", (it) => {
       const skills = yield* listWorkspaceSkills(path.join(tempDir, "does-not-exist"));
 
       assert.deepStrictEqual(
-        skills.map((skill) => skill.name),
+        skills?.map((skill) => skill.name),
         ["global-review"],
       );
     }),
@@ -144,7 +146,38 @@ it.layer(NodeServices.layer)("workspace-scoped skills", (it) => {
       yield* listWorkspaceSkills("/repos/alpha");
       yield* listWorkspaceSkills("/repos/beta");
 
+      // An empty answer is still an answer, so it stays cached.
       assert.deepStrictEqual(yield* Ref.get(lookups), ["/repos/alpha", "/repos/beta"]);
+    }),
+  );
+
+  it.effect("retries after a failed lookup instead of caching the unknown", () =>
+    Effect.gen(function* () {
+      const attempts = yield* Ref.make(0);
+      const listWorkspaceSkills = yield* makeWorkspaceSkillsCache(() =>
+        Ref.updateAndGet(attempts, (count) => count + 1).pipe(
+          // First probe fails (no binary, timeout, …), the retry succeeds.
+          Effect.map((count) =>
+            count === 1
+              ? undefined
+              : [{ name: "deploy", path: "/repos/alpha/.codex/skills/deploy", enabled: true }],
+          ),
+        ),
+      );
+
+      // Caching the failure would leave the picker blank for the whole TTL,
+      // because an unknown that reached the client as `[]` outranks every
+      // fallback it has.
+      assert.strictEqual(yield* listWorkspaceSkills("/repos/alpha"), undefined);
+      assert.deepStrictEqual(
+        (yield* listWorkspaceSkills("/repos/alpha"))?.map((skill) => skill.name),
+        ["deploy"],
+      );
+      assert.strictEqual(yield* Ref.get(attempts), 2);
+
+      // The successful answer is cached from then on.
+      yield* listWorkspaceSkills("/repos/alpha");
+      assert.strictEqual(yield* Ref.get(attempts), 2);
     }),
   );
 });

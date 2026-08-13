@@ -506,6 +506,11 @@ export const ProviderRegistryLive = Layer.effect(
      * and `ProviderInstanceRegistry`. Drivers own the discovery and its
      * caching; here we only route, dedupe, and swallow driver defects so an
      * exotic driver can never take the picker down.
+     *
+     * A driver that could not look reports `undefined`, and so do we when no
+     * target produced an answer — including an instance id nobody recognises.
+     * Collapsing that into `[]` would tell the caller "this workspace has no
+     * skills" and suppress the fallback it is holding.
      */
     const listWorkspaceSkills = Effect.fn("listWorkspaceSkills")(function* (input: {
       readonly instanceId?: ProviderInstanceId | undefined;
@@ -520,9 +525,12 @@ export const ProviderRegistryLive = Layer.effect(
       const skillLists = yield* Effect.forEach(
         targets,
         (instance) =>
+          // A driver without the capability has no skill surface at all
+          // (Grok, Cursor, OpenCode) — an honest empty answer, not a
+          // failure.
           (
             instance.listWorkspaceSkills?.(input.cwd) ??
-            Effect.succeed<ReadonlyArray<ServerProviderSkill>>([])
+            Effect.succeed<ReadonlyArray<ServerProviderSkill> | undefined>([])
           ).pipe(
             Effect.catchCause((cause) =>
               Effect.logWarning("workspace skill discovery failed", {
@@ -530,17 +538,24 @@ export const ProviderRegistryLive = Layer.effect(
                 driver: instance.driverKind,
                 cwd: input.cwd,
                 cause: Cause.pretty(cause),
-              }).pipe(Effect.as<ReadonlyArray<ServerProviderSkill>>([])),
+              }).pipe(Effect.as<ReadonlyArray<ServerProviderSkill> | undefined>(undefined)),
             ),
           ),
         { concurrency: "unbounded" },
       );
 
+      const answeredSkillLists = skillLists.filter(
+        (skills): skills is ReadonlyArray<ServerProviderSkill> => skills !== undefined,
+      );
+      if (answeredSkillLists.length === 0) {
+        return undefined;
+      }
+
       // First writer wins on duplicate names: within one instance the driver
       // already applied its own precedence (project over user), and across
       // instances the order follows the registry's instance order.
       const skillsByName = new Map<string, ServerProviderSkill>();
-      for (const skills of skillLists) {
+      for (const skills of answeredSkillLists) {
         for (const skill of skills) {
           if (!skillsByName.has(skill.name)) {
             skillsByName.set(skill.name, skill);

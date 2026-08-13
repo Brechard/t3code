@@ -84,10 +84,19 @@ export interface ProviderInstance {
    * implement it; the rest leave it undefined and callers fall back to the
    * snapshot.
    *
-   * Discovery is best-effort by contract: the returned effect never fails,
-   * it degrades to whatever was readable.
+   * Discovery is best-effort by contract: the returned effect never fails.
+   * It distinguishes two outcomes that must not be conflated —
+   *   - a list (possibly empty) means discovery ran and this is the answer;
+   *   - `undefined` means discovery could not run at all (binary missing,
+   *     probe timed out, request errored) and the driver knows nothing.
+   *
+   * An empty array would otherwise read as "this workspace has no skills" and
+   * suppress every fallback the caller has, blanking the picker on a
+   * transient failure.
    */
-  readonly listWorkspaceSkills?: (cwd: string) => Effect.Effect<ReadonlyArray<ServerProviderSkill>>;
+  readonly listWorkspaceSkills?: (
+    cwd: string,
+  ) => Effect.Effect<ReadonlyArray<ServerProviderSkill> | undefined>;
 }
 
 export interface ProviderContinuationIdentity {

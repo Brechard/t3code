@@ -30,17 +30,32 @@ const WORKSPACE_SKILLS_CAPACITY = 32;
 /**
  * Wrap a driver's workspace skill discovery in the shared cache policy.
  *
- * `discover` must already be best-effort (error channel `never`) — a cache
- * stores failures too, so a driver that let a transient error through would
- * keep serving that failure for the whole TTL.
+ * `discover` must already be best-effort (error channel `never`) and must
+ * report a failed discovery as `undefined` rather than an empty list, so
+ * "nothing here" stays distinguishable from "we could not look".
+ *
+ * Only answers are cached. A cache retains whatever the lookup produced, so
+ * an `undefined` is dropped again immediately — otherwise one unlucky probe
+ * would blank the picker for the rest of the TTL, which is exactly the
+ * failure this indirection exists to prevent.
  */
 export const makeWorkspaceSkillsCache = Effect.fn("makeWorkspaceSkillsCache")(function* (
-  discover: (cwd: string) => Effect.Effect<ReadonlyArray<ServerProviderSkill>>,
+  discover: (cwd: string) => Effect.Effect<ReadonlyArray<ServerProviderSkill> | undefined>,
 ) {
   const cache = yield* Cache.make({
     capacity: WORKSPACE_SKILLS_CAPACITY,
     timeToLive: WORKSPACE_SKILLS_TTL,
     lookup: discover,
   });
-  return (cwd: string) => Cache.get(cache, cwd);
+
+  return (cwd: string) =>
+    Effect.gen(function* () {
+      const skills = yield* Cache.get(cache, cwd);
+      if (skills === undefined) {
+        // `invalidateWhen` re-reads the stored value, so a concurrent lookup
+        // that already succeeded for this workspace is never thrown away.
+        yield* Cache.invalidateWhen(cache, cwd, (cached) => cached === undefined);
+      }
+      return skills;
+    });
 });

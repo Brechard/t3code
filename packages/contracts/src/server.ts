@@ -615,7 +615,16 @@ export const ServerWorkspaceSkillsInput = Schema.Struct({
 export type ServerWorkspaceSkillsInput = typeof ServerWorkspaceSkillsInput.Type;
 
 export const ServerWorkspaceSkillsResult = Schema.Struct({
-  skills: Schema.Array(ServerProviderSkill),
+  /**
+   * Absent when nothing could be discovered — the provider binary is missing,
+   * the probe timed out, the instance is unknown. Clients keep whatever they
+   * were showing (normally `ServerProvider.skills`) in that case.
+   *
+   * Present-but-empty is the opposite claim: discovery ran and this workspace
+   * really has no skills. Conflating the two would blank the picker whenever
+   * a probe hiccuped.
+   */
+  skills: Schema.optional(Schema.Array(ServerProviderSkill)),
 });
 export type ServerWorkspaceSkillsResult = typeof ServerWorkspaceSkillsResult.Type;
 

@@ -108,9 +108,6 @@ import { basenameOfPath } from "../../pierre-icons";
 import { cn, randomUUID } from "~/lib/utils";
 import { Separator } from "../ui/separator";
 
-/** Stable identity so the skill-less case never re-renders the prompt editor. */
-const EMPTY_COMPOSER_SKILLS: ServerProvider["skills"] = [];
-
 type ComposerCommandMenuPosition = {
   bottom: number;
   left: number;
@@ -227,7 +224,7 @@ import {
   formatProviderDisplayName,
 } from "../../lib/contextWindow";
 import { formatProviderSkillDisplayName } from "../../providerSkillPresentation";
-import { searchProviderSkills } from "../../providerSkillSearch";
+import { resolveComposerSkills, searchProviderSkills } from "../../providerSkillSearch";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
 
@@ -1037,15 +1034,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // Keyed on the composer's own selected instance rather than the thread's,
   // because the model picker below can point the next turn at a different
   // provider. The snapshot stays the fallback while the request is in flight,
-  // when it fails, and against a server that predates the RPC, so the picker
-  // never shows less than it used to and never flickers empty.
+  // when the server could not discover anything, and against a server that
+  // predates the RPC, so the picker never shows less than it used to and
+  // never flickers empty.
   const composerWorkspaceSkills = useWorkspaceSkills({
     environmentId,
     instanceId: selectedProviderStatus?.instanceId ?? null,
     cwd: gitCwd,
   });
-  const composerSkills =
-    composerWorkspaceSkills.skills ?? selectedProviderStatus?.skills ?? EMPTY_COMPOSER_SKILLS;
+  const composerSkills = resolveComposerSkills(
+    composerWorkspaceSkills.skills,
+    selectedProviderStatus?.skills,
+  );
 
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
