@@ -2663,16 +2663,26 @@ function ChatViewContent(props: ChatViewProps) {
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
   // Highlights `$skill` mentions in the transcript against the thread's own
   // instance, not `activeProviderInstanceId` — that prefers the composer's
-  // pick, which would re-highlight sent messages on a provider switch.
-  // `ChatComposer` runs its own query for the `$` picker.
+  // pick, which would re-highlight sent messages on a provider switch. Query
+  // and fallback both key off it, or the switch would still bleed through
+  // while the query is unresolved. `ChatComposer` queries for the `$` picker.
+  const transcriptProviderInstanceId = resolveTranscriptProviderInstanceId(activeThread);
   const timelineWorkspaceSkills = useWorkspaceSkills({
     environmentId,
-    instanceId: resolveTranscriptProviderInstanceId(activeThread),
+    instanceId: transcriptProviderInstanceId,
     cwd: activeWorkspaceRoot ?? null,
   });
+  const transcriptProviderStatus = useMemo(
+    () =>
+      transcriptProviderInstanceId === null
+        ? null
+        : (providerStatuses.find((status) => status.instanceId === transcriptProviderInstanceId) ??
+          null),
+    [providerStatuses, transcriptProviderInstanceId],
+  );
   const workspaceSkills = resolveComposerSkills(
     timelineWorkspaceSkills.skills,
-    activeProviderStatus?.skills,
+    transcriptProviderStatus?.skills,
   );
   const activeTerminalLaunchContext =
     terminalUiLaunchContext?.threadId === activeThreadId ? terminalUiLaunchContext : null;
