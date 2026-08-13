@@ -312,6 +312,7 @@ import {
   reconcileMountedTerminalThreadIds,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
+  resolveTranscriptProviderInstanceId,
   revokeBlobPreviewUrl,
   revokeUserMessagePreviewUrls,
   shouldWriteThreadErrorToCurrentServerThread,
@@ -2661,10 +2662,12 @@ function ChatViewContent(props: ChatViewProps) {
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
   // Highlights `$skill` mentions in the transcript against the thread's own
-  // instance. `ChatComposer` runs its own query for the `$` picker.
+  // instance, not `activeProviderInstanceId` — that prefers the composer's
+  // pick, which would re-highlight sent messages on a provider switch.
+  // `ChatComposer` runs its own query for the `$` picker.
   const timelineWorkspaceSkills = useWorkspaceSkills({
     environmentId,
-    instanceId: activeProviderInstanceId ?? null,
+    instanceId: resolveTranscriptProviderInstanceId(activeThread),
     cwd: activeWorkspaceRoot ?? null,
   });
   const workspaceSkills = resolveComposerSkills(
