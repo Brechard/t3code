@@ -497,21 +497,6 @@ export const ProviderRegistryLive = Layer.effect(
       return yield* refreshOneSource(providerSource);
     });
 
-    /**
-     * Ask live instances what skills a workspace exposes.
-     *
-     * The cwd comes from the caller because nothing on this layer knows which
-     * project a client is looking at: `ProviderRegistry` depends only on
-     * `ServerConfig` (whose `cwd` is the server's single startup directory)
-     * and `ProviderInstanceRegistry`. Drivers own the discovery and its
-     * caching; here we only route, dedupe, and swallow driver defects so an
-     * exotic driver can never take the picker down.
-     *
-     * A driver that could not look reports `undefined`, and so do we when no
-     * target produced an answer — including an instance id nobody recognises.
-     * Collapsing that into `[]` would tell the caller "this workspace has no
-     * skills" and suppress the fallback it is holding.
-     */
     const listWorkspaceSkills = Effect.fn("listWorkspaceSkills")(function* (input: {
       readonly instanceId?: ProviderInstanceId | undefined;
       readonly cwd: string;
@@ -525,9 +510,8 @@ export const ProviderRegistryLive = Layer.effect(
       const skillLists = yield* Effect.forEach(
         targets,
         (instance) =>
-          // A driver without the capability has no skill surface at all
-          // (Grok, Cursor, OpenCode) — an honest empty answer, not a
-          // failure.
+          // No capability means no skill surface (Grok, Cursor, OpenCode):
+          // an empty answer, not a failure.
           (
             instance.listWorkspaceSkills?.(input.cwd) ??
             Effect.succeed<ReadonlyArray<ServerProviderSkill> | undefined>([])
@@ -551,9 +535,8 @@ export const ProviderRegistryLive = Layer.effect(
         return undefined;
       }
 
-      // First writer wins on duplicate names: within one instance the driver
-      // already applied its own precedence (project over user), and across
-      // instances the order follows the registry's instance order.
+      // First writer wins: each driver already applied its own precedence
+      // (project over user), and instance order decides between drivers.
       const skillsByName = new Map<string, ServerProviderSkill>();
       for (const skills of answeredSkillLists) {
         for (const skill of skills) {

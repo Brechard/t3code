@@ -50,24 +50,9 @@ export interface ProviderRegistryShape {
   ) => Effect.Effect<ReadonlyArray<ServerProvider>>;
 
   /**
-   * List the skills one workspace directory exposes, asking the live
-   * instance's driver rather than reading the snapshot.
-   *
-   * `ServerProvider.skills` is discovered once against the server's own cwd —
-   * a process-wide directory fixed at startup — so it cannot answer "what
-   * skills does the project this client is viewing have?". The registry has no
-   * access to the projects table, so the workspace travels in the request and
-   * the caller (which already resolved the thread's worktree or the project's
-   * root) decides what to scan.
-   *
-   * Best-effort, and never fails. `undefined` means nothing could be
-   * discovered — an unknown instance, or every asked driver failing — and
-   * tells the caller to keep using whatever it had. A list, including an
-   * empty one, is an answer: drivers without a skill surface legitimately
-   * report `[]`, as does a workspace that really has no skills.
-   *
-   * When `instanceId` is omitted every live instance is asked and the answers
-   * are merged, matching `refresh`'s untargeted semantics.
+   * List the skills one workspace directory exposes, asking live drivers
+   * rather than reading the snapshot. Omitting `instanceId` asks every live
+   * instance and merges the answers, like `refresh`.
    */
   readonly listWorkspaceSkills: (input: {
     readonly instanceId?: ProviderInstanceId | undefined;

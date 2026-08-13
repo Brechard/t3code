@@ -352,13 +352,6 @@ export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProv
   error: EnvironmentAuthorizationError,
 });
 
-/**
- * Workspace-scoped skill discovery. Unlike `ServerProvider.skills` — one
- * global snapshot taken against the server's startup cwd — this is answered
- * per request against the `cwd` the caller supplies, which is how a client
- * showing project A's composer gets project A's skills. `ServerProvider.skills`
- * stays in place as the fallback for callers that cannot resolve a workspace.
- */
 export const WsServerListWorkspaceSkillsRpc = Rpc.make(WS_METHODS.serverListWorkspaceSkills, {
   payload: ServerWorkspaceSkillsInput,
   success: ServerWorkspaceSkillsResult,

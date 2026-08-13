@@ -107,11 +107,6 @@ export interface ThreadComposerProps {
   readonly activeThreadBusy: boolean;
   readonly environmentId: EnvironmentId;
   readonly projectCwd: string | null;
-  /**
-   * Skills offered by the `$` picker, resolved for the thread's workspace by
-   * the host screen. Not read off `serverConfig`: the provider snapshot's
-   * skills describe the server's own startup directory, not this project.
-   */
   readonly skills: ReadonlyArray<ServerProviderSkill>;
   readonly editorRef?: RefObject<ComposerEditorHandle | null>;
   readonly onChangeDraftMessage: (value: string) => void;

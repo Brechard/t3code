@@ -446,11 +446,6 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   const contentMaxWidth = isSplitLayout ? CHAT_CONTENT_MAX_WIDTH : undefined;
   const selectedInstanceId = props.selectedThread.modelSelection.instanceId;
   useStreamingHaptics(props.selectedThread.id, props.selectedThreadFeed);
-  // Skills belong to the thread's workspace, not to the server's startup cwd
-  // (which is all the provider snapshot can describe). `threadCwd` is the
-  // thread's worktree when it has one, else the project root — the same
-  // directory the agent will run in. The snapshot stays the fallback while the
-  // request is in flight or against a server that predates the RPC.
   const workspaceSkills = useWorkspaceSkills({
     environmentId: props.environmentId,
     instanceId: selectedInstanceId,

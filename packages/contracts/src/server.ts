@@ -593,21 +593,15 @@ export const ServerProviderUpdateInput = Schema.Struct({
 export type ServerProviderUpdateInput = typeof ServerProviderUpdateInput.Type;
 
 /**
- * Request skills visible from one workspace directory.
+ * Request the skills visible from one workspace directory — unlike
+ * `ServerProvider.skills`, one snapshot of the server's own startup cwd.
  *
- * `ServerProvider.skills` is a single process-wide snapshot discovered from
- * the server's own startup cwd, so it cannot describe the project the user is
- * actually looking at. The workspace root therefore travels in the request:
- * the client already resolves it (worktree path first, then the project's
- * workspace root) and the provider registry has no access to the projects
- * table, so the client is the only party that knows which directory to scan.
+ * The workspace travels in the request because the server cannot infer it:
+ * `ProviderRegistry` sees only `ServerConfig` and the live provider instances,
+ * never the projects table, so only the client knows which directory to scan.
  */
 export const ServerWorkspaceSkillsInput = Schema.Struct({
-  /**
-   * Provider instance whose driver performs discovery. When omitted the
-   * server asks every live instance and merges the results, matching the
-   * untargeted semantics of `server.refreshProviders`.
-   */
+  /** Omitted asks every live instance and merges the results. */
   instanceId: Schema.optional(ProviderInstanceId),
   /** Absolute workspace directory to scan (thread worktree or project root). */
   cwd: TrimmedNonEmptyString,
@@ -616,13 +610,8 @@ export type ServerWorkspaceSkillsInput = typeof ServerWorkspaceSkillsInput.Type;
 
 export const ServerWorkspaceSkillsResult = Schema.Struct({
   /**
-   * Absent when nothing could be discovered — the provider binary is missing,
-   * the probe timed out, the instance is unknown. Clients keep whatever they
-   * were showing (normally `ServerProvider.skills`) in that case.
-   *
-   * Present-but-empty is the opposite claim: discovery ran and this workspace
-   * really has no skills. Conflating the two would blank the picker whenever
-   * a probe hiccuped.
+   * Absent when nothing could be discovered, so clients keep showing whatever
+   * they had. Present-but-empty means discovery ran and found none.
    */
   skills: Schema.optional(Schema.Array(ServerProviderSkill)),
 });

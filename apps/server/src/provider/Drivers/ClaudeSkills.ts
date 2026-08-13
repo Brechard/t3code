@@ -106,9 +106,8 @@ export const discoverClaudeSkills = Effect.fn("discoverClaudeSkills")(function* 
 
   const skillsByName = new Map<string, ServerProviderSkill>();
   for (const root of roots) {
-    // A missing skills directory is the common case (most users have no
-    // project skills), so this stays at debug — but it is logged, because an
-    // unreadable directory and an empty picker are otherwise indistinguishable.
+    // Debug, not warning: a missing skills directory is the common case. Still
+    // logged, so an unreadable one is not silently an empty picker.
     const entries = yield* fileSystem.readDirectory(root.directory).pipe(
       Effect.tapError((cause) =>
         Effect.logDebug("claude skill root is not readable", {
@@ -124,8 +123,6 @@ export const discoverClaudeSkills = Effect.fn("discoverClaudeSkills")(function* 
       const skillPath = path.join(root.directory, entry, "SKILL.md");
       const contents = yield* fileSystem.readFileString(skillPath).pipe(
         Effect.tapError((cause) =>
-          // Expected for non-skill entries (a stray `README.md`, a directory
-          // without `SKILL.md`); a permission error lands here too.
           Effect.logDebug("claude skill entry has no readable SKILL.md", {
             path: skillPath,
             scope: root.scope,
@@ -141,8 +138,7 @@ export const discoverClaudeSkills = Effect.fn("discoverClaudeSkills")(function* 
       const frontmatter = parseSkillFrontmatter(contents);
       // Malformed frontmatter means the skill won't load in Claude Code
       // either — skip it rather than surfacing a broken entry under its
-      // directory name. Unlike the cases above this is a real authoring
-      // mistake, so it warns: the user wrote a skill that nothing will load.
+      // directory name.
       if (frontmatter.kind === "malformed") {
         yield* Effect.logWarning("claude skill has malformed YAML frontmatter; skipping", {
           path: skillPath,

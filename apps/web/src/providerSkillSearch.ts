@@ -70,14 +70,9 @@ function scoreProviderSkill(skill: ServerProviderSkill, query: string): number |
 const NO_SKILLS: ReadonlyArray<ServerProviderSkill> = [];
 
 /**
- * Choose the skill list a composer should offer for the current workspace.
- *
- * `workspaceSkills` is the server's workspace-scoped answer. An array — even
- * an empty one — means discovery ran, so it wins: this workspace really has
- * these skills and no others. `null`/`undefined` means the server could not
- * discover anything (the probe failed, or the request is still in flight), so
- * we keep showing the provider snapshot's list rather than blanking the
- * picker on a transient failure.
+ * Choose the skill list a composer should offer for the current workspace. An
+ * array — even an empty one — is an answer and wins; `null`/`undefined` means
+ * the server could not look, so the snapshot's list stays up.
  */
 export function resolveComposerSkills(
   workspaceSkills: ReadonlyArray<ServerProviderSkill> | null | undefined,

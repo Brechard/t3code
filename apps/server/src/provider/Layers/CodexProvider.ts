@@ -320,12 +320,8 @@ export function buildCodexInitializeParams(): CodexSchema.V1InitializeParams {
 }
 
 /**
- * Spawn `codex app-server` and complete its initialize handshake.
- *
- * The returned client stays usable for as long as the caller's scope is open;
- * closing that scope tears the child process down. Both the status probe and
- * the workspace-scoped skills lookup go through here so there is exactly one
- * description of how we launch the app-server.
+ * Spawn `codex app-server` and complete its initialize handshake. Closing the
+ * caller's scope tears the child process down.
  */
 const openCodexAppServerClient = Effect.fn("openCodexAppServerClient")(function* (input: {
   readonly binaryPath: string;
@@ -443,23 +439,14 @@ const requestCodexWorkspaceSkills = Effect.fn("requestCodexWorkspaceSkills")(fun
   readonly environment?: NodeJS.ProcessEnv;
 }) {
   const { client } = yield* openCodexAppServerClient(input);
-  // The app-server answers `skills/list` per cwd, so unlike the snapshot probe
-  // (which asks about the server's own directory) this asks about the
-  // workspace the client is looking at.
   const response = yield* client.request("skills/list", { cwds: [input.cwd] });
   return parseCodexSkillsListResponse(response, input.cwd);
 });
 
 /**
- * List the skills Codex would load for one workspace directory.
- *
- * Best-effort by contract, and careful about which kind of "no skills" it
- * reports: a missing binary, an unauthenticated CLI, or a slow app-server
- * yield `undefined` — "we could not look" — so callers keep falling back to
- * the provider snapshot's global list. An empty array is reserved for answers
- * we actually got: a disabled provider, or an app-server that listed nothing
- * for this workspace. Returning `[]` for a failed probe would suppress every
- * fallback downstream and blank the picker on a transient error.
+ * List the skills Codex would load for one workspace directory. Answering
+ * needs a live app-server, so unlike Claude's filesystem scan this can yield
+ * `undefined` ("could not look") rather than `[]`.
  */
 export const listCodexWorkspaceSkills = (
   codexSettings: CodexSettings,
@@ -482,9 +469,8 @@ export const listCodexWorkspaceSkills = (
     environment: resolvedEnvironment,
   }).pipe(
     Effect.scoped,
-    // A typed timeout rather than `timeoutOption` so a slow app-server is
-    // logged on the same path as a spawn failure instead of silently reading
-    // as "this workspace has no skills".
+    // A typed timeout, not `timeoutOption`, so a slow app-server is logged and
+    // reported like a spawn failure rather than as "no skills here".
     Effect.timeout(Duration.millis(AUTH_PROBE_TIMEOUT_MS)),
     Effect.tapError((cause) =>
       Effect.logDebug("codex workspace skill discovery failed", { cwd, cause }),

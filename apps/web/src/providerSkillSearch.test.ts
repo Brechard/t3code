@@ -69,10 +69,6 @@ describe("resolveComposerSkills", () => {
   });
 
   it("keeps the snapshot list when discovery could not run", () => {
-    // The server answers without a `skills` key when it could not look —
-    // a spawn failure, a timed-out probe, an unknown instance. Treating that
-    // as an empty workspace would blank the picker on a transient failure,
-    // which is worse than the global list it replaced.
     expect(resolveComposerSkills(null, snapshotSkills).map((skill) => skill.name)).toEqual([
       "snapshot-skill",
     ]);
@@ -82,8 +78,6 @@ describe("resolveComposerSkills", () => {
   });
 
   it("honours a workspace that genuinely has no skills", () => {
-    // An empty answer is still an answer: the picker must show its empty
-    // state rather than falling back to another directory's skills.
     expect(resolveComposerSkills([], snapshotSkills)).toEqual([]);
   });
 

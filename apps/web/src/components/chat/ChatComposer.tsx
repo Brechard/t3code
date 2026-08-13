@@ -1024,19 +1024,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     cwd: isPathTrigger ? gitCwd : null,
     query: isPathTrigger ? pathTriggerQuery : null,
   });
-  // Skills come from the workspace this composer sends into, not from the
-  // provider snapshot: the server discovers `ServerProvider.skills` once
-  // against its own startup cwd, so it describes whatever directory the
-  // server was launched from rather than the user's project. `gitCwd` is
-  // that workspace — the thread's worktree when it has one, else the project
-  // root — and is already what the `@` path picker above searches.
-  //
   // Keyed on the composer's own selected instance rather than the thread's,
-  // because the model picker below can point the next turn at a different
-  // provider. The snapshot stays the fallback while the request is in flight,
-  // when the server could not discover anything, and against a server that
-  // predates the RPC, so the picker never shows less than it used to and
-  // never flickers empty.
+  // because the model picker below can aim the next turn at another provider.
   const composerWorkspaceSkills = useWorkspaceSkills({
     environmentId,
     instanceId: selectedProviderStatus?.instanceId ?? null,

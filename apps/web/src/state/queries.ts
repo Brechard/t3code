@@ -304,26 +304,13 @@ export function useComposerPathSearch(target: ComposerPathSearchTarget) {
   return useProjectPathSearch(target, COMPOSER_PATH_SEARCH_LIMIT);
 }
 
-/**
- * Skills for one workspace, asked of the server per request.
- *
- * The provider snapshot carries a `skills` list, but the server discovers it
- * once against its own startup cwd, so it belongs to whichever directory the
- * server was launched from rather than the project being viewed.
- *
- * `skills` is `null` whenever nothing is known: the request is in flight, it
- * failed, or the server answered without a list because its own discovery
- * could not run. Callers fall back to the snapshot in all three cases. An
- * empty array is different — it means this workspace really has no skills.
- */
+/** Skills for one workspace; `null` until the server answers with a list. */
 export function useWorkspaceSkills(input: {
   readonly environmentId: EnvironmentId | null;
   readonly instanceId: ProviderInstanceId | null;
   readonly cwd: string | null;
 }) {
-  // A stand-in project carries an empty workspaceRoot, which the request
-  // schema rejects — treat it like "no workspace" rather than issuing a call
-  // that can only fail.
+  // A stand-in project carries an empty workspaceRoot, which the schema rejects.
   const cwd = input.cwd?.trim() ? input.cwd : null;
   const result = useEnvironmentQuery(
     input.environmentId !== null && cwd !== null

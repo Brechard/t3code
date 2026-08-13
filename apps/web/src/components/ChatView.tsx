@@ -2660,14 +2660,8 @@ function ChatViewContent(props: ChatViewProps) {
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
-  // `$skill` mentions in the transcript are highlighted against the thread's
-  // own provider instance and workspace. The provider snapshot's `skills` are
-  // discovered once from the server's startup cwd, so they describe some other
-  // directory entirely as soon as the user has more than one project; the
-  // snapshot stays the fallback while this resolves, when it fails, and
-  // against a server too old to know the RPC, so nothing regresses.
-  // (The `$` picker runs its own query inside `ChatComposer`, keyed on the
-  // instance the composer has selected, which can differ from this one.)
+  // Highlights `$skill` mentions in the transcript against the thread's own
+  // instance. `ChatComposer` runs its own query for the `$` picker.
   const timelineWorkspaceSkills = useWorkspaceSkills({
     environmentId,
     instanceId: activeProviderInstanceId ?? null,

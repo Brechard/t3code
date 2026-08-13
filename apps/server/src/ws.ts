@@ -1450,18 +1450,13 @@ const makeWsRpcLayer = (
         [WS_METHODS.serverListWorkspaceSkills]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverListWorkspaceSkills,
-            // The workspace arrives with the request: the server holds one
-            // global cwd and no notion of which project a client is viewing,
-            // while the client already resolved the thread's worktree (or the
-            // project root) for exactly this purpose.
             providerRegistry
               .listWorkspaceSkills({
                 ...(input.instanceId !== undefined ? { instanceId: input.instanceId } : {}),
                 cwd: input.cwd,
               })
               // Omit the key rather than sending `[]` when discovery could not
-              // run: an absent list leaves the client on its existing fallback,
-              // an empty one would tell it this workspace has no skills.
+              // run, so the client stays on its fallback.
               .pipe(Effect.map((skills) => (skills ? { skills } : {}))),
             { "rpc.aggregate": "server" },
           ),

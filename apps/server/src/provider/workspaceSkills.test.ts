@@ -23,11 +23,7 @@ const writeSkill = Effect.fn(function* (
 const skillDocument = (name: string, description: string) =>
   ["---", `name: ${name}`, `description: ${description}`, "---"].join("\n");
 
-/**
- * Mirror how `ClaudeDriver` wires discovery: the config and environment are
- * bound once per instance, the workspace arrives per call, and the filesystem
- * services are pre-provided so the cached lookup has no requirements.
- */
+/** Mirrors how `ClaudeDriver` wires discovery: config per instance, cwd per call. */
 const makeClaudeWorkspaceSkills = Effect.fn(function* (configDir: string) {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -67,8 +63,6 @@ it.layer(NodeServices.layer)("workspace-scoped skills", (it) => {
 
       const listWorkspaceSkills = yield* makeClaudeWorkspaceSkills(configDir);
 
-      // Both scopes show up, and the project scope is whichever workspace was
-      // asked about — not one process-wide directory picked at startup.
       const alphaSkills = yield* listWorkspaceSkills(alpha);
       const betaSkills = yield* listWorkspaceSkills(beta);
       assert.deepStrictEqual(
@@ -124,8 +118,6 @@ it.layer(NodeServices.layer)("workspace-scoped skills", (it) => {
       );
 
       const listWorkspaceSkills = yield* makeClaudeWorkspaceSkills(configDir);
-      // A project that was deleted (or a worktree that was pruned) must not
-      // fail the lookup — the picker still needs the user's own skills.
       const skills = yield* listWorkspaceSkills(path.join(tempDir, "does-not-exist"));
 
       assert.deepStrictEqual(
@@ -156,7 +148,6 @@ it.layer(NodeServices.layer)("workspace-scoped skills", (it) => {
       const attempts = yield* Ref.make(0);
       const listWorkspaceSkills = yield* makeWorkspaceSkillsCache(() =>
         Ref.updateAndGet(attempts, (count) => count + 1).pipe(
-          // First probe fails (no binary, timeout, …), the retry succeeds.
           Effect.map((count) =>
             count === 1
               ? undefined
@@ -165,9 +156,6 @@ it.layer(NodeServices.layer)("workspace-scoped skills", (it) => {
         ),
       );
 
-      // Caching the failure would leave the picker blank for the whole TTL,
-      // because an unknown that reached the client as `[]` outranks every
-      // fallback it has.
       assert.strictEqual(yield* listWorkspaceSkills("/repos/alpha"), undefined);
       assert.deepStrictEqual(
         (yield* listWorkspaceSkills("/repos/alpha"))?.map((skill) => skill.name),
@@ -175,7 +163,6 @@ it.layer(NodeServices.layer)("workspace-scoped skills", (it) => {
       );
       assert.strictEqual(yield* Ref.get(attempts), 2);
 
-      // The successful answer is cached from then on.
       yield* listWorkspaceSkills("/repos/alpha");
       assert.strictEqual(yield* Ref.get(attempts), 2);
     }),

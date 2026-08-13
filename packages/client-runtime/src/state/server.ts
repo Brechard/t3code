@@ -685,13 +685,7 @@ export function createServerEnvironmentAtoms<R, E>(
     updateStateAtom,
     settingsValueAtom,
     providersValueAtom,
-    // Skills for one workspace directory. The provider snapshot carries a
-    // `skills` list too, but the server discovers that one against its own
-    // startup cwd, so it describes whatever directory `npx t3` was run from
-    // rather than the project the user is in. Keyed by (environment, instance,
-    // cwd) through the atom family, and cached long enough that reopening the
-    // `$` picker does not re-scan the filesystem (or respawn `codex
-    // app-server`) on every keystroke.
+    // The stale time keeps reopening the `$` picker from re-probing.
     workspaceSkills: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:workspace-skills",
       tag: WS_METHODS.serverListWorkspaceSkills,

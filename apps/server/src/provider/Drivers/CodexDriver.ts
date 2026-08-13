@@ -175,10 +175,6 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
         Effect.map(stampIdentity),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       );
-      // Workspace-scoped skill discovery. The snapshot probe asks the
-      // app-server about the server's own cwd — one global directory picked at
-      // startup — so the picker would otherwise show another project's skills.
-      // Each lookup spawns an app-server, hence the per-workspace cache.
       const listWorkspaceSkills = yield* makeWorkspaceSkillsCache((workspaceCwd) =>
         listCodexWorkspaceSkills(effectiveConfig, workspaceCwd, processEnv).pipe(
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),

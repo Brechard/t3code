@@ -73,26 +73,15 @@ export interface ProviderInstance {
   readonly adapter: ProviderAdapterShape<ProviderAdapterError>;
   readonly textGeneration: TextGeneration.TextGeneration["Service"];
   /**
-   * Optional capability: enumerate the skills this instance would load for a
-   * given workspace directory.
+   * Enumerate the skills this instance would load for a workspace directory.
+   * Only drivers with a skill surface (Claude, Codex) implement it; the rest
+   * leave it undefined and callers fall back to `snapshot.skills`.
    *
-   * `snapshot` carries a `skills` list too, but that one is discovered once
-   * against the server's own cwd — a single process-wide directory that has
-   * nothing to do with the project a client is looking at. This capability
-   * takes the workspace in the request instead, so the answer is scoped to
-   * the caller's repo. Only drivers with a skill surface (Claude, Codex)
-   * implement it; the rest leave it undefined and callers fall back to the
-   * snapshot.
-   *
-   * Discovery is best-effort by contract: the returned effect never fails.
-   * It distinguishes two outcomes that must not be conflated —
-   *   - a list (possibly empty) means discovery ran and this is the answer;
-   *   - `undefined` means discovery could not run at all (binary missing,
-   *     probe timed out, request errored) and the driver knows nothing.
-   *
-   * An empty array would otherwise read as "this workspace has no skills" and
-   * suppress every fallback the caller has, blanking the picker on a
-   * transient failure.
+   * Never fails, and keeps two outcomes apart: a list (possibly empty) is an
+   * answer, while `undefined` means discovery could not run at all (binary
+   * missing, probe timed out). Reporting `[]` for a failed probe would read as
+   * "no skills here" and suppress every fallback the caller has, blanking the
+   * picker on a transient failure.
    */
   readonly listWorkspaceSkills?: (
     cwd: string,

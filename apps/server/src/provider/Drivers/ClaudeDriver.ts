@@ -165,11 +165,6 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
       });
       const capabilitiesCacheKey = yield* makeClaudeCapabilitiesCacheKey(effectiveConfig, cwd);
 
-      // Workspace-scoped skill discovery. The snapshot's `skills` list is
-      // scanned once against the server's own cwd, which is a single global
-      // directory chosen at startup; the picker needs the skills of whichever
-      // project the client is looking at, so the cwd arrives per call and the
-      // results are cached per workspace.
       const listWorkspaceSkills = yield* makeWorkspaceSkillsCache((workspaceCwd) =>
         discoverClaudeSkills(effectiveConfig, workspaceCwd, processEnv).pipe(
           Effect.provideService(FileSystem.FileSystem, fileSystem),
