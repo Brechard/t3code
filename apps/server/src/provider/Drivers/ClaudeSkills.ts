@@ -36,6 +36,7 @@ type SkillFrontmatter =
       readonly name?: string;
       readonly description?: string;
       readonly userInvocationOnly?: boolean;
+      readonly userInvocable?: boolean;
     };
 
 function parseSkillFrontmatter(contents: string): SkillFrontmatter {
@@ -62,6 +63,7 @@ function parseSkillFrontmatter(contents: string): SkillFrontmatter {
     ...(name ? { name } : {}),
     ...(description ? { description } : {}),
     ...(record["disable-model-invocation"] === true ? { userInvocationOnly: true } : {}),
+    ...(record["user-invocable"] === false ? { userInvocable: false } : {}),
   };
 }
 
@@ -286,6 +288,9 @@ export const discoverClaudeSkills = Effect.fn("discoverClaudeSkills")(function* 
           ? { description: frontmatter.description }
           : {}),
         ...(userInvocationOnly ? { userInvocationOnly: true } : {}),
+        ...(frontmatter.kind === "parsed" && frontmatter.userInvocable === false
+          ? { userInvocable: false }
+          : {}),
       });
     }
   }

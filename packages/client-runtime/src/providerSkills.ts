@@ -82,7 +82,7 @@ export function getProviderSkillsForSlashMenu(
 ): ServerProviderSkill[] {
   if (!showSkillsInSlashMenu) return [];
   return triggerRangeStart === 0
-    ? skills.filter((skill) => skill.enabled)
+    ? skills.filter((skill) => skill.enabled && skill.userInvocable !== false)
     : skills.filter(isProviderSkillMentionable);
 }
 

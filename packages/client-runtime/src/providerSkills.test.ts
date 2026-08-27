@@ -67,6 +67,16 @@ describe("getProviderSkillsForSlashMenu", () => {
     ]);
   });
 
+  it("drops a skill the provider keeps out of its own slash commands", () => {
+    const agentOnly = {
+      name: "agent-only",
+      path: "/Users/matt/.agents/skills/agent-only/SKILL.md",
+      enabled: true,
+      userInvocable: false,
+    };
+    expect(getProviderSkillsForSlashMenu([agentOnly], true, 0)).toEqual([]);
+  });
+
   it("keeps offering mentionable skills once the trigger no longer opens the message", () => {
     const askMatt = {
       name: "ask-matt",
