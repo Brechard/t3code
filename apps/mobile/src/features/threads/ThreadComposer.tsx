@@ -67,7 +67,7 @@ import {
 import {
   formatProviderSkillInsertion,
   isProviderSkillMentionable,
-  providerSkillInsertionSigil,
+  resolveProviderSkillInsertionSigil,
 } from "@t3tools/client-runtime/providerSkills";
 import { resolveProviderOptionDescriptors } from "../../lib/providerOptions";
 import { useComposerPathSearch } from "../../state/use-composer-path-search";
@@ -441,7 +441,9 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         });
       }
 
-      const providerSkills = selectedProviderStatus?.skills ?? [];
+      const providerSkills = (selectedProviderStatus?.skills ?? []).filter(
+        (skill) => skill.enabled,
+      );
       // Past the start of the message the pick becomes a `$` mention, so only
       // skills a mention can reach are worth offering there.
       const skillItems = (
@@ -454,10 +456,8 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
           id: `skill:${skill.name}`,
           type: "skill" as const,
           skill,
-          label:
-            providerSkillInsertionSigil(composerTrigger) === "/"
-              ? `skill:${skill.name}`
-              : `$${skill.name}`,
+          insertionSigil: resolveProviderSkillInsertionSigil(skill, composerTrigger),
+          label: `skill:${skill.name}`,
           description: skill.shortDescription ?? skill.description ?? "",
         }));
 
@@ -477,6 +477,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
           id: `skill:${skill.name}`,
           type: "skill" as const,
           skill,
+          insertionSigil: "$" as const,
           label: skill.displayName ?? skill.name,
           description: skill.shortDescription ?? skill.description ?? "",
         }));
@@ -543,6 +544,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       return ranked.map(({ item: skill }) => ({
         id: `skill:${skill.name}`,
         type: "skill" as const,
+        insertionSigil: "$" as const,
         skill,
         label: skill.displayName ?? skill.name,
         description: skill.shortDescription ?? skill.description ?? "",
@@ -621,7 +623,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       if (item.type === "path") {
         replacement = `${serializeComposerFileLink(item.path)} `;
       } else if (item.type === "skill") {
-        replacement = formatProviderSkillInsertion(item.skill.name, composerTrigger);
+        replacement = formatProviderSkillInsertion(item.skill.name, item.insertionSigil);
       } else if (item.type === "slash-command") {
         replacement = `/${item.command} `;
       } else if (item.type === "provider-slash-command") {

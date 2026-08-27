@@ -1,6 +1,7 @@
 import {
   formatProviderSkillDisplayName,
   resolveProviderSkillSourceKind,
+  type ProviderSkillInsertionSigil,
   type ProviderSkillSourceKind,
 } from "@t3tools/client-runtime/providerSkills";
 import {
@@ -54,6 +55,8 @@ export type ComposerCommandItem =
       type: "skill";
       provider: ProviderDriverKind;
       skill: ServerProviderSkill;
+      /** Syntax this pick inserts; the row shows it so the two cannot diverge. */
+      insertionSigil: ProviderSkillInsertionSigil;
       label: string;
       description: string;
     };
@@ -63,8 +66,6 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   resolvedTheme: "light" | "dark";
   isLoading: boolean;
   triggerKind: ComposerTriggerKind | null;
-  /** Sigil a skill pick will insert, so the row cannot promise the wrong one. */
-  skillInsertionSigil: "/" | "$";
   emptyStateText?: string;
   activeItemId: string | null;
   onHighlightedItemChange: (itemId: string | null) => void;
@@ -103,7 +104,6 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
                   key={item.id}
                   item={item}
                   triggerKind={props.triggerKind}
-                  skillInsertionSigil={props.skillInsertionSigil}
                   resolvedTheme={props.resolvedTheme}
                   isActive={props.activeItemId === item.id}
                   onHighlight={props.onHighlightedItemChange}
@@ -136,8 +136,6 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
 const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
   item: ComposerCommandItem;
   triggerKind: ComposerTriggerKind | null;
-  /** Sigil a skill pick will insert, so the row cannot promise the wrong one. */
-  skillInsertionSigil: "/" | "$";
   resolvedTheme: "light" | "dark";
   isActive: boolean;
   onHighlight: (itemId: string | null) => void;
@@ -146,7 +144,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
   const skillSourceKind =
     props.item.type === "skill" ? resolveProviderSkillSourceKind(props.item.skill) : null;
   const isSlashSkill =
-    props.triggerKind === "slash-command" && props.item.type === "skill" ? props.item.skill : null;
+    props.triggerKind === "slash-command" && props.item.type === "skill" ? props.item : null;
 
   return (
     <CommandItem
@@ -178,9 +176,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
           {isSlashSkill ? (
             <>
               <span className="text-secondary-label">
-                {props.skillInsertionSigil === "/" ? "/skill:" : "$"}
+                {isSlashSkill.insertionSigil === "/" ? "/skill:" : "$"}
               </span>
-              {formatProviderSkillDisplayName(isSlashSkill)}
+              {formatProviderSkillDisplayName(isSlashSkill.skill)}
             </>
           ) : (
             props.item.label

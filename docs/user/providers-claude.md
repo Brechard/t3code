@@ -61,15 +61,20 @@ Typing `$` lists the skills the agent can pick up, and drops the name into your
 message as a mention. Typing `/` at the very start of a message lists slash
 commands and runs the one you choose.
 
-Some skills are marked to run only when you ask for them. Those never appear in
-the `$` menu, because a mention leaves the choice to the agent and the agent
-cannot see them — pick them from the `/` menu at the start of a message instead.
+Picking a skill drops a `$` mention into your message, whichever menu you used.
+That is the form every provider understands, and the form shown as a chip.
+
+Some skills are marked to run only when you ask for them. A mention cannot start
+those, because a mention leaves the choice to the agent and the agent cannot see
+them. Pick one from the `/` menu at the start of a message and it goes in as
+`/name`, which the provider runs directly. The menu row shows which of the two
+you will get.
 
 Provider slash commands only work at the start of a message. Later in a message
-the `/` menu still lists skills, and picking one drops in a `$` mention, which
-is what reaches the agent there. A skill that only runs when you ask for it is
-left out, since neither syntax can start it that far in. T3 Code's local
-commands, such as `/model` and `/plan`, remain available anywhere.
+the `/` menu still lists the skills a mention can reach; a skill that only runs
+when you ask for it is left out there, since neither form can start it that far
+in. T3 Code's local commands, such as `/model` and `/plan`, remain available
+anywhere.
 
 ## I Want Work And Personal Claude Accounts
 

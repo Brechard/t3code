@@ -5,40 +5,34 @@ import { detectComposerTrigger } from "@t3tools/shared/composerTrigger";
 import {
   formatProviderSkillDisplayName,
   formatProviderSkillInsertion,
+  resolveProviderSkillInsertionSigil,
   getProviderSlashCommandsForSlashMenu,
   getProviderSkillsForSlashMenu,
   resolveProviderSkillSourceKind,
 } from "./providerSkills.ts";
 
-const insertionFor = (text: string) => {
+const MENTIONABLE = { name: "ask-matt" };
+const USER_ONLY = { name: "re-release-version", userInvocationOnly: true };
+
+const insertionFor = (skill: { name: string; userInvocationOnly?: boolean }, text: string) => {
   const trigger = detectComposerTrigger(text, text.length);
   if (!trigger) throw new Error(`no trigger for ${JSON.stringify(text)}`);
-  return {
-    kind: trigger.kind,
-    insertion: formatProviderSkillInsertion("re-release-version", trigger),
-  };
+  const sigil = resolveProviderSkillInsertionSigil(skill, trigger);
+  return formatProviderSkillInsertion(skill.name, sigil);
 };
 
-describe("formatProviderSkillInsertion", () => {
-  it("spells a message-opening slash pick as a slash command", () => {
-    expect(insertionFor("/re-release-version")).toEqual({
-      kind: "slash-command",
-      insertion: "/re-release-version ",
-    });
+describe("resolveProviderSkillInsertionSigil", () => {
+  it("uses a slash only where a mention provably cannot start the skill", () => {
+    expect(insertionFor(USER_ONLY, "/re-release-version")).toBe("/re-release-version ");
   });
 
-  it("spells a mention pick as a mention", () => {
-    expect(insertionFor("$re-release-version")).toEqual({
-      kind: "skill",
-      insertion: "$re-release-version ",
-    });
+  it("keeps the portable mention for a skill the agent may start itself", () => {
+    expect(insertionFor(MENTIONABLE, "/ask-matt")).toBe("$ask-matt ");
+    expect(insertionFor(MENTIONABLE, "$ask-matt")).toBe("$ask-matt ");
   });
 
-  it("falls back to a mention on a later line, where the CLI would not expand a slash", () => {
-    expect(insertionFor("ship it\n/re-release-version")).toEqual({
-      kind: "slash-command",
-      insertion: "$re-release-version ",
-    });
+  it("falls back to a mention past the start, where no CLI expands a slash", () => {
+    expect(insertionFor(USER_ONLY, "ship it\n/re-release-version")).toBe("$re-release-version ");
   });
 });
 

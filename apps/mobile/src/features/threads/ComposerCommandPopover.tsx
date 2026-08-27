@@ -1,5 +1,6 @@
 import {
   resolveProviderSkillSourceKind,
+  type ProviderSkillInsertionSigil,
   type ProviderSkillSourceKind,
 } from "@t3tools/client-runtime/providerSkills";
 import type { ServerProviderSkill, ServerProviderSlashCommand } from "@t3tools/contracts";
@@ -39,6 +40,8 @@ export type ComposerCommandItem =
       readonly id: string;
       readonly type: "skill";
       readonly skill: ServerProviderSkill;
+      /** Syntax this pick inserts; the row shows it so the two cannot diverge. */
+      readonly insertionSigil: ProviderSkillInsertionSigil;
       readonly label: string;
       readonly description: string;
     };
@@ -147,7 +150,9 @@ const CommandRow = memo(function CommandRow(props: {
       <Text className="shrink-0 text-base font-t3-medium text-foreground" numberOfLines={1}>
         {props.isSlashSkill && props.item.type === "skill" ? (
           <>
-            <Text className="text-foreground-muted">skill:</Text>
+            <Text className="text-foreground-muted">
+              {props.item.insertionSigil === "/" ? "skill:" : "$"}
+            </Text>
             {props.item.skill.name}
           </>
         ) : (

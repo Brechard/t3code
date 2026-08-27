@@ -12,7 +12,6 @@ describe("ComposerCommandMenu", () => {
         resolvedTheme="dark"
         isLoading={false}
         triggerKind="slash-command"
-        skillInsertionSigil={"/"}
         activeItemId={null}
         onHighlightedItemChange={() => {}}
         onSelect={() => {}}
@@ -40,7 +39,6 @@ describe("ComposerCommandMenu", () => {
         resolvedTheme="dark"
         isLoading={false}
         triggerKind="slash-command"
-        skillInsertionSigil={"/"}
         activeItemId="slash:model"
         onHighlightedItemChange={() => {}}
         onSelect={() => {}}
@@ -66,6 +64,7 @@ describe("ComposerCommandMenu", () => {
             id: "skill:codex:browser",
             type: "skill",
             provider: ProviderDriverKind.make("codex"),
+            insertionSigil: "$" as const,
             skill: {
               name: "browser",
               path: "/Users/maria/.codex/plugins/browser/skills/browser/SKILL.md",
@@ -79,7 +78,6 @@ describe("ComposerCommandMenu", () => {
         resolvedTheme="dark"
         isLoading={false}
         triggerKind="skill"
-        skillInsertionSigil={"$"}
         activeItemId="skill:codex:browser"
         onHighlightedItemChange={() => {}}
         onSelect={() => {}}
@@ -109,6 +107,7 @@ describe("ComposerCommandMenu", () => {
             id: "skill:codex:ask-matt",
             type: "skill",
             provider: ProviderDriverKind.make("codex"),
+            insertionSigil: "/" as const,
             skill: {
               name: "ask-matt",
               displayName: "Ask Matt",
@@ -123,7 +122,6 @@ describe("ComposerCommandMenu", () => {
         resolvedTheme="dark"
         isLoading={false}
         triggerKind="slash-command"
-        skillInsertionSigil={"/"}
         activeItemId="skill:codex:ask-matt"
         onHighlightedItemChange={() => {}}
         onSelect={() => {}}
@@ -154,11 +152,10 @@ describe("ComposerCommandMenu", () => {
     const render = (sigil: "/" | "$") =>
       renderToStaticMarkup(
         <ComposerCommandMenu
-          items={[skillItem]}
+          items={[{ ...skillItem, insertionSigil: sigil }]}
           resolvedTheme="dark"
           isLoading={false}
           triggerKind="slash-command"
-          skillInsertionSigil={sigil}
           activeItemId={skillItem.id}
           onHighlightedItemChange={() => {}}
           onSelect={() => {}}

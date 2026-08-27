@@ -270,7 +270,7 @@ import type { ContextWindowSnapshot } from "../../lib/contextWindow";
 import {
   formatProviderSkillDisplayName,
   formatProviderSkillInsertion,
-  providerSkillInsertionSigil,
+  resolveProviderSkillInsertionSigil,
   getProviderSlashCommandsForSlashMenu,
   getProviderSkillsForSlashMenu,
 } from "@t3tools/client-runtime/providerSkills";
@@ -1117,7 +1117,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // Derived: composer trigger / menu
   // ------------------------------------------------------------------
   const composerTriggerKind = composerTrigger?.kind ?? null;
-  const composerSkillSigil = providerSkillInsertionSigil(composerTrigger);
   const pathTriggerQuery = composerTrigger?.kind === "path" ? composerTrigger.query : "";
   const isPathTrigger = composerTriggerKind === "path";
   const workspaceEntries = useComposerPathSearch({
@@ -1191,6 +1190,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         type: "skill" as const,
         provider: selectedProvider,
         skill,
+        insertionSigil: resolveProviderSkillInsertionSigil(skill, composerTrigger),
         label: `/skill:${skill.name}`,
         description:
           skill.shortDescription ??
@@ -1211,6 +1211,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           type: "skill" as const,
           provider: selectedProvider,
           skill,
+          insertionSigil: "$" as const,
           label: formatProviderSkillDisplayName(skill),
           description:
             skill.shortDescription ??
@@ -1865,7 +1866,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return;
       }
       if (item.type === "skill") {
-        const replacement = formatProviderSkillInsertion(item.skill.name, trigger);
+        const replacement = formatProviderSkillInsertion(item.skill.name, item.insertionSigil);
         const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
           snapshot.value,
           trigger.rangeEnd,
@@ -3214,7 +3215,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     resolvedTheme={resolvedTheme}
                     isLoading={isComposerMenuLoading}
                     triggerKind={composerTriggerKind}
-                    skillInsertionSigil={composerSkillSigil}
                     emptyStateText={composerMenuEmptyState}
                     activeItemId={activeComposerMenuItem?.id ?? null}
                     onHighlightedItemChange={onComposerMenuItemHighlighted}

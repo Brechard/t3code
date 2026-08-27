@@ -33,17 +33,28 @@ export function formatProviderSkillDisplayName(
  * reaches the agent. So the syntax follows the trigger and its position, not
  * the menu the user happened to open.
  */
-export function providerSkillInsertionSigil(
+export type ProviderSkillInsertionSigil = "/" | "$";
+
+/**
+ * Which syntax a picked skill should be spelled with. `$name` is the portable
+ * form: every provider forwards it verbatim and the agent starts the skill from
+ * its own tool, and it is the only form the composer renders as a skill chip.
+ * `/name` depends on the CLI expanding it, which it does only at the start of a
+ * message — so it is reserved for the skills a mention provably cannot reach.
+ */
+export function resolveProviderSkillInsertionSigil(
+  skill: Pick<ServerProviderSkill, "userInvocationOnly">,
   trigger: Pick<ComposerTrigger, "kind" | "rangeStart"> | null,
-): "/" | "$" {
-  return trigger?.kind === "slash-command" && trigger.rangeStart === 0 ? "/" : "$";
+): ProviderSkillInsertionSigil {
+  const opensMessage = trigger?.kind === "slash-command" && trigger.rangeStart === 0;
+  return opensMessage && skill.userInvocationOnly === true ? "/" : "$";
 }
 
 export function formatProviderSkillInsertion(
   skillName: string,
-  trigger: Pick<ComposerTrigger, "kind" | "rangeStart">,
+  sigil: ProviderSkillInsertionSigil,
 ): string {
-  return `${providerSkillInsertionSigil(trigger)}${skillName} `;
+  return `${sigil}${skillName} `;
 }
 
 /**

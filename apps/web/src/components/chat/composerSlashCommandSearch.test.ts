@@ -74,6 +74,7 @@ describe("searchSlashCommandItems", () => {
       {
         id: "skill:claudeAgent:browser",
         type: "skill",
+        insertionSigil: "$" as const,
         provider: claudeDriver,
         skill: {
           name: "browser",
@@ -99,6 +100,7 @@ describe("searchSlashCommandItems", () => {
       {
         id: "skill:claudeAgent:ask-matt",
         type: "skill",
+        insertionSigil: "$" as const,
         provider: claudeDriver,
         skill: {
           name: "ask-matt",
@@ -125,6 +127,7 @@ describe("searchSlashCommandItems", () => {
       {
         id: "skill:claudeAgent:browser",
         type: "skill",
+        insertionSigil: "$" as const,
         provider: claudeDriver,
         skill: {
           name: "browser",
@@ -157,6 +160,7 @@ describe("searchSlashCommandItems", () => {
       {
         id: "skill:claudeAgent:unslop",
         type: "skill",
+        insertionSigil: "$" as const,
         provider: claudeDriver,
         skill: {
           name: "unslop",
