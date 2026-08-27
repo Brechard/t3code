@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { detectComposerTrigger } from "@t3tools/shared/composerTrigger";
+
 import {
   formatProviderSkillDisplayName,
   formatProviderSkillInsertion,
@@ -16,6 +18,22 @@ describe("formatProviderSkillInsertion", () => {
     expect(formatProviderSkillInsertion("re-release-version", "skill")).toBe(
       "$re-release-version ",
     );
+  });
+
+  it("keeps a slash-triggered skill runnable end to end", () => {
+    const typed = "/re-release-version";
+    const trigger = detectComposerTrigger(typed, typed.length);
+    expect(trigger?.kind).toBe("slash-command");
+    expect(formatProviderSkillInsertion("re-release-version", trigger?.kind ?? "skill")).toBe(
+      "/re-release-version ",
+    );
+
+    const mentioned = "$re-release-version";
+    const mentionTrigger = detectComposerTrigger(mentioned, mentioned.length);
+    expect(mentionTrigger?.kind).toBe("skill");
+    expect(
+      formatProviderSkillInsertion("re-release-version", mentionTrigger?.kind ?? "skill"),
+    ).toBe("$re-release-version ");
   });
 });
 
@@ -45,9 +63,18 @@ describe("getProviderSkillsForSlashMenu", () => {
       path: "/Users/matt/.agents/skills/ask-matt/SKILL.md",
       enabled: true,
     };
-    expect(getProviderSkillsForSlashMenu([askMatt], true).map((skill) => skill.name)).toEqual([
+    expect(getProviderSkillsForSlashMenu([askMatt], true, 0).map((skill) => skill.name)).toEqual([
       "ask-matt",
     ]);
+  });
+
+  it("offers nothing when the trigger does not open the message", () => {
+    const askMatt = {
+      name: "ask-matt",
+      path: "/Users/matt/.agents/skills/ask-matt/SKILL.md",
+      enabled: true,
+    };
+    expect(getProviderSkillsForSlashMenu([askMatt], true, 6)).toEqual([]);
   });
 });
 
@@ -71,7 +98,7 @@ describe("getProviderSlashCommandsForSlashMenu", () => {
   });
 
   it("keeps the provider command when the matching skill alias is hidden", () => {
-    const visibleSkills = getProviderSkillsForSlashMenu(skills, false);
+    const visibleSkills = getProviderSkillsForSlashMenu(skills, false, 0);
 
     expect(
       getProviderSlashCommandsForSlashMenu(commands, visibleSkills).map((command) => command.name),

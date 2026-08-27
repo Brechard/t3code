@@ -440,7 +440,9 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         });
       }
 
-      const skillItems = (selectedProviderStatus?.skills ?? [])
+      const skillItems = (
+        composerTrigger.rangeStart === 0 ? (selectedProviderStatus?.skills ?? []) : []
+      )
         .filter((skill) => matchesSlashSkillQuery(skill, q))
         .map((skill) => ({
           id: `skill:${skill.name}`,
@@ -610,10 +612,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       if (item.type === "path") {
         replacement = `${serializeComposerFileLink(item.path)} `;
       } else if (item.type === "skill") {
-        replacement = formatProviderSkillInsertion(
-          item.skill.name,
-          composerTrigger.kind === "slash-command" ? "slash-command" : "skill",
-        );
+        replacement = formatProviderSkillInsertion(item.skill.name, composerTrigger.kind);
       } else if (item.type === "slash-command") {
         replacement = `/${item.command} `;
       } else if (item.type === "provider-slash-command") {

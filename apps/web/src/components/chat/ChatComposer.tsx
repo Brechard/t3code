@@ -1170,6 +1170,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       const slashMenuSkills = getProviderSkillsForSlashMenu(
         selectedProviderStatus?.skills ?? [],
         settings.showSkillsInSlashMenu,
+        composerTrigger.rangeStart,
       );
       const providerSlashCommandItems = getProviderSlashCommandsForSlashMenu(
         composerTrigger.rangeStart === 0 ? (selectedProviderStatus?.slashCommands ?? []) : [],
@@ -1862,10 +1863,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return;
       }
       if (item.type === "skill") {
-        const replacement = formatProviderSkillInsertion(
-          item.skill.name,
-          trigger.kind === "slash-command" ? "slash-command" : "skill",
-        );
+        const replacement = formatProviderSkillInsertion(item.skill.name, trigger.kind);
         const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
           snapshot.value,
           trigger.rangeEnd,

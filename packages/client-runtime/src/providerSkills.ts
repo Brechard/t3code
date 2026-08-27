@@ -1,4 +1,5 @@
 import type { ServerProviderSkill, ServerProviderSlashCommand } from "@t3tools/contracts";
+import type { ComposerTriggerKind } from "@t3tools/shared/composerTrigger";
 
 export type ProviderSkillSourceKind = "app" | "repo" | "project" | "personal" | "system" | "other";
 
@@ -25,9 +26,15 @@ export function formatProviderSkillDisplayName(
   return titleCaseWords(skill.name);
 }
 
+/**
+ * How the composer should spell a picked skill. The `/` menu and the `$`
+ * mention menu offer the same skills, but only `/name` starts a skill the
+ * agent is not allowed to invoke itself, so the syntax has to follow the
+ * trigger the user actually typed.
+ */
 export function formatProviderSkillInsertion(
   skillName: string,
-  triggerKind: "slash-command" | "skill",
+  triggerKind: ComposerTriggerKind,
 ): string {
   return `${triggerKind === "slash-command" ? "/" : "$"}${skillName} `;
 }
@@ -44,11 +51,18 @@ export function isProviderSkillMentionable(
   return skill.enabled && skill.userInvocationOnly !== true;
 }
 
+/**
+ * Skills the `/` menu may offer. Like a provider slash command, `/name` only
+ * starts a skill when it opens the message, so a trigger further in offers
+ * nothing rather than an insertion that would arrive as literal text.
+ */
 export function getProviderSkillsForSlashMenu(
   skills: ReadonlyArray<ServerProviderSkill>,
   showSkillsInSlashMenu: boolean,
+  triggerRangeStart: number,
 ): ServerProviderSkill[] {
-  return showSkillsInSlashMenu ? skills.filter((skill) => skill.enabled) : [];
+  if (!showSkillsInSlashMenu || triggerRangeStart !== 0) return [];
+  return skills.filter((skill) => skill.enabled);
 }
 
 export function getProviderSlashCommandsForSlashMenu(
