@@ -270,6 +270,7 @@ import type { ContextWindowSnapshot } from "../../lib/contextWindow";
 import {
   formatProviderSkillDisplayName,
   formatProviderSkillInsertion,
+  providerSkillInsertionSigil,
   getProviderSlashCommandsForSlashMenu,
   getProviderSkillsForSlashMenu,
 } from "@t3tools/client-runtime/providerSkills";
@@ -1116,6 +1117,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // Derived: composer trigger / menu
   // ------------------------------------------------------------------
   const composerTriggerKind = composerTrigger?.kind ?? null;
+  const composerSkillSigil = providerSkillInsertionSigil(composerTrigger);
   const pathTriggerQuery = composerTrigger?.kind === "path" ? composerTrigger.query : "";
   const isPathTrigger = composerTriggerKind === "path";
   const workspaceEntries = useComposerPathSearch({
@@ -3212,6 +3214,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     resolvedTheme={resolvedTheme}
                     isLoading={isComposerMenuLoading}
                     triggerKind={composerTriggerKind}
+                    skillInsertionSigil={composerSkillSigil}
                     emptyStateText={composerMenuEmptyState}
                     activeItemId={activeComposerMenuItem?.id ?? null}
                     onHighlightedItemChange={onComposerMenuItemHighlighted}

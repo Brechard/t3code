@@ -63,6 +63,8 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   resolvedTheme: "light" | "dark";
   isLoading: boolean;
   triggerKind: ComposerTriggerKind | null;
+  /** Sigil a skill pick will insert, so the row cannot promise the wrong one. */
+  skillInsertionSigil: "/" | "$";
   emptyStateText?: string;
   activeItemId: string | null;
   onHighlightedItemChange: (itemId: string | null) => void;
@@ -101,6 +103,7 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
                   key={item.id}
                   item={item}
                   triggerKind={props.triggerKind}
+                  skillInsertionSigil={props.skillInsertionSigil}
                   resolvedTheme={props.resolvedTheme}
                   isActive={props.activeItemId === item.id}
                   onHighlight={props.onHighlightedItemChange}
@@ -133,6 +136,8 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
 const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
   item: ComposerCommandItem;
   triggerKind: ComposerTriggerKind | null;
+  /** Sigil a skill pick will insert, so the row cannot promise the wrong one. */
+  skillInsertionSigil: "/" | "$";
   resolvedTheme: "light" | "dark";
   isActive: boolean;
   onHighlight: (itemId: string | null) => void;
@@ -172,7 +177,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         <span className="min-w-0 max-w-[45%] shrink-0 truncate font-sans text-xs font-medium">
           {isSlashSkill ? (
             <>
-              <span className="text-secondary-label">/skill:</span>
+              <span className="text-secondary-label">
+                {props.skillInsertionSigil === "/" ? "/skill:" : "$"}
+              </span>
               {formatProviderSkillDisplayName(isSlashSkill)}
             </>
           ) : (

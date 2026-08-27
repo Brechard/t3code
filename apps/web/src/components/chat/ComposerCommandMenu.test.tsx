@@ -12,6 +12,7 @@ describe("ComposerCommandMenu", () => {
         resolvedTheme="dark"
         isLoading={false}
         triggerKind="slash-command"
+        skillInsertionSigil={"/"}
         activeItemId={null}
         onHighlightedItemChange={() => {}}
         onSelect={() => {}}
@@ -39,6 +40,7 @@ describe("ComposerCommandMenu", () => {
         resolvedTheme="dark"
         isLoading={false}
         triggerKind="slash-command"
+        skillInsertionSigil={"/"}
         activeItemId="slash:model"
         onHighlightedItemChange={() => {}}
         onSelect={() => {}}
@@ -77,6 +79,7 @@ describe("ComposerCommandMenu", () => {
         resolvedTheme="dark"
         isLoading={false}
         triggerKind="skill"
+        skillInsertionSigil={"$"}
         activeItemId="skill:codex:browser"
         onHighlightedItemChange={() => {}}
         onSelect={() => {}}
@@ -120,6 +123,7 @@ describe("ComposerCommandMenu", () => {
         resolvedTheme="dark"
         isLoading={false}
         triggerKind="slash-command"
+        skillInsertionSigil={"/"}
         activeItemId="skill:codex:ask-matt"
         onHighlightedItemChange={() => {}}
         onSelect={() => {}}
@@ -132,5 +136,38 @@ describe("ComposerCommandMenu", () => {
     expect(markup).toContain(">Repo</span>");
     expect(markup).toContain("Find the right skill or workflow");
     expect(markup).not.toContain("font-medium text-secondary-label");
+  });
+
+  it("labels a slash-menu skill with the sigil its pick will insert", () => {
+    const skillItem = {
+      id: "skill:claudeAgent:re-release-version",
+      type: "skill" as const,
+      provider: ProviderDriverKind.make("claudeAgent"),
+      skill: {
+        name: "re-release-version",
+        path: "/skills/re-release-version/SKILL.md",
+        enabled: true,
+      },
+      label: "/skill:re-release-version",
+      description: "Re-release the current version",
+    };
+    const render = (sigil: "/" | "$") =>
+      renderToStaticMarkup(
+        <ComposerCommandMenu
+          items={[skillItem]}
+          resolvedTheme="dark"
+          isLoading={false}
+          triggerKind="slash-command"
+          skillInsertionSigil={sigil}
+          activeItemId={skillItem.id}
+          onHighlightedItemChange={() => {}}
+          onSelect={() => {}}
+        />,
+      );
+
+    expect(render("/")).toContain("/skill:");
+    const mentionMarkup = render("$");
+    expect(mentionMarkup).toContain("$");
+    expect(mentionMarkup).not.toContain("/skill:");
   });
 });

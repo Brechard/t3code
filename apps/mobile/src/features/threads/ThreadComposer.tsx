@@ -67,6 +67,7 @@ import {
 import {
   formatProviderSkillInsertion,
   isProviderSkillMentionable,
+  providerSkillInsertionSigil,
 } from "@t3tools/client-runtime/providerSkills";
 import { resolveProviderOptionDescriptors } from "../../lib/providerOptions";
 import { useComposerPathSearch } from "../../state/use-composer-path-search";
@@ -453,7 +454,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
           id: `skill:${skill.name}`,
           type: "skill" as const,
           skill,
-          label: `skill:${skill.name}`,
+          label:
+            providerSkillInsertionSigil(composerTrigger) === "/"
+              ? `skill:${skill.name}`
+              : `$${skill.name}`,
           description: skill.shortDescription ?? skill.description ?? "",
         }));
 

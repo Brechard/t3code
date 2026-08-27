@@ -33,12 +33,17 @@ export function formatProviderSkillDisplayName(
  * reaches the agent. So the syntax follows the trigger and its position, not
  * the menu the user happened to open.
  */
+export function providerSkillInsertionSigil(
+  trigger: Pick<ComposerTrigger, "kind" | "rangeStart"> | null,
+): "/" | "$" {
+  return trigger?.kind === "slash-command" && trigger.rangeStart === 0 ? "/" : "$";
+}
+
 export function formatProviderSkillInsertion(
   skillName: string,
   trigger: Pick<ComposerTrigger, "kind" | "rangeStart">,
 ): string {
-  const startsMessage = trigger.kind === "slash-command" && trigger.rangeStart === 0;
-  return `${startsMessage ? "/" : "$"}${skillName} `;
+  return `${providerSkillInsertionSigil(trigger)}${skillName} `;
 }
 
 /**
