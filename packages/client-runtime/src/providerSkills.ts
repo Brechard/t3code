@@ -1,4 +1,4 @@
-import type { ServerProviderSkill } from "@t3tools/contracts";
+import type { ServerProviderSkill, ServerProviderSlashCommand } from "@t3tools/contracts";
 
 export type ProviderSkillSourceKind = "app" | "repo" | "project" | "personal" | "system" | "other";
 
@@ -25,6 +25,13 @@ export function formatProviderSkillDisplayName(
   return titleCaseWords(skill.name);
 }
 
+export function formatProviderSkillInsertion(
+  skillName: string,
+  triggerKind: "slash-command" | "skill",
+): string {
+  return `${triggerKind === "slash-command" ? "/" : "$"}${skillName} `;
+}
+
 /**
  * Whether a `$` mention can actually start this skill. A skill the user
  * switched off is gone, and a user-invocation-only skill is hidden from the
@@ -35,6 +42,21 @@ export function isProviderSkillMentionable(
   skill: Pick<ServerProviderSkill, "enabled" | "userInvocationOnly">,
 ): boolean {
   return skill.enabled && skill.userInvocationOnly !== true;
+}
+
+export function getProviderSkillsForSlashMenu(
+  skills: ReadonlyArray<ServerProviderSkill>,
+  showSkillsInSlashMenu: boolean,
+): ServerProviderSkill[] {
+  return showSkillsInSlashMenu ? skills.filter((skill) => skill.enabled) : [];
+}
+
+export function getProviderSlashCommandsForSlashMenu(
+  slashCommands: ReadonlyArray<ServerProviderSlashCommand>,
+  visibleSkills: ReadonlyArray<ServerProviderSkill>,
+): ServerProviderSlashCommand[] {
+  const skillNames = new Set(visibleSkills.map((skill) => skill.name.trim().toLowerCase()));
+  return slashCommands.filter((command) => !skillNames.has(command.name.trim().toLowerCase()));
 }
 
 export function resolveProviderSkillSourceKind(

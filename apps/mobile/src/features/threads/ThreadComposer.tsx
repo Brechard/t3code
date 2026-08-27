@@ -64,10 +64,14 @@ import {
   normalizeSearchQuery,
   scoreQueryMatch,
 } from "@t3tools/shared/searchRanking";
-import { isProviderSkillMentionable } from "@t3tools/client-runtime/providerSkills";
+import {
+  formatProviderSkillInsertion,
+  isProviderSkillMentionable,
+} from "@t3tools/client-runtime/providerSkills";
 import { resolveProviderOptionDescriptors } from "../../lib/providerOptions";
 import { useComposerPathSearch } from "../../state/use-composer-path-search";
 import { ComposerCommandPopover, type ComposerCommandItem } from "./ComposerCommandPopover";
+import { matchesSlashSkillQuery } from "./composerSlashSkillSearch";
 import {
   type ExistingThreadSettingsRouteSession,
   useExistingThreadSettingsRoutePresentation,
@@ -436,7 +440,17 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         });
       }
 
-      return [...builtIn, ...providerCommands];
+      const skillItems = (selectedProviderStatus?.skills ?? [])
+        .filter((skill) => matchesSlashSkillQuery(skill, q))
+        .map((skill) => ({
+          id: `skill:${skill.name}`,
+          type: "skill" as const,
+          skill,
+          label: `skill:${skill.name}`,
+          description: skill.shortDescription ?? skill.description ?? "",
+        }));
+
+      return [...builtIn, ...providerCommands, ...skillItems];
     }
 
     if (composerTrigger.kind === "skill") {
@@ -549,7 +563,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     if (inFlightThreadIdsRef.current.has(threadKey)) return;
     inFlightThreadIdsRef.current.add(threadKey);
     try {
-      await onSendMessage();
+      const messageId = await onSendMessage();
+      if (messageId === null) {
+        return;
+      }
       // Sending a prompt starts agent work: arm the lock-screen card while the
       // app is foregrounded and the activity token can be registered. Armed
       // after the send so its preference read and native Activity start don't
@@ -593,7 +610,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       if (item.type === "path") {
         replacement = `${serializeComposerFileLink(item.path)} `;
       } else if (item.type === "skill") {
-        replacement = `$${item.skill.name} `;
+        replacement = formatProviderSkillInsertion(
+          item.skill.name,
+          composerTrigger.kind === "slash-command" ? "slash-command" : "skill",
+        );
       } else if (item.type === "slash-command") {
         replacement = `/${item.command} `;
       } else if (item.type === "provider-slash-command") {
