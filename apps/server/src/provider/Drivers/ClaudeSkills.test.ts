@@ -495,6 +495,101 @@ it.layer(NodeServices.layer)("discoverClaudeSkills", (it) => {
     }),
   );
 
+  it.effect("identifies a skill by its directory, as Claude Code does", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-claude-skills-" });
+      const configDir = path.join(tempDir, "claude-home");
+
+      yield* writeSkill(
+        path.join(configDir, "skills"),
+        "probe-alias",
+        ["---", "name: probe-alias-frontmatter", "---", "", "# Body"].join("\n"),
+      );
+      yield* fs.writeFileString(
+        path.join(configDir, "settings.json"),
+        '{ "skillOverrides": { "probe-alias-frontmatter": "off" } }',
+      );
+
+      const skills = yield* discoverClaudeSkills({ homePath: configDir });
+
+      // The frontmatter name is not the command, so an override naming it is
+      // not the override Claude Code would apply either.
+      assert.deepEqual(
+        skills.map((skill) => [skill.name, skill.enabled]),
+        [["probe-alias", true]],
+      );
+    }),
+  );
+
+  it.effect("switches a skill off by its directory name", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-claude-skills-" });
+      const configDir = path.join(tempDir, "claude-home");
+
+      yield* writeSkill(
+        path.join(configDir, "skills"),
+        "probe-alias",
+        ["---", "name: probe-alias-frontmatter", "---", "", "# Body"].join("\n"),
+      );
+      yield* fs.writeFileString(
+        path.join(configDir, "settings.json"),
+        '{ "skillOverrides": { "probe-alias": "off" } }',
+      );
+
+      const skills = yield* discoverClaudeSkills({ homePath: configDir });
+
+      assert.deepEqual(
+        skills.map((skill) => [skill.name, skill.enabled]),
+        [["probe-alias", false]],
+      );
+    }),
+  );
+
+  it.effect("accepts the YAML 1.1 boolean spellings Claude Code allows", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-claude-skills-" });
+      const configDir = path.join(tempDir, "claude-home");
+      const skillsDir = path.join(configDir, "skills");
+
+      yield* writeSkill(
+        skillsDir,
+        "user-only-yes",
+        ["---", "disable-model-invocation: yes", "---", "", "# Body"].join("\n"),
+      );
+      yield* writeSkill(
+        skillsDir,
+        "agent-only-no",
+        ["---", "user-invocable: no", "---", "", "# Body"].join("\n"),
+      );
+      yield* writeSkill(
+        skillsDir,
+        "plain-off",
+        ["---", "disable-model-invocation: off", "---", "", "# Body"].join("\n"),
+      );
+
+      const skills = yield* discoverClaudeSkills({ homePath: configDir });
+
+      assert.deepEqual(
+        skills.map((skill) => [
+          skill.name,
+          skill.userInvocationOnly === true,
+          skill.userInvocable === false,
+        ]),
+        [
+          ["agent-only-no", false, true],
+          ["plain-off", false, false],
+          ["user-only-yes", true, false],
+        ],
+      );
+    }),
+  );
+
   it.effect("returns an empty list when no skill roots exist", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

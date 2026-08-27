@@ -33,11 +33,39 @@ type SkillFrontmatter =
   | { readonly kind: "malformed" }
   | {
       readonly kind: "parsed";
-      readonly name?: string;
       readonly description?: string;
       readonly userInvocationOnly?: boolean;
       readonly userInvocable?: boolean;
     };
+
+/**
+ * Claude Code accepts the YAML 1.1 boolean spellings (`yes`/`no`, `on`/`off`,
+ * `1`/`0`), which the 1.2 core schema this parser uses leaves as strings and
+ * numbers. Verified against the CLI: a skill carrying `user-invocable: no` is
+ * absent from its published slash commands, so a strict `=== false` here would
+ * offer a command the CLI rejects.
+ */
+function parseFrontmatterBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    return value === 1 ? true : value === 0 ? false : undefined;
+  }
+  if (typeof value !== "string") return undefined;
+  switch (value.trim().toLowerCase()) {
+    case "true":
+    case "yes":
+    case "on":
+    case "y":
+      return true;
+    case "false":
+    case "no":
+    case "off":
+    case "n":
+      return false;
+    default:
+      return undefined;
+  }
+}
 
 function parseSkillFrontmatter(contents: string): SkillFrontmatter {
   const match = FRONTMATTER_PATTERN.exec(contents);
@@ -56,14 +84,16 @@ function parseSkillFrontmatter(contents: string): SkillFrontmatter {
   }
 
   const record = parsed as Record<string, unknown>;
-  const name = typeof record.name === "string" ? record.name.trim() : "";
   const description = typeof record.description === "string" ? record.description.trim() : "";
   return {
     kind: "parsed",
-    ...(name ? { name } : {}),
     ...(description ? { description } : {}),
-    ...(record["disable-model-invocation"] === true ? { userInvocationOnly: true } : {}),
-    ...(record["user-invocable"] === false ? { userInvocable: false } : {}),
+    ...(parseFrontmatterBoolean(record["disable-model-invocation"]) === true
+      ? { userInvocationOnly: true }
+      : {}),
+    ...(parseFrontmatterBoolean(record["user-invocable"]) === false
+      ? { userInvocable: false }
+      : {}),
   };
 }
 
@@ -270,7 +300,13 @@ export const discoverClaudeSkills = Effect.fn("discoverClaudeSkills")(function* 
         continue;
       }
 
-      const name = (frontmatter.kind === "parsed" ? frontmatter.name : undefined) ?? entry.trim();
+      // Claude Code identifies a skill by its directory, not by the
+      // frontmatter `name`: verified against the CLI, a skill in `probe-alias/`
+      // declaring `name: probe-alias-frontmatter` is published as
+      // `probe-alias`, and only `skillOverrides["probe-alias"]` switches it
+      // off. Keying off the frontmatter name would report a command that does
+      // not exist and miss the override that disables it.
+      const name = entry.trim();
       if (!name) {
         continue;
       }
