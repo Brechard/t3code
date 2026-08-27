@@ -66,6 +66,7 @@ import {
 } from "@t3tools/shared/searchRanking";
 import {
   formatProviderSkillInsertion,
+  getProviderSkillsForSlashMenu,
   isProviderSkillMentionable,
   resolveProviderSkillInsertionSigil,
 } from "@t3tools/client-runtime/providerSkills";
@@ -441,15 +442,13 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         });
       }
 
-      const providerSkills = (selectedProviderStatus?.skills ?? []).filter(
-        (skill) => skill.enabled,
-      );
-      // Past the start of the message the pick becomes a `$` mention, so only
-      // skills a mention can reach are worth offering there.
-      const skillItems = (
-        composerTrigger.rangeStart === 0
-          ? providerSkills
-          : providerSkills.filter(isProviderSkillMentionable)
+      // Shared with web so the two cannot drift: drops skills switched off or
+      // kept out of the provider's slash commands, and past the start of the
+      // message narrows to the ones a `$` mention can still reach.
+      const skillItems = getProviderSkillsForSlashMenu(
+        selectedProviderStatus?.skills ?? [],
+        true,
+        composerTrigger.rangeStart,
       )
         .filter((skill) => matchesSlashSkillQuery(skill, q))
         .map((skill) => ({
