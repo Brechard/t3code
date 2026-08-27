@@ -128,7 +128,11 @@ describe("ComposerCommandMenu", () => {
       />,
     );
 
-    expect(markup).toContain('<span class="text-secondary-label">/skill:</span>Ask Matt');
+    expect(markup).toContain('<span class="text-secondary-label">/</span>ask-matt');
+    // The row spells the command the provider expands, so it cannot teach a
+    // prettified name or a `skill:` prefix that the insertion never produces.
+    expect(markup).not.toContain("/skill:");
+    expect(markup).not.toContain("Ask Matt");
     expect(markup).toContain('data-slot="badge"');
     expect(markup).toContain("lucide-folder");
     expect(markup).toContain(">Repo</span>");
@@ -162,9 +166,7 @@ describe("ComposerCommandMenu", () => {
         />,
       );
 
-    expect(render("/")).toContain("/skill:");
-    const mentionMarkup = render("$");
-    expect(mentionMarkup).toContain("$");
-    expect(mentionMarkup).not.toContain("/skill:");
+    expect(render("/")).toContain('<span class="text-secondary-label">/</span>re-release-version');
+    expect(render("$")).toContain('<span class="text-secondary-label">$</span>re-release-version');
   });
 });

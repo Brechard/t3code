@@ -1,5 +1,4 @@
 import {
-  formatProviderSkillDisplayName,
   resolveProviderSkillSourceKind,
   type ProviderSkillInsertionSigil,
   type ProviderSkillSourceKind,
@@ -175,10 +174,8 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         <span className="min-w-0 max-w-[45%] shrink-0 truncate font-sans text-xs font-medium">
           {isSlashSkill ? (
             <>
-              <span className="text-secondary-label">
-                {isSlashSkill.insertionSigil === "/" ? "/skill:" : "$"}
-              </span>
-              {formatProviderSkillDisplayName(isSlashSkill.skill)}
+              <span className="text-secondary-label">{isSlashSkill.insertionSigil}</span>
+              {isSlashSkill.skill.name}
             </>
           ) : (
             props.item.label

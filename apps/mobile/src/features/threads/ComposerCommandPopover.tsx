@@ -150,9 +150,7 @@ const CommandRow = memo(function CommandRow(props: {
       <Text className="shrink-0 text-base font-t3-medium text-foreground" numberOfLines={1}>
         {props.isSlashSkill && props.item.type === "skill" ? (
           <>
-            <Text className="text-foreground-muted">
-              {props.item.insertionSigil === "/" ? "skill:" : "$"}
-            </Text>
+            <Text className="text-foreground-muted">{props.item.insertionSigil}</Text>
             {props.item.skill.name}
           </>
         ) : (
