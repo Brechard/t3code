@@ -440,8 +440,13 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         });
       }
 
+      const providerSkills = selectedProviderStatus?.skills ?? [];
+      // Past the start of the message the pick becomes a `$` mention, so only
+      // skills a mention can reach are worth offering there.
       const skillItems = (
-        composerTrigger.rangeStart === 0 ? (selectedProviderStatus?.skills ?? []) : []
+        composerTrigger.rangeStart === 0
+          ? providerSkills
+          : providerSkills.filter(isProviderSkillMentionable)
       )
         .filter((skill) => matchesSlashSkillQuery(skill, q))
         .map((skill) => ({
@@ -612,7 +617,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       if (item.type === "path") {
         replacement = `${serializeComposerFileLink(item.path)} `;
       } else if (item.type === "skill") {
-        replacement = formatProviderSkillInsertion(item.skill.name, composerTrigger.kind);
+        replacement = formatProviderSkillInsertion(item.skill.name, composerTrigger);
       } else if (item.type === "slash-command") {
         replacement = `/${item.command} `;
       } else if (item.type === "provider-slash-command") {

@@ -1,5 +1,5 @@
 import type { ServerProviderSkill, ServerProviderSlashCommand } from "@t3tools/contracts";
-import type { ComposerTriggerKind } from "@t3tools/shared/composerTrigger";
+import type { ComposerTrigger } from "@t3tools/shared/composerTrigger";
 
 export type ProviderSkillSourceKind = "app" | "repo" | "project" | "personal" | "system" | "other";
 
@@ -27,16 +27,18 @@ export function formatProviderSkillDisplayName(
 }
 
 /**
- * How the composer should spell a picked skill. The `/` menu and the `$`
- * mention menu offer the same skills, but only `/name` starts a skill the
- * agent is not allowed to invoke itself, so the syntax has to follow the
- * trigger the user actually typed.
+ * How the composer should spell a picked skill. `/name` is the only syntax that
+ * starts a skill the agent may not invoke itself, but the provider CLI expands
+ * it only when it opens the message; anywhere else `$name` is what actually
+ * reaches the agent. So the syntax follows the trigger and its position, not
+ * the menu the user happened to open.
  */
 export function formatProviderSkillInsertion(
   skillName: string,
-  triggerKind: ComposerTriggerKind,
+  trigger: Pick<ComposerTrigger, "kind" | "rangeStart">,
 ): string {
-  return `${triggerKind === "slash-command" ? "/" : "$"}${skillName} `;
+  const startsMessage = trigger.kind === "slash-command" && trigger.rangeStart === 0;
+  return `${startsMessage ? "/" : "$"}${skillName} `;
 }
 
 /**
@@ -52,17 +54,20 @@ export function isProviderSkillMentionable(
 }
 
 /**
- * Skills the `/` menu may offer. Like a provider slash command, `/name` only
- * starts a skill when it opens the message, so a trigger further in offers
- * nothing rather than an insertion that would arrive as literal text.
+ * Skills the `/` menu may offer. A trigger that opens the message can start any
+ * enabled skill. Further in, the pick becomes a `$` mention, so only skills a
+ * mention can actually reach are worth offering — listing a user-invocation-only
+ * skill there would promise something neither syntax delivers.
  */
 export function getProviderSkillsForSlashMenu(
   skills: ReadonlyArray<ServerProviderSkill>,
   showSkillsInSlashMenu: boolean,
   triggerRangeStart: number,
 ): ServerProviderSkill[] {
-  if (!showSkillsInSlashMenu || triggerRangeStart !== 0) return [];
-  return skills.filter((skill) => skill.enabled);
+  if (!showSkillsInSlashMenu) return [];
+  return triggerRangeStart === 0
+    ? skills.filter((skill) => skill.enabled)
+    : skills.filter(isProviderSkillMentionable);
 }
 
 export function getProviderSlashCommandsForSlashMenu(

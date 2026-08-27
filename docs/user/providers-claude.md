@@ -63,10 +63,13 @@ commands and runs the one you choose.
 
 Some skills are marked to run only when you ask for them. Those never appear in
 the `$` menu, because a mention leaves the choice to the agent and the agent
-cannot see them — pick them from the `/` menu instead.
+cannot see them — pick them from the `/` menu at the start of a message instead.
 
-Provider slash commands only work at the start of a message. T3 Code's local
-commands, such as `/model` and `/plan`, remain available later in a message.
+Provider slash commands only work at the start of a message. Later in a message
+the `/` menu still lists skills, and picking one drops in a `$` mention, which
+is what reaches the agent there. A skill that only runs when you ask for it is
+left out, since neither syntax can start it that far in. T3 Code's local
+commands, such as `/model` and `/plan`, remain available anywhere.
 
 ## I Want Work And Personal Claude Accounts
 

@@ -1863,7 +1863,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return;
       }
       if (item.type === "skill") {
-        const replacement = formatProviderSkillInsertion(item.skill.name, trigger.kind);
+        const replacement = formatProviderSkillInsertion(item.skill.name, trigger);
         const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
           snapshot.value,
           trigger.rangeEnd,

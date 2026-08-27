@@ -10,30 +10,35 @@ import {
   resolveProviderSkillSourceKind,
 } from "./providerSkills.ts";
 
+const insertionFor = (text: string) => {
+  const trigger = detectComposerTrigger(text, text.length);
+  if (!trigger) throw new Error(`no trigger for ${JSON.stringify(text)}`);
+  return {
+    kind: trigger.kind,
+    insertion: formatProviderSkillInsertion("re-release-version", trigger),
+  };
+};
+
 describe("formatProviderSkillInsertion", () => {
-  it("preserves the invocation syntax chosen by the user", () => {
-    expect(formatProviderSkillInsertion("re-release-version", "slash-command")).toBe(
-      "/re-release-version ",
-    );
-    expect(formatProviderSkillInsertion("re-release-version", "skill")).toBe(
-      "$re-release-version ",
-    );
+  it("spells a message-opening slash pick as a slash command", () => {
+    expect(insertionFor("/re-release-version")).toEqual({
+      kind: "slash-command",
+      insertion: "/re-release-version ",
+    });
   });
 
-  it("keeps a slash-triggered skill runnable end to end", () => {
-    const typed = "/re-release-version";
-    const trigger = detectComposerTrigger(typed, typed.length);
-    expect(trigger?.kind).toBe("slash-command");
-    expect(formatProviderSkillInsertion("re-release-version", trigger?.kind ?? "skill")).toBe(
-      "/re-release-version ",
-    );
+  it("spells a mention pick as a mention", () => {
+    expect(insertionFor("$re-release-version")).toEqual({
+      kind: "skill",
+      insertion: "$re-release-version ",
+    });
+  });
 
-    const mentioned = "$re-release-version";
-    const mentionTrigger = detectComposerTrigger(mentioned, mentioned.length);
-    expect(mentionTrigger?.kind).toBe("skill");
-    expect(
-      formatProviderSkillInsertion("re-release-version", mentionTrigger?.kind ?? "skill"),
-    ).toBe("$re-release-version ");
+  it("falls back to a mention on a later line, where the CLI would not expand a slash", () => {
+    expect(insertionFor("ship it\n/re-release-version")).toEqual({
+      kind: "slash-command",
+      insertion: "$re-release-version ",
+    });
   });
 });
 
@@ -68,13 +73,26 @@ describe("getProviderSkillsForSlashMenu", () => {
     ]);
   });
 
-  it("offers nothing when the trigger does not open the message", () => {
+  it("keeps offering mentionable skills once the trigger no longer opens the message", () => {
     const askMatt = {
       name: "ask-matt",
       path: "/Users/matt/.agents/skills/ask-matt/SKILL.md",
       enabled: true,
     };
-    expect(getProviderSkillsForSlashMenu([askMatt], true, 6)).toEqual([]);
+    const userOnly = {
+      name: "re-release-version",
+      path: "/Users/matt/.agents/skills/re-release-version/SKILL.md",
+      enabled: true,
+      userInvocationOnly: true,
+    };
+
+    expect(getProviderSkillsForSlashMenu([askMatt, userOnly], true, 0).map((s) => s.name)).toEqual([
+      "ask-matt",
+      "re-release-version",
+    ]);
+    expect(getProviderSkillsForSlashMenu([askMatt, userOnly], true, 6).map((s) => s.name)).toEqual([
+      "ask-matt",
+    ]);
   });
 });
 
