@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
-import { discoverClaudeSkills } from "./ClaudeSkills.ts";
+import { discoverClaudeSkills, skillOverrideSettingsPaths } from "./ClaudeSkills.ts";
 
 const writeSkill = Effect.fn(function* (
   skillsDir: string,
@@ -389,6 +389,87 @@ it.layer(NodeServices.layer)("discoverClaudeSkills", (it) => {
         skills.map((skill) => [skill.name, skill.enabled]),
         [["kept", true]],
       );
+    }),
+  );
+
+  it.effect("treats a user-invocable-only override like disable-model-invocation", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-claude-skills-" });
+      const configDir = path.join(tempDir, "claude-home");
+
+      yield* writeSkill(
+        path.join(configDir, "skills"),
+        "ask-matt",
+        ["---", "name: ask-matt", "---", "", "# Body"].join("\n"),
+      );
+      yield* fs.writeFileString(
+        path.join(configDir, "settings.json"),
+        '{ "skillOverrides": { "ask-matt": "user-invocable-only" } }',
+      );
+
+      const skills = yield* discoverClaudeSkills({ homePath: configDir });
+
+      assert.deepEqual(
+        skills.map((skill) => [skill.name, skill.enabled, skill.userInvocationOnly === true]),
+        [["ask-matt", true, true]],
+      );
+    }),
+  );
+
+  it.effect("keeps an unmodelled override value visible", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-claude-skills-" });
+      const configDir = path.join(tempDir, "claude-home");
+
+      yield* writeSkill(
+        path.join(configDir, "skills"),
+        "ask-matt",
+        ["---", "name: ask-matt", "---", "", "# Body"].join("\n"),
+      );
+      yield* fs.writeFileString(
+        path.join(configDir, "settings.json"),
+        '{ "skillOverrides": { "ask-matt": "some-future-mode" } }',
+      );
+
+      const skills = yield* discoverClaudeSkills({ homePath: configDir });
+
+      assert.deepEqual(
+        skills.map((skill) => [skill.name, skill.enabled, skill.userInvocationOnly === true]),
+        [["ask-matt", true, false]],
+      );
+    }),
+  );
+
+  it.effect("lets the administrator's managed policy outrank every other settings file", () =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+
+      for (const [platform, expected] of [
+        ["darwin", "/Library/Application Support/ClaudeCode/managed-settings.json"],
+        ["linux", "/etc/claude-code/managed-settings.json"],
+      ] as const) {
+        const paths = skillOverrideSettingsPaths(path, "/home/.claude", "/workspace", platform, {});
+        assert.deepEqual(paths, [
+          "/home/.claude/settings.json",
+          "/workspace/.claude/settings.json",
+          "/workspace/.claude/settings.local.json",
+          expected,
+        ]);
+      }
+
+      assert.deepEqual(
+        skillOverrideSettingsPaths(path, "/home/.claude", undefined, "win32", {
+          PROGRAMDATA: "C:/ProgramData",
+        }).at(-1),
+        "C:/ProgramData/ClaudeCode/managed-settings.json",
+      );
+      assert.deepEqual(skillOverrideSettingsPaths(path, "/home/.claude", undefined, "win32", {}), [
+        "/home/.claude/settings.json",
+      ]);
     }),
   );
 

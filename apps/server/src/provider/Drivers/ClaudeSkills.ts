@@ -18,6 +18,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
 import { parse as parseYamlDocument } from "yaml";
 
@@ -65,15 +66,40 @@ function parseSkillFrontmatter(contents: string): SkillFrontmatter {
 }
 
 /**
- * Settings files Claude Code merges for `skillOverrides`, in increasing
- * precedence. A skill the user switched off is reported disabled rather than
- * dropped, so the picker can grey it out instead of silently losing it.
+ * Where an administrator installs the policy file whose settings outrank every
+ * user and project one. Absent on almost every machine, which is why a missing
+ * file is the normal case rather than an error.
  */
-function skillOverrideSettingsPaths(
+export function claudeManagedSettingsPath(
+  path: Path.Path,
+  platform: NodeJS.Platform,
+  environment: NodeJS.ProcessEnv,
+): string | undefined {
+  if (platform === "darwin") {
+    return "/Library/Application Support/ClaudeCode/managed-settings.json";
+  }
+  if (platform === "win32") {
+    const programData = environment.PROGRAMDATA?.trim();
+    return programData ? path.join(programData, "ClaudeCode", "managed-settings.json") : undefined;
+  }
+  return "/etc/claude-code/managed-settings.json";
+}
+
+/**
+ * Settings files Claude Code merges for `skillOverrides`, in increasing
+ * precedence: user, project, project-local, then the administrator's managed
+ * policy, which wins outright. A skill the user switched off is reported
+ * disabled rather than dropped, so the picker can grey it out instead of
+ * silently losing it.
+ */
+export function skillOverrideSettingsPaths(
   path: Path.Path,
   configDirPath: string,
   cwd: string | undefined,
+  platform: NodeJS.Platform,
+  environment: NodeJS.ProcessEnv,
 ): ReadonlyArray<string> {
+  const managedPath = claudeManagedSettingsPath(path, platform, environment);
   return [
     path.join(configDirPath, "settings.json"),
     ...(cwd
@@ -82,6 +108,7 @@ function skillOverrideSettingsPaths(
           path.join(cwd, ".claude", "settings.local.json"),
         ]
       : []),
+    ...(managedPath ? [managedPath] : []),
   ];
 }
 
@@ -94,15 +121,45 @@ const SkillOverrideSettings = fromLenientJson(
 );
 const decodeSkillOverrideSettings = Schema.decodeUnknownEffect(SkillOverrideSettings);
 
+/**
+ * What a `skillOverrides` entry says about one skill. `"user-invocable-only"`
+ * hides it from the agent exactly as `disable-model-invocation` does, so it is
+ * kept apart from a plain on/off decision rather than collapsed into one.
+ */
+type SkillOverride = {
+  readonly enabled: boolean;
+  readonly userInvocationOnly: boolean;
+};
+
+function parseSkillOverride(value: unknown): SkillOverride {
+  if (value === "off" || value === false) {
+    return { enabled: false, userInvocationOnly: false };
+  }
+  if (value === "user-invocable-only") {
+    return { enabled: true, userInvocationOnly: true };
+  }
+  // An unknown value means a newer Claude Code grew a mode we do not model
+  // yet — leave the skill visible rather than guessing at it.
+  return { enabled: true, userInvocationOnly: false };
+}
+
 const readSkillOverrides = Effect.fn("readSkillOverrides")(function* (
   configDirPath: string,
   cwd: string | undefined,
-): Effect.fn.Return<ReadonlyMap<string, boolean>, never, FileSystem.FileSystem | Path.Path> {
+  environment: NodeJS.ProcessEnv,
+): Effect.fn.Return<ReadonlyMap<string, SkillOverride>, never, FileSystem.FileSystem | Path.Path> {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const enabledByName = new Map<string, boolean>();
+  const platform = yield* HostProcessPlatform;
+  const overridesByName = new Map<string, SkillOverride>();
 
-  for (const settingsPath of skillOverrideSettingsPaths(path, configDirPath, cwd)) {
+  for (const settingsPath of skillOverrideSettingsPaths(
+    path,
+    configDirPath,
+    cwd,
+    platform,
+    environment,
+  )) {
     const contents = yield* fileSystem
       .readFileString(settingsPath)
       .pipe(Effect.orElseSucceed(() => undefined));
@@ -125,13 +182,11 @@ const readSkillOverrides = Effect.fn("readSkillOverrides")(function* (
     }
 
     for (const [name, value] of Object.entries(overrides)) {
-      // Only "off" is a decision to hide. Unknown values mean a newer Claude
-      // Code grew a mode we do not model yet — leave the skill visible.
-      enabledByName.set(name, value !== "off" && value !== false);
+      overridesByName.set(name, parseSkillOverride(value));
     }
   }
 
-  return enabledByName;
+  return overridesByName;
 });
 
 /**
@@ -178,7 +233,7 @@ export const discoverClaudeSkills = Effect.fn("discoverClaudeSkills")(function* 
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const configDirPath = yield* resolveClaudeConfigDirPath(config, environment ?? process.env, cwd);
-  const skillOverrides = yield* readSkillOverrides(configDirPath, cwd);
+  const skillOverrides = yield* readSkillOverrides(configDirPath, cwd, environment ?? process.env);
 
   const roots: ReadonlyArray<{ directory: string; scope: ClaudeSkillScope }> = [
     { directory: path.join(configDirPath, "skills"), scope: "user" },
@@ -218,17 +273,19 @@ export const discoverClaudeSkills = Effect.fn("discoverClaudeSkills")(function* 
         continue;
       }
 
+      const override = skillOverrides.get(name);
+      const userInvocationOnly =
+        (frontmatter.kind === "parsed" && frontmatter.userInvocationOnly === true) ||
+        override?.userInvocationOnly === true;
       skillsByName.set(name, {
         name,
         path: skillPath,
-        enabled: skillOverrides.get(name) ?? true,
+        enabled: override?.enabled ?? true,
         scope: root.scope,
         ...(frontmatter.kind === "parsed" && frontmatter.description
           ? { description: frontmatter.description }
           : {}),
-        ...(frontmatter.kind === "parsed" && frontmatter.userInvocationOnly
-          ? { userInvocationOnly: true }
-          : {}),
+        ...(userInvocationOnly ? { userInvocationOnly: true } : {}),
       });
     }
   }
