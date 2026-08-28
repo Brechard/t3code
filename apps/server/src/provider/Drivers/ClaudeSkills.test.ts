@@ -94,7 +94,7 @@ it.layer(NodeServices.layer)("discoverClaudeSkills", (it) => {
     }),
   );
 
-  it.effect("prefers workspace .claude skills on three-way name collisions", () =>
+  it.effect("prefers user skills on three-way name collisions", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -123,16 +123,16 @@ it.layer(NodeServices.layer)("discoverClaudeSkills", (it) => {
       assert.deepEqual(skills, [
         {
           name: "deploy",
-          path: path.join(workspace, ".claude", "skills", "deploy", "SKILL.md"),
+          path: path.join(configDir, "skills", "deploy", "SKILL.md"),
           enabled: true,
-          scope: "project",
-          description: "Claude deploy.",
+          scope: "user",
+          description: "User deploy.",
         },
       ]);
     }),
   );
 
-  it.effect("prefers workspace .agents skills over user skills on name collisions", () =>
+  it.effect("prefers user skills over workspace .agents skills on name collisions", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -156,16 +156,16 @@ it.layer(NodeServices.layer)("discoverClaudeSkills", (it) => {
       assert.deepEqual(skills, [
         {
           name: "deploy",
-          path: path.join(workspace, ".agents", "skills", "deploy", "SKILL.md"),
+          path: path.join(configDir, "skills", "deploy", "SKILL.md"),
           enabled: true,
-          scope: "project",
-          description: "Agents deploy.",
+          scope: "user",
+          description: "User deploy.",
         },
       ]);
     }),
   );
 
-  it.effect("prefers project skills over user skills on name collisions", () =>
+  it.effect("prefers user skills over project skills on name collisions", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -187,8 +187,8 @@ it.layer(NodeServices.layer)("discoverClaudeSkills", (it) => {
       const skills = yield* discoverClaudeSkills({ homePath: configDir }, workspace);
 
       assert.equal(skills.length, 1);
-      assert.equal(skills[0]?.scope, "project");
-      assert.equal(skills[0]?.description, "Project deploy.");
+      assert.equal(skills[0]?.scope, "user");
+      assert.equal(skills[0]?.description, "User deploy.");
     }),
   );
 

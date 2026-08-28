@@ -251,11 +251,13 @@ const resolveClaudeConfigDirPath = Effect.fn("resolveClaudeConfigDirPath")(funct
 
 /**
  * Enumerate Claude Code skills from the user config dir, workspace
- * `.agents/skills`, and workspace `.claude/skills`, in that order. Discovery
- * is best-effort: unreadable roots and malformed skill entries are skipped so
- * a broken skill never degrades the provider snapshot. On name collisions,
- * later roots win: `.agents` beats user and `.claude` beats `.agents`, matching
- * Claude Code's resolution.
+ * `.claude/skills`, and workspace `.agents/skills`. Discovery is best-effort:
+ * unreadable roots and malformed skill entries are skipped so a broken skill
+ * never degrades the provider snapshot. Roots are listed highest precedence
+ * first and the first hit for a name wins, matching Claude Code: verified
+ * against the CLI with the same skill name in both scopes, the user copy is
+ * the one that runs. Reporting the project copy instead would attach its
+ * invocation metadata to a command Claude Code resolves elsewhere.
  */
 export const discoverClaudeSkills = Effect.fn("discoverClaudeSkills")(function* (
   config: Pick<ClaudeSettings, "homePath">,
@@ -271,8 +273,8 @@ export const discoverClaudeSkills = Effect.fn("discoverClaudeSkills")(function* 
     { directory: path.join(configDirPath, "skills"), scope: "user" },
     ...(cwd
       ? [
-          { directory: path.join(cwd, ".agents", "skills"), scope: "project" as const },
           { directory: path.join(cwd, ".claude", "skills"), scope: "project" as const },
+          { directory: path.join(cwd, ".agents", "skills"), scope: "project" as const },
         ]
       : []),
   ];
@@ -308,6 +310,12 @@ export const discoverClaudeSkills = Effect.fn("discoverClaudeSkills")(function* 
       // not exist and miss the override that disables it.
       const name = entry.trim();
       if (!name) {
+        continue;
+      }
+
+      // First root wins, so a later root never displaces a higher-precedence
+      // skill of the same name.
+      if (skillsByName.has(name)) {
         continue;
       }
 
