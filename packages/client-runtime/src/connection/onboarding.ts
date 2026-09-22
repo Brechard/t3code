@@ -261,14 +261,27 @@ export const prepareConnectionRename = Effect.fn(
           detail: "The saved environment details are unavailable.",
         });
       }
-      return yield* prepareBearerConnectionUpdate({
-        input: {
+      if (Option.isNone(options.credential) || !isBearerCredential(options.credential.value)) {
+        return yield* new ConnectionBlockedError({
+          reason: "authentication",
+          detail: "The saved bearer credential is unavailable.",
+        });
+      }
+      const connectionId = entry.target.connectionId;
+      return new BearerConnectionRegistration({
+        target: new BearerConnectionTarget({
+          environmentId: entry.target.environmentId,
+          label,
+          connectionId,
+        }),
+        profile: new BearerConnectionProfile({
+          connectionId,
           environmentId: entry.target.environmentId,
           label,
           httpBaseUrl: entry.profile.value.httpBaseUrl,
-        },
-        entry: options.entry,
-        credential: options.credential,
+          wsBaseUrl: entry.profile.value.wsBaseUrl,
+        }),
+        credential: options.credential.value,
       });
     }
     case "SshConnectionTarget": {

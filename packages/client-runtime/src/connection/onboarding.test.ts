@@ -259,6 +259,47 @@ describe("connection onboarding", () => {
     }),
   );
 
+  it.effect("renames bearer environments without changing either endpoint", () =>
+    Effect.gen(function* () {
+      const environmentId = EnvironmentId.make("environment-bearer");
+      const connectionId = "bearer:environment-bearer";
+      const registration = yield* prepareConnectionRename({
+        input: { environmentId, label: "Personal" },
+        entry: Option.some({
+          target: new BearerConnectionTarget({
+            environmentId,
+            label: "MacBook Pro",
+            connectionId,
+          }),
+          profile: Option.some(
+            new BearerConnectionProfile({
+              connectionId,
+              environmentId,
+              label: "MacBook Pro",
+              httpBaseUrl: "https://mac.example.test",
+              wsBaseUrl: "wss://socket.example.test/custom",
+            }),
+          ),
+          enabled: true,
+        }),
+        credential: Option.some(new BearerConnectionCredential({ token: "bearer-token" })),
+      });
+
+      expect(registration).toMatchObject({
+        _tag: "BearerConnectionRegistration",
+        target: { environmentId, label: "Personal", connectionId },
+        profile: {
+          environmentId,
+          label: "Personal",
+          connectionId,
+          httpBaseUrl: "https://mac.example.test",
+          wsBaseUrl: "wss://socket.example.test/custom",
+        },
+        credential: { token: "bearer-token" },
+      });
+    }),
+  );
+
   it.effect("renames SSH environments while preserving their connection target", () =>
     Effect.gen(function* () {
       const environmentId = EnvironmentId.make("environment-ssh");

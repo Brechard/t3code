@@ -60,7 +60,9 @@ import {
   applyWslEnableSelection,
   isQrShareableEndpoint,
   isWslSettingsRowVisible,
+  localRemovalFailureMessage,
   selectQrEndpointOption,
+  updateMutatingEnvironmentIds,
 } from "./ConnectionsSettings.logic";
 import {
   SettingsPageContainer,
@@ -1439,7 +1441,7 @@ function NetworkAccessDescription({
 
 type SavedBackendListRowProps = {
   environment: EnvironmentPresentation;
-  mutatingEnvironmentId: EnvironmentId | null;
+  mutatingEnvironmentIds: ReadonlySet<EnvironmentId>;
   removingEnvironmentId: EnvironmentId | null;
   onRename: (environmentId: EnvironmentId, label: string) => Promise<boolean>;
   onSetEnabled: (environmentId: EnvironmentId, enabled: boolean) => void;
@@ -1547,7 +1549,7 @@ function RenameEnvironmentDialog({
  */
 function SavedBackendListRow({
   environment,
-  mutatingEnvironmentId,
+  mutatingEnvironmentIds,
   removingEnvironmentId,
   onRename,
   onSetEnabled,
@@ -1559,7 +1561,7 @@ function SavedBackendListRow({
   const enabled = environment.entry.enabled && !unsupported;
   const isConnected = environment.connection.phase === "connected";
   const isRemoving = removingEnvironmentId === environmentId;
-  const isMutating = mutatingEnvironmentId === environmentId;
+  const isMutating = mutatingEnvironmentIds.has(environmentId);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const errorTraceId = environment.connection.traceId;
   const { copyToClipboard: copyTraceIdToClipboard } = useCopyToClipboard<{ traceId: string }>({
@@ -1894,12 +1896,12 @@ function EmptyRemoteEnvironments({ cloudEnabled = true }: { readonly cloudEnable
 function CloudRemoteEnvironmentRows({
   primaryEnvironmentId,
   savedEnvironments,
-  deregisteringEnvironmentId,
+  deregisteringEnvironmentIds,
   onDeregister,
 }: {
   readonly primaryEnvironmentId: EnvironmentId | null;
   readonly savedEnvironments: ReadonlyArray<EnvironmentPresentation>;
-  readonly deregisteringEnvironmentId: EnvironmentId | null;
+  readonly deregisteringEnvironmentIds: ReadonlySet<EnvironmentId>;
   readonly onDeregister: (environment: RelayClientEnvironmentRecord) => void;
 }) {
   return hasCloudPublicConfig() ? (
@@ -1907,7 +1909,7 @@ function CloudRemoteEnvironmentRows({
       primaryEnvironmentId={primaryEnvironmentId}
       savedEnvironments={savedEnvironments}
       empty={<EmptyRemoteEnvironments />}
-      deregisteringEnvironmentId={deregisteringEnvironmentId}
+      deregisteringEnvironmentIds={deregisteringEnvironmentIds}
       onDeregister={onDeregister}
     />
   ) : savedEnvironments.length === 0 ? (
@@ -2072,8 +2074,17 @@ export function ConnectionsSettings() {
   const [isAddingSavedBackend, setIsAddingSavedBackend] = useState(false);
   const [removingSavedEnvironmentId, setRemovingSavedEnvironmentId] =
     useState<EnvironmentId | null>(null);
-  const [mutatingSavedEnvironmentId, setMutatingSavedEnvironmentId] =
-    useState<EnvironmentId | null>(null);
+  const [mutatingSavedEnvironmentIds, setMutatingSavedEnvironmentIds] = useState<
+    ReadonlySet<EnvironmentId>
+  >(new Set());
+  const setSavedEnvironmentMutating = useCallback(
+    (environmentId: EnvironmentId, mutating: boolean) => {
+      setMutatingSavedEnvironmentIds((current) =>
+        updateMutatingEnvironmentIds(current, environmentId, mutating),
+      );
+    },
+    [],
+  );
   const [isUpdatingDesktopServerExposure, setIsUpdatingDesktopServerExposure] = useState(false);
   const [isDesktopServerExposureDialogOpen, setIsDesktopServerExposureDialogOpen] = useState(false);
   const [isUpdatingTailscaleServe, setIsUpdatingTailscaleServe] = useState(false);
@@ -2620,10 +2631,10 @@ export function ConnectionsSettings() {
 
   const handleRenameSavedBackend = useCallback(
     async (environmentId: EnvironmentId, label: string) => {
-      setMutatingSavedEnvironmentId(environmentId);
+      setSavedEnvironmentMutating(environmentId, true);
       setSavedBackendError(null);
       const result = await renameEnvironment({ environmentId, label });
-      setMutatingSavedEnvironmentId(null);
+      setSavedEnvironmentMutating(environmentId, false);
       if (result._tag === "Success") {
         toastManager.add({
           type: "success",
@@ -2645,7 +2656,7 @@ export function ConnectionsSettings() {
       );
       return false;
     },
-    [renameEnvironment],
+    [renameEnvironment, setSavedEnvironmentMutating],
   );
 
   // Removing forgets the pairing, credentials, and cached threads on this
@@ -2699,24 +2710,32 @@ export function ConnectionsSettings() {
       if (confirmed !== true) return;
 
       const environmentId = environment.environmentId;
-      setMutatingSavedEnvironmentId(environmentId);
+      setSavedEnvironmentMutating(environmentId, true);
       setSavedBackendError(null);
       const result = await deregisterEnvironment({ accountId, environmentId });
       if (result._tag === "Success") {
         const saved = environments.some((candidate) => candidate.environmentId === environmentId);
         if (saved) {
           const removeResult = await removeEnvironment(environmentId);
-          if (removeResult._tag === "Failure" && !isAtomCommandInterrupted(removeResult)) {
-            const error = squashAtomCommandFailure(removeResult);
-            console.error("[t3-connect] Environment deregistered but local cleanup failed", {
-              environmentId,
-              error,
-            });
+          const message = localRemovalFailureMessage(removeResult);
+          if (message !== null) {
+            refreshManagedRelayEnvironmentList();
+            await refreshRelayEnvironments();
+            setSavedEnvironmentMutating(environmentId, false);
+            setSavedBackendError(message);
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: "Deleted from T3 Connect, but not this device",
+                description: message,
+              }),
+            );
+            return;
           }
         }
         refreshManagedRelayEnvironmentList();
         await refreshRelayEnvironments();
-        setMutatingSavedEnvironmentId(null);
+        setSavedEnvironmentMutating(environmentId, false);
         toastManager.add({
           type: "success",
           title: "Environment deleted",
@@ -2724,7 +2743,7 @@ export function ConnectionsSettings() {
         });
         return;
       }
-      setMutatingSavedEnvironmentId(null);
+      setSavedEnvironmentMutating(environmentId, false);
       if (isAtomCommandInterrupted(result)) return;
       const error = squashAtomCommandFailure(result);
       const message = error instanceof Error ? error.message : "Failed to delete environment.";
@@ -2744,6 +2763,7 @@ export function ConnectionsSettings() {
       refreshRelayEnvironments,
       refreshManagedRelayEnvironmentList,
       removeEnvironment,
+      setSavedEnvironmentMutating,
     ],
   );
 
@@ -3964,7 +3984,7 @@ export function ConnectionsSettings() {
           <SavedBackendListRow
             key={environment.environmentId}
             environment={environment}
-            mutatingEnvironmentId={mutatingSavedEnvironmentId}
+            mutatingEnvironmentIds={mutatingSavedEnvironmentIds}
             removingEnvironmentId={removingSavedEnvironmentId}
             onRename={handleRenameSavedBackend}
             onSetEnabled={handleSetSavedBackendEnabled}
@@ -3975,7 +3995,7 @@ export function ConnectionsSettings() {
         <CloudRemoteEnvironmentRows
           primaryEnvironmentId={primaryEnvironmentId}
           savedEnvironments={savedEnvironments}
-          deregisteringEnvironmentId={mutatingSavedEnvironmentId}
+          deregisteringEnvironmentIds={mutatingSavedEnvironmentIds}
           onDeregister={handleDeregisterEnvironment}
         />
       </SettingsSection>

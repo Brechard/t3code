@@ -84,7 +84,7 @@ export function CloudEnvironmentConnectRows({
   selection,
   onDiscoveryReady,
   onDeregister,
-  deregisteringEnvironmentId = null,
+  deregisteringEnvironmentIds,
 }: {
   readonly primaryEnvironmentId: EnvironmentId | null;
   readonly savedEnvironments: ReadonlyArray<SavedCloudEnvironmentConnection>;
@@ -93,7 +93,7 @@ export function CloudEnvironmentConnectRows({
   readonly empty?: ReactNode;
   readonly onDiscoveryReady?: () => void;
   readonly onDeregister?: (environment: RelayClientEnvironmentRecord) => void;
-  readonly deregisteringEnvironmentId?: EnvironmentId | null;
+  readonly deregisteringEnvironmentIds?: ReadonlySet<EnvironmentId>;
   readonly selection?: {
     readonly autoSelectedComputers?: Set<EnvironmentId>;
     readonly selectedIds: ReadonlySet<EnvironmentId>;
@@ -486,7 +486,7 @@ export function CloudEnvironmentConnectRows({
                       type="button"
                       variant="ghost-muted"
                       size="icon-xs"
-                      disabled={deregisteringEnvironmentId !== null}
+                      disabled={deregisteringEnvironmentIds?.has(environment.environmentId)}
                       aria-label={`More actions for ${environment.label}`}
                     />
                   }
@@ -495,7 +495,7 @@ export function CloudEnvironmentConnectRows({
                 </MenuTrigger>
                 <MenuPopup align="end" className="min-w-52">
                   <MenuItem variant="destructive" onClick={() => onDeregister(environment)}>
-                    {deregisteringEnvironmentId === environment.environmentId
+                    {deregisteringEnvironmentIds?.has(environment.environmentId)
                       ? "Deleting…"
                       : "Delete from T3 Connect…"}
                   </MenuItem>
