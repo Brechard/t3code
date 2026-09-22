@@ -19,6 +19,7 @@ import type {
   RelayEnvironmentStatusResponse,
 } from "@t3tools/contracts/relay";
 import * as Option from "effect/Option";
+import { EllipsisIcon } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useEffectEvent, useState } from "react";
 
 import { environmentCatalog } from "~/connection/catalog";
@@ -31,6 +32,7 @@ import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { ITEM_ROW_CLASSNAME, ITEM_ROW_INNER_CLASSNAME } from "../settings/itemRows";
 import { Checkbox } from "../ui/checkbox";
 import { Button } from "../ui/button";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Skeleton } from "../ui/skeleton";
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
@@ -81,6 +83,8 @@ export function CloudEnvironmentConnectRows({
   empty = null,
   selection,
   onDiscoveryReady,
+  onDeregister,
+  deregisteringEnvironmentId = null,
 }: {
   readonly primaryEnvironmentId: EnvironmentId | null;
   readonly savedEnvironments: ReadonlyArray<SavedCloudEnvironmentConnection>;
@@ -88,6 +92,8 @@ export function CloudEnvironmentConnectRows({
   readonly refreshWhileEmpty?: boolean;
   readonly empty?: ReactNode;
   readonly onDiscoveryReady?: () => void;
+  readonly onDeregister?: (environment: RelayClientEnvironmentRecord) => void;
+  readonly deregisteringEnvironmentId?: EnvironmentId | null;
   readonly selection?: {
     readonly autoSelectedComputers?: Set<EnvironmentId>;
     readonly selectedIds: ReadonlySet<EnvironmentId>;
@@ -447,30 +453,56 @@ export function CloudEnvironmentConnectRows({
               {statusText}
             </p>
           </div>
-          {unsupported && !savedEnvironment ? (
-            <Tooltip>
-              <TooltipTrigger render={<span className="inline-flex" tabIndex={0} />}>
-                <Button size="sm" disabled>
-                  Add
-                </Button>
-              </TooltipTrigger>
-              <TooltipPopup className="max-w-80 break-words">
-                {unsupportedDetail ?? "Client not supported"}
-              </TooltipPopup>
-            </Tooltip>
-          ) : savedConnection ? (
-            <Button size="sm" variant="outline" disabled>
-              {savedConnection.buttonLabel}
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              disabled={connectingEnvironmentIds.size > 0}
-              onClick={() => void connectEnvironment(environment)}
-            >
-              {connectingEnvironmentIds.has(environment.environmentId) ? "Adding…" : "Add"}
-            </Button>
-          )}
+          <div className="flex items-center gap-1">
+            {unsupported && !savedEnvironment ? (
+              <Tooltip>
+                <TooltipTrigger render={<span className="inline-flex" tabIndex={0} />}>
+                  <Button size="sm" disabled>
+                    Add
+                  </Button>
+                </TooltipTrigger>
+                <TooltipPopup className="max-w-80 break-words">
+                  {unsupportedDetail ?? "Client not supported"}
+                </TooltipPopup>
+              </Tooltip>
+            ) : savedConnection ? (
+              <Button size="sm" variant="outline" disabled>
+                {savedConnection.buttonLabel}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                disabled={connectingEnvironmentIds.size > 0}
+                onClick={() => void connectEnvironment(environment)}
+              >
+                {connectingEnvironmentIds.has(environment.environmentId) ? "Adding…" : "Add"}
+              </Button>
+            )}
+            {onDeregister ? (
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost-muted"
+                      size="icon-xs"
+                      disabled={deregisteringEnvironmentId !== null}
+                      aria-label={`More actions for ${environment.label}`}
+                    />
+                  }
+                >
+                  <EllipsisIcon className="size-3.5" />
+                </MenuTrigger>
+                <MenuPopup align="end" className="min-w-52">
+                  <MenuItem variant="destructive" onClick={() => onDeregister(environment)}>
+                    {deregisteringEnvironmentId === environment.environmentId
+                      ? "Deleting…"
+                      : "Delete from T3 Connect…"}
+                  </MenuItem>
+                </MenuPopup>
+              </Menu>
+            ) : null}
+          </div>
         </div>
       </div>
     );

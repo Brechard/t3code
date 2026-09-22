@@ -8,6 +8,7 @@ export * as Connection from "./layer.ts";
 export * from "./model.ts";
 export {
   type BearerConnectionUpdateInput,
+  type ConnectionRenameInput,
   ConnectionOnboarding,
   type PairingConnectionInput,
   type SshConnectionInput,

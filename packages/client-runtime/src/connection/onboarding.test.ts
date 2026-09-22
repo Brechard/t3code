@@ -10,10 +10,15 @@ import * as Option from "effect/Option";
 
 import { remoteHttpClientLayer } from "../rpc/http.ts";
 import { ClientPresentation, SshEnvironmentGateway } from "../platform/capabilities.ts";
-import { BearerConnectionCredential, BearerConnectionProfile } from "./catalog.ts";
-import { BearerConnectionTarget } from "./model.ts";
+import {
+  BearerConnectionCredential,
+  BearerConnectionProfile,
+  SshConnectionProfile,
+} from "./catalog.ts";
+import { BearerConnectionTarget, RelayConnectionTarget, SshConnectionTarget } from "./model.ts";
 import {
   prepareBearerConnectionUpdate,
+  prepareConnectionRename,
   preparePairingRegistration,
   prepareSshRegistration,
 } from "./onboarding.ts";
@@ -230,6 +235,61 @@ describe("connection onboarding", () => {
           wsBaseUrl: "ws://100.65.180.100:3773/",
         },
         credential: { token: "bearer-token" },
+      });
+    }),
+  );
+
+  it.effect("renames relay environments without changing their identity", () =>
+    Effect.gen(function* () {
+      const environmentId = EnvironmentId.make("environment-relay");
+      const registration = yield* prepareConnectionRename({
+        input: { environmentId, label: "  Personal  " },
+        entry: Option.some({
+          target: new RelayConnectionTarget({ environmentId, label: "MacBook Pro (2)" }),
+          profile: Option.none(),
+          enabled: true,
+        }),
+        credential: Option.none(),
+      });
+
+      expect(registration).toMatchObject({
+        _tag: "RelayConnectionRegistration",
+        target: { environmentId, label: "Personal" },
+      });
+    }),
+  );
+
+  it.effect("renames SSH environments while preserving their connection target", () =>
+    Effect.gen(function* () {
+      const environmentId = EnvironmentId.make("environment-ssh");
+      const connectionId = "ssh:environment-ssh";
+      const target = {
+        alias: "work-mac",
+        hostname: "work.example.test",
+        username: "developer",
+        port: 22,
+      };
+      const registration = yield* prepareConnectionRename({
+        input: { environmentId, label: "Work" },
+        entry: Option.some({
+          target: new SshConnectionTarget({ environmentId, label: "Old name", connectionId }),
+          profile: Option.some(
+            new SshConnectionProfile({
+              connectionId,
+              environmentId,
+              label: "Old name",
+              target,
+            }),
+          ),
+          enabled: false,
+        }),
+        credential: Option.none(),
+      });
+
+      expect(registration).toMatchObject({
+        _tag: "SshConnectionRegistration",
+        target: { environmentId, label: "Work", connectionId },
+        profile: { environmentId, label: "Work", connectionId, target },
       });
     }),
   );

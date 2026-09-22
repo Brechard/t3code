@@ -66,6 +66,16 @@ vi.mock("../ui/button", () => ({
     <button {...props}>{children}</button>
   ),
 }));
+vi.mock("../ui/menu", () => ({
+  Menu: ({ children }: { children: ReactNode }) => children,
+  MenuTrigger: ({ children, render }: { children: ReactNode; render: ReactNode }) => (
+    <>{render ?? children}</>
+  ),
+  MenuPopup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  MenuItem: ({ children, onClick }: { children: ReactNode; onClick: () => void }) => (
+    <button onClick={onClick}>{children}</button>
+  ),
+}));
 vi.mock("../ui/toast", () => ({ toastManager: { add: vi.fn() } }));
 
 import { CloudEnvironmentConnectRows } from "./CloudEnvironmentConnectList";
@@ -153,6 +163,27 @@ afterEach(async () => {
 });
 
 describe("cloud onboarding discovery", () => {
+  it("offers account deletion for a discovered environment", async () => {
+    discovery.listEnvironments.mockResolvedValue(linkedMachines);
+    const onDeregister = vi.fn();
+    await act(async () => {
+      renderer = create(
+        <CloudEnvironmentConnectRows
+          primaryEnvironmentId={null}
+          savedEnvironments={[]}
+          onDeregister={onDeregister}
+        />,
+      );
+    });
+
+    const deleteButton = renderer!.root
+      .findAllByType("button")
+      .find((button) => button.children.includes("Delete from T3 Connect…"));
+    expect(deleteButton).toBeDefined();
+    await act(async () => deleteButton!.props.onClick());
+    expect(onDeregister).toHaveBeenCalledWith(linkedMachines.get(newMachineId)!.environment);
+  });
+
   it("signals that the section can expand after initial discovery settles", async () => {
     let finishDiscovery!: (environments: DiscoveredEnvironments) => void;
     discovery.listEnvironments.mockReturnValue(
