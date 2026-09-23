@@ -380,7 +380,9 @@ export const make = Effect.gen(function* () {
         Option.isNone(entry)
           ? Effect.succeed(null)
           : acquireSupervisor(environmentId).pipe(
-              Effect.catchTag("EnvironmentNotRegisteredError", () => Effect.succeed(null)),
+              Effect.catchTags({
+                EnvironmentNotRegisteredError: () => Effect.succeed(null),
+              }),
             ),
       ),
       // Catalog labels can change while the runtime supervisor stays the same.
