@@ -1660,7 +1660,7 @@ function SavedBackendListRow({
                 Rename environment…
               </MenuItem>
               <MenuItem onClick={() => void onRenameGlobally(environmentId, null)}>
-                Use machine name on all devices
+                Restore default name
               </MenuItem>
             </>
           ) : null}
@@ -2616,10 +2616,10 @@ export function ConnectionsSettings() {
         setSavedEnvironmentMutating(environmentId, false);
         toastManager.add({
           type: "success",
-          title: label === null ? "Machine name restored" : "Environment renamed for all devices",
+          title: label === null ? "Default name restored" : "Environment renamed for all devices",
           description:
             label === null
-              ? "Devices signed into this T3 Connect account will show the machine name after refreshing."
+              ? "Devices signed into this T3 Connect account will show the default name after refreshing."
               : `Devices signed into this T3 Connect account will show ${label.trim()} after refreshing.`,
         });
         return true;

@@ -39,7 +39,7 @@ export function RenameEnvironmentDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogPopup className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Rename environment</DialogTitle>
+          <DialogTitle>This environment's name</DialogTitle>
           <DialogDescription>
             This name will appear on devices signed into your T3 Connect account.
           </DialogDescription>
@@ -71,7 +71,7 @@ export function RenameEnvironmentDialog({
               void onRename(environment.environmentId, null).then((ok) => ok && onClose())
             }
           >
-            Use machine name
+            Restore default name
           </Button>
           <Button variant="outline" disabled={isSaving} onClick={onClose}>
             Cancel
@@ -111,7 +111,7 @@ export function PrimaryEnvironmentRenameControl({
         onClick={() => setOpen(true)}
       >
         <PencilIcon className="size-3" />
-        Rename
+        Edit name
       </Button>
       {open && environment !== null ? (
         <RenameEnvironmentDialog

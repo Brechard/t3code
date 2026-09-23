@@ -168,7 +168,7 @@ export function T3ConnectEnvironmentRow(props: {
                     .then((renamed) => renamed && setRenameOpen(false))
                 }
               >
-                Use machine name
+                Restore default name
               </Button>
               <Button variant="outline" onClick={() => setRenameOpen(false)}>
                 Cancel
@@ -280,7 +280,7 @@ export function T3ConnectUserProfilePage() {
       await refreshRelayEnvironments();
       toastManager.add({
         type: "success",
-        title: label === null ? "Machine name restored" : "Environment renamed for all devices",
+        title: label === null ? "Default name restored" : "Environment renamed for all devices",
       });
       return true;
     }

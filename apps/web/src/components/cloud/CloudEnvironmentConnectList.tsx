@@ -540,7 +540,7 @@ export function CloudEnvironmentConnectRows({
                       <MenuItem
                         onClick={() => void onRenameGlobally(environment.environmentId, null)}
                       >
-                        Use machine name on all devices
+                        Restore default name
                       </MenuItem>
                     </>
                   ) : null}

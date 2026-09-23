@@ -26,7 +26,7 @@ vi.mock("../ui/input", () => ({
 import { PrimaryEnvironmentRenameControl } from "./EnvironmentRenameControl";
 
 describe("current environment rename", () => {
-  it("shows a visible Rename action and saves the shared T3 Connect name", async () => {
+  it("shows a visible Edit name action and saves the shared T3 Connect name", async () => {
     const environmentId = EnvironmentId.make("this-machine");
     const onRename = vi.fn().mockResolvedValue(true);
     let renderer!: ReactTestRenderer;
@@ -43,7 +43,7 @@ describe("current environment rename", () => {
 
     const renameButton = renderer.root
       .findAllByType("button")
-      .find((button) => button.children.includes("Rename"));
+      .find((button) => button.children.includes("Edit name"));
     expect(renameButton).toBeDefined();
     await act(async () => renameButton!.props.onClick());
     await act(async () =>
@@ -68,13 +68,13 @@ describe("current environment rename", () => {
     });
     const renameButton = renderer.root
       .findAllByType("button")
-      .find((button) => button.children.includes("Rename"));
+      .find((button) => button.children.includes("Edit name"));
     expect(renameButton?.props.disabled).toBe(true);
     await act(async () => renderer.unmount());
     vi.unstubAllGlobals();
   });
 
-  it("can restore the machine name from the current environment dialog", async () => {
+  it("can restore the default name from the current environment dialog", async () => {
     const environmentId = EnvironmentId.make("this-machine");
     const onRename = vi.fn().mockResolvedValue(true);
     let renderer!: ReactTestRenderer;
@@ -90,8 +90,8 @@ describe("current environment rename", () => {
     });
     const button = (label: string) =>
       renderer.root.findAllByType("button").find((item) => item.children.includes(label))!;
-    await act(async () => button("Rename").props.onClick());
-    await act(async () => button("Use machine name").props.onClick());
+    await act(async () => button("Edit name").props.onClick());
+    await act(async () => button("Restore default name").props.onClick());
     expect(onRename).toHaveBeenCalledWith(environmentId, null);
     await act(async () => renderer.unmount());
     vi.unstubAllGlobals();

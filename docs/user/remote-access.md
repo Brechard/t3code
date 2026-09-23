@@ -153,12 +153,12 @@ management is available through `t3 auth --help`.
 A session with an open connection stays listed after its access credential
 expires.
 
-On web or desktop, open **Settings → Connections** and select **Rename** beside
+On web or desktop, open **Settings → Connections** and select **Edit name** beside
 the current environment's name. For another T3 Connect environment, choose
 **Rename environment** from its menu. Give each a recognizable name, such as
 Personal or Work. Other devices signed into the same account pick up the name
-when they refresh their environments. Use **Use machine name** to restore the
-advertised name. The account menu's **T3 Connect** page and the mobile T3
+when they refresh their environments. Use **Restore default name** to return to
+the environment's advertised name. The account menu's **T3 Connect** page and the mobile T3
 Connect profile can also change the name.
 
 To remove an environment from T3 Connect, choose **Delete from T3 Connect** from

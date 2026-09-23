@@ -287,7 +287,7 @@ export function T3ConnectProfilePage() {
 
 const ENVIRONMENT_MENU_ACTIONS = [
   { id: "rename", title: "Rename environment", image: "pencil" },
-  { id: "reset-name", title: "Use machine name on all devices", image: "arrow.uturn.backward" },
+  { id: "reset-name", title: "Restore default name", image: "arrow.uturn.backward" },
   { id: "deregister", title: "Deregister", image: "trash", attributes: { destructive: true } },
 ] satisfies MenuAction[];
 
