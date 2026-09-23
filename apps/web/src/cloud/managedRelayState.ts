@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   createManagedRelayQueryManager,
   deregisterManagedRelayEnvironment,
+  renameManagedRelayEnvironment,
   ManagedRelay,
   managedRelaySessionAtom,
   readManagedRelaySnapshotState,
@@ -50,6 +51,24 @@ export const deregisterManagedRelayEnvironmentCommand = createRuntimeCommand(
     execute: (input, registry) => deregisterManagedRelayEnvironment(registry, input),
   },
 );
+
+export const renameManagedRelayEnvironmentCommand = createRuntimeCommand(managedRelayAtomRuntime, {
+  label: "web:managed-relay:rename-environment",
+  scheduler: managedRelayMutationScheduler,
+  concurrency: {
+    mode: "serial",
+    key: (input: { readonly accountId: string; readonly environmentId: EnvironmentId }) =>
+      input.accountId,
+  },
+  execute: (
+    input: {
+      readonly accountId: string;
+      readonly environmentId: EnvironmentId;
+      readonly label: string | null;
+    },
+    registry,
+  ) => renameManagedRelayEnvironment(registry, input),
+});
 
 const EMPTY_ENVIRONMENTS_ATOM = Atom.make(
   AsyncResult.success<ReadonlyArray<RelayClientEnvironmentRecord>>([]),

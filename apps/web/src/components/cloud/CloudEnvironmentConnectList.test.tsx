@@ -211,12 +211,14 @@ describe("cloud onboarding discovery", () => {
     });
 
     expect(
-      renderer!.root.findAllByType("button").some((button) => button.children.includes("Rename…")),
+      renderer!.root
+        .findAllByType("button")
+        .some((button) => button.children.includes("Rename only on this device…")),
     ).toBe(true);
 
     const renameButton = renderer!.root
       .findAllByType("button")
-      .find((button) => button.children.includes("Rename…"))!;
+      .find((button) => button.children.includes("Rename only on this device…"))!;
     await act(async () => renameButton.props.onClick());
     const input = renderer!.root.findByType("input");
     await act(async () => input.props.onChange({ target: { value: "Personal" } }));
@@ -227,9 +229,42 @@ describe("cloud onboarding discovery", () => {
 
     expect(discovery.register).toHaveBeenCalledWith(
       expect.objectContaining({
-        target: expect.objectContaining({ environmentId: newMachineId, label: "Personal" }),
+        target: expect.objectContaining({
+          environmentId: newMachineId,
+          label: "Personal",
+          localLabelOverride: true,
+        }),
       }),
     );
+  });
+
+  it("renames a discovered environment for the account without adding it locally", async () => {
+    discovery.listEnvironments.mockResolvedValue(linkedMachines);
+    const onRenameGlobally = vi.fn().mockResolvedValue(true);
+    await act(async () => {
+      renderer = create(
+        <CloudEnvironmentConnectRows
+          primaryEnvironmentId={null}
+          savedEnvironments={[]}
+          onDeregister={vi.fn()}
+          onRenameGlobally={onRenameGlobally}
+        />,
+      );
+    });
+    const renameButton = renderer!.root
+      .findAllByType("button")
+      .find((button) => button.children.includes("Rename for all devices…"))!;
+    await act(async () => renameButton.props.onClick());
+    await act(async () =>
+      renderer!.root.findByType("input").props.onChange({ target: { value: "Work" } }),
+    );
+    const saveButton = renderer!.root
+      .findAllByType("button")
+      .find((button) => button.children.includes("Save"))!;
+    await act(async () => saveButton.props.onClick());
+
+    expect(onRenameGlobally).toHaveBeenCalledWith(newMachineId, "Work");
+    expect(discovery.register).not.toHaveBeenCalled();
   });
 
   it("blocks deletion while adding a discovered environment", async () => {
@@ -300,7 +335,9 @@ describe("cloud onboarding discovery", () => {
     });
 
     expect(
-      renderer!.root.findAllByType("button").some((button) => button.children.includes("Rename…")),
+      renderer!.root
+        .findAllByType("button")
+        .some((button) => button.children.includes("Rename only on this device…")),
     ).toBe(false);
     expect(discovery.register).not.toHaveBeenCalled();
   });

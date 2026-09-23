@@ -254,8 +254,29 @@ describe("connection onboarding", () => {
 
       expect(registration).toMatchObject({
         _tag: "RelayConnectionRegistration",
-        target: { environmentId, label: "Personal" },
+        target: { environmentId, label: "Personal", localLabelOverride: true },
       });
+    }),
+  );
+
+  it.effect("adopts the shared relay name without retaining a local override", () =>
+    Effect.gen(function* () {
+      const environmentId = EnvironmentId.make("environment-relay");
+      const registration = yield* prepareConnectionRename({
+        input: { environmentId, label: "Work", localOnly: false },
+        entry: Option.some({
+          target: new RelayConnectionTarget({
+            environmentId,
+            label: "Personal",
+            localLabelOverride: true,
+          }),
+          profile: Option.none(),
+          enabled: true,
+        }),
+        credential: Option.none(),
+      });
+      expect(registration.target).toMatchObject({ environmentId, label: "Work" });
+      expect(registration.target).not.toHaveProperty("localLabelOverride");
     }),
   );
 

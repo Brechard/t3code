@@ -18,6 +18,7 @@ import {
   type ConnectionRegistration,
   type PlatformConnectionRegistration,
   type PrimaryConnectionRegistration,
+  RelayConnectionRegistration,
   SshConnectionProfile,
   connectionRegistrationCatalogEntry,
 } from "./catalog.ts";
@@ -31,6 +32,7 @@ import type {
   SupervisorConnectionState,
 } from "./model.ts";
 import { ConnectionBlockedError } from "./model.ts";
+import { RelayConnectionTarget } from "./model.ts";
 import * as Persistence from "../platform/persistence.ts";
 import * as EnvironmentSupervisor from "./supervisor.ts";
 import * as ConnectionDriver from "./driver.ts";
@@ -74,6 +76,10 @@ export class EnvironmentRegistry extends Context.Service<
     readonly start: Effect.Effect<void>;
     readonly register: (
       registration: ConnectionRegistration,
+    ) => Effect.Effect<void, Persistence.ConnectionPersistenceError>;
+    readonly syncRelayLabel: (
+      environmentId: EnvironmentId,
+      label: string,
     ) => Effect.Effect<void, Persistence.ConnectionPersistenceError>;
     readonly registerPlatform: (registration: PrimaryConnectionRegistration) => Effect.Effect<void>;
     readonly reconcilePlatform: (
@@ -483,6 +489,39 @@ export const make = Effect.gen(function* () {
     );
   });
 
+  const syncRelayLabel = Effect.fn("EnvironmentRegistry.syncRelayLabel")(function* (
+    environmentId: EnvironmentId,
+    label: string,
+  ) {
+    yield* withLeaseLock(
+      environmentId,
+      Effect.gen(function* () {
+        const previous = (yield* SubscriptionRef.get(entries)).get(environmentId);
+        if (
+          previous?.target._tag !== "RelayConnectionTarget" ||
+          previous.target.localLabelOverride === true ||
+          previous.target.label === label
+        )
+          return;
+        const target = new RelayConnectionTarget({ environmentId, label });
+        yield* registrations.register(new RelayConnectionRegistration({ target }));
+        yield* Ref.update(persistedTargetsByEnvironment, (current) =>
+          new Map(current).set(environmentId, target),
+        );
+        const entry = { ...previous, target };
+        const lease = (yield* SubscriptionRef.get(serviceScopes)).get(environmentId);
+        if (lease !== undefined) {
+          yield* SubscriptionRef.update(serviceScopes, (current) =>
+            new Map(current).set(environmentId, { ...lease, entry }),
+          );
+        }
+        yield* SubscriptionRef.update(entries, (current) =>
+          new Map(current).set(environmentId, entry),
+        );
+      }),
+    );
+  });
+
   const installPlatformRegistration = Effect.fn("EnvironmentRegistry.installPlatformRegistration")(
     function* (registration: PlatformConnectionRegistration) {
       const registered = connectionRegistrationCatalogEntry(registration);
@@ -875,6 +914,7 @@ export const make = Effect.gen(function* () {
     networkStatus,
     start,
     register,
+    syncRelayLabel,
     registerPlatform,
     reconcilePlatform,
     remove,

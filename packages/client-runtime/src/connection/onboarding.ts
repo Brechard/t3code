@@ -55,6 +55,7 @@ export interface BearerConnectionUpdateInput {
 export interface ConnectionRenameInput {
   readonly environmentId: EnvironmentId;
   readonly label: string;
+  readonly localOnly?: boolean;
 }
 
 export class ConnectionOnboarding extends Context.Service<
@@ -252,6 +253,7 @@ export const prepareConnectionRename = Effect.fn(
         target: new RelayConnectionTarget({
           environmentId: entry.target.environmentId,
           label,
+          ...(options.input.localOnly === false ? {} : { localLabelOverride: true }),
         }),
       });
     case "BearerConnectionTarget": {
@@ -314,7 +316,12 @@ const renameConnection = Effect.fn("clientRuntime.connection.onboarding.renameCo
     const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
     const credentials = yield* ConnectionCredentialStore.ConnectionCredentialStore;
     const entry = (yield* SubscriptionRef.get(registry.entries)).get(input.environmentId);
-    if (entry !== undefined && input.label.trim() === entry.target.label) return;
+    const scopeChanged =
+      entry?.target._tag === "RelayConnectionTarget" &&
+      (input.localOnly === false
+        ? entry.target.localLabelOverride === true
+        : entry.target.localLabelOverride !== true);
+    if (entry !== undefined && input.label.trim() === entry.target.label && !scopeChanged) return;
     const credential =
       entry?.target._tag === "BearerConnectionTarget"
         ? yield* credentials.get(entry.target.connectionId)

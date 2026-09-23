@@ -48,7 +48,11 @@ export const renameEnvironment = createRuntimeCommand(connectionAtomRuntime, {
     mode: "serial",
     key: (input: { readonly environmentId: EnvironmentId }) => input.environmentId,
   },
-  execute: (input: { readonly environmentId: EnvironmentId; readonly label: string }) =>
+  execute: (input: {
+    readonly environmentId: EnvironmentId;
+    readonly label: string;
+    readonly localOnly?: boolean;
+  }) =>
     ConnectionOnboarding.ConnectionOnboarding.pipe(
       Effect.flatMap((onboarding) => onboarding.rename(input)),
     ),

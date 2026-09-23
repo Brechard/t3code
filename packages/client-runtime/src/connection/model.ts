@@ -27,6 +27,7 @@ export class RelayConnectionTarget extends Schema.TaggedClass<RelayConnectionTar
   "RelayConnectionTarget",
   {
     ...ConnectionTargetBase,
+    localLabelOverride: Schema.optional(Schema.Boolean),
   },
 ) {}
 

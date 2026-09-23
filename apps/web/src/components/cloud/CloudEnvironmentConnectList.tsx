@@ -94,6 +94,7 @@ export function CloudEnvironmentConnectRows({
   selection,
   onDiscoveryReady,
   onDeregister,
+  onRenameGlobally,
   deregisteringEnvironmentIds,
 }: {
   readonly primaryEnvironmentId: EnvironmentId | null;
@@ -103,6 +104,10 @@ export function CloudEnvironmentConnectRows({
   readonly empty?: ReactNode;
   readonly onDiscoveryReady?: () => void;
   readonly onDeregister?: (environment: RelayClientEnvironmentRecord) => void;
+  readonly onRenameGlobally?: (
+    environmentId: EnvironmentId,
+    label: string | null,
+  ) => Promise<boolean>;
   readonly deregisteringEnvironmentIds?: ReadonlySet<EnvironmentId>;
   readonly selection?: {
     readonly autoSelectedComputers?: Set<EnvironmentId>;
@@ -122,12 +127,13 @@ export function CloudEnvironmentConnectRows({
     await refreshRelayEnvironments();
   });
   const connectRelayEnvironment = useCallback(
-    (environment: RelayClientEnvironmentRecord, label: string) =>
+    (environment: RelayClientEnvironmentRecord, label: string, localOnly = false) =>
       registerEnvironment(
         new RelayConnectionRegistration({
           target: new RelayConnectionTarget({
             environmentId: environment.environmentId,
             label,
+            ...(localOnly ? { localLabelOverride: true } : {}),
           }),
         }),
       ),
@@ -138,6 +144,7 @@ export function CloudEnvironmentConnectRows({
   >(new Set());
   const [renamingEnvironment, setRenamingEnvironment] =
     useState<RelayClientEnvironmentRecord | null>(null);
+  const [renameScope, setRenameScope] = useState<"global" | "local">("global");
   const [renameLabel, setRenameLabel] = useState("");
   const savedById = new Map(
     savedEnvironments.map((environment) => [environment.environmentId, environment]),
@@ -204,6 +211,17 @@ export function CloudEnvironmentConnectRows({
   const renameDiscoveredEnvironment = async () => {
     if (renamingEnvironment === null || renameLabel.trim() === "") return;
     const environment = renamingEnvironment;
+    if (renameScope === "global") {
+      setConnectingEnvironmentIds((current) => new Set([...current, environment.environmentId]));
+      const renamed = await onRenameGlobally?.(environment.environmentId, renameLabel.trim());
+      setConnectingEnvironmentIds((current) => {
+        const next = new Set(current);
+        next.delete(environment.environmentId);
+        return next;
+      });
+      if (renamed) setRenamingEnvironment(null);
+      return;
+    }
     if (
       discoveredCompatibilityError(
         environmentsState.environments.get(environment.environmentId)?.status,
@@ -217,7 +235,7 @@ export function CloudEnvironmentConnectRows({
       return;
     }
     setConnectingEnvironmentIds((current) => new Set([...current, environment.environmentId]));
-    const result = await connectRelayEnvironment(environment, renameLabel.trim());
+    const result = await connectRelayEnvironment(environment, renameLabel.trim(), true);
     setConnectingEnvironmentIds((current) => {
       const next = new Set(current);
       next.delete(environment.environmentId);
@@ -548,15 +566,35 @@ export function CloudEnvironmentConnectRows({
                   <EllipsisIcon className="size-3.5" />
                 </MenuTrigger>
                 <MenuPopup align="end" className="min-w-52">
+                  {onRenameGlobally ? (
+                    <>
+                      <MenuItem
+                        onClick={() => {
+                          setRenameLabel(environment.label);
+                          setRenameScope("global");
+                          setRenamingEnvironment(environment);
+                        }}
+                      >
+                        <PencilIcon className="size-3.5" />
+                        Rename for all devices…
+                      </MenuItem>
+                      <MenuItem
+                        onClick={() => void onRenameGlobally(environment.environmentId, null)}
+                      >
+                        Use machine name on all devices
+                      </MenuItem>
+                    </>
+                  ) : null}
                   {!savedEnvironment && !unsupported ? (
                     <MenuItem
                       onClick={() => {
                         setRenameLabel(environment.label);
+                        setRenameScope("local");
                         setRenamingEnvironment(environment);
                       }}
                     >
                       <PencilIcon className="size-3.5" />
-                      Rename…
+                      Rename only on this device…
                     </MenuItem>
                   ) : null}
                   <MenuItem variant="destructive" onClick={() => onDeregister(environment)}>
@@ -573,10 +611,15 @@ export function CloudEnvironmentConnectRows({
           <Dialog open onOpenChange={(open) => !open && setRenamingEnvironment(null)}>
             <DialogPopup className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>Rename environment</DialogTitle>
+                <DialogTitle>
+                  {renameScope === "global"
+                    ? "Rename for all devices"
+                    : "Rename only on this device"}
+                </DialogTitle>
                 <DialogDescription>
-                  This saves the environment on this device under your chosen name. Its T3 Connect
-                  name on other devices will not change.
+                  {renameScope === "global"
+                    ? "This changes the T3 Connect name on devices signed into your account. It does not add the environment to this device."
+                    : "This saves the environment on this device under your chosen name. Its T3 Connect name on other devices will not change."}
                 </DialogDescription>
               </DialogHeader>
               <DialogPanel>
