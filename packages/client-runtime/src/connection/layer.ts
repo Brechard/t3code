@@ -38,10 +38,16 @@ export const watchDiscoveredCompatibility = Effect.fn("connection.watchDiscovere
             const target = saved.get(environmentId)?.target;
             if (
               target?._tag === "RelayConnectionTarget" &&
-              target.localLabelOverride !== true &&
-              target.label !== entry.environment.label
+              (target.label !== entry.environment.label || target.localLabelOverride === true)
             ) {
-              yield* registry.syncRelayLabel(environmentId, entry.environment.label);
+              yield* registry.syncRelayLabel(environmentId, entry.environment.label).pipe(
+                Effect.catch((error) =>
+                  Effect.logWarning("Could not sync discovered environment label.", {
+                    environmentId,
+                    error,
+                  }),
+                ),
+              );
             }
             const status = Option.getOrNull(entry.status);
             const descriptor = status?.descriptor;

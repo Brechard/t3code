@@ -765,7 +765,7 @@ export const RelayEnvironmentUnlinkParams = Schema.Struct({
 export type RelayEnvironmentUnlinkParams = typeof RelayEnvironmentUnlinkParams.Type;
 
 export const RelayEnvironmentRenameRequest = Schema.Struct({
-  label: Schema.NullOr(TrimmedNonEmptyString),
+  label: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(80))),
 });
 export type RelayEnvironmentRenameRequest = typeof RelayEnvironmentRenameRequest.Type;
 

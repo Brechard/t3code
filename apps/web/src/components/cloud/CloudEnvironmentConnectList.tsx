@@ -127,13 +127,12 @@ export function CloudEnvironmentConnectRows({
     await refreshRelayEnvironments();
   });
   const connectRelayEnvironment = useCallback(
-    (environment: RelayClientEnvironmentRecord, label: string, localOnly = false) =>
+    (environment: RelayClientEnvironmentRecord) =>
       registerEnvironment(
         new RelayConnectionRegistration({
           target: new RelayConnectionTarget({
             environmentId: environment.environmentId,
-            label,
-            ...(localOnly ? { localLabelOverride: true } : {}),
+            label: environment.label,
           }),
         }),
       ),
@@ -144,7 +143,6 @@ export function CloudEnvironmentConnectRows({
   >(new Set());
   const [renamingEnvironment, setRenamingEnvironment] =
     useState<RelayClientEnvironmentRecord | null>(null);
-  const [renameScope, setRenameScope] = useState<"global" | "local">("global");
   const [renameLabel, setRenameLabel] = useState("");
   const savedById = new Map(
     savedEnvironments.map((environment) => [environment.environmentId, environment]),
@@ -170,7 +168,7 @@ export function CloudEnvironmentConnectRows({
     )
       return false;
     setConnectingEnvironmentIds((current) => new Set([...current, environment.environmentId]));
-    const result = await connectRelayEnvironment(environment, environment.label);
+    const result = await connectRelayEnvironment(environment);
     setConnectingEnvironmentIds((current) => {
       const next = new Set(current);
       next.delete(environment.environmentId);
@@ -211,52 +209,14 @@ export function CloudEnvironmentConnectRows({
   const renameDiscoveredEnvironment = async () => {
     if (renamingEnvironment === null || renameLabel.trim() === "") return;
     const environment = renamingEnvironment;
-    if (renameScope === "global") {
-      setConnectingEnvironmentIds((current) => new Set([...current, environment.environmentId]));
-      const renamed = await onRenameGlobally?.(environment.environmentId, renameLabel.trim());
-      setConnectingEnvironmentIds((current) => {
-        const next = new Set(current);
-        next.delete(environment.environmentId);
-        return next;
-      });
-      if (renamed) setRenamingEnvironment(null);
-      return;
-    }
-    if (
-      discoveredCompatibilityError(
-        environmentsState.environments.get(environment.environmentId)?.status,
-      ) !== null
-    ) {
-      toastManager.add({
-        type: "error",
-        title: "Could not rename environment",
-        description: "Client not supported. Update the server before adding it to this device.",
-      });
-      return;
-    }
     setConnectingEnvironmentIds((current) => new Set([...current, environment.environmentId]));
-    const result = await connectRelayEnvironment(environment, renameLabel.trim(), true);
+    const renamed = await onRenameGlobally?.(environment.environmentId, renameLabel.trim());
     setConnectingEnvironmentIds((current) => {
       const next = new Set(current);
       next.delete(environment.environmentId);
       return next;
     });
-    if (result._tag === "Success") {
-      setRenamingEnvironment(null);
-      toastManager.add({
-        type: "success",
-        title: "Environment renamed",
-        description: `Added to this device as ${renameLabel.trim()}.`,
-      });
-      return;
-    }
-    if (isAtomCommandInterrupted(result)) return;
-    const cause = squashAtomCommandFailure(result);
-    toastManager.add({
-      type: "error",
-      title: "Could not rename environment",
-      description: cause instanceof Error ? cause.message : "Could not save this environment.",
-    });
+    if (renamed) setRenamingEnvironment(null);
   };
 
   const visibleEnvironments = [...environmentsState.environments.values()].filter(
@@ -571,12 +531,11 @@ export function CloudEnvironmentConnectRows({
                       <MenuItem
                         onClick={() => {
                           setRenameLabel(environment.label);
-                          setRenameScope("global");
                           setRenamingEnvironment(environment);
                         }}
                       >
                         <PencilIcon className="size-3.5" />
-                        Rename for all devices…
+                        Rename environment…
                       </MenuItem>
                       <MenuItem
                         onClick={() => void onRenameGlobally(environment.environmentId, null)}
@@ -584,18 +543,6 @@ export function CloudEnvironmentConnectRows({
                         Use machine name on all devices
                       </MenuItem>
                     </>
-                  ) : null}
-                  {!savedEnvironment && !unsupported ? (
-                    <MenuItem
-                      onClick={() => {
-                        setRenameLabel(environment.label);
-                        setRenameScope("local");
-                        setRenamingEnvironment(environment);
-                      }}
-                    >
-                      <PencilIcon className="size-3.5" />
-                      Rename only on this device…
-                    </MenuItem>
                   ) : null}
                   <MenuItem variant="destructive" onClick={() => onDeregister(environment)}>
                     {deregisteringEnvironmentIds?.has(environment.environmentId)
@@ -611,15 +558,10 @@ export function CloudEnvironmentConnectRows({
           <Dialog open onOpenChange={(open) => !open && setRenamingEnvironment(null)}>
             <DialogPopup className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>
-                  {renameScope === "global"
-                    ? "Rename for all devices"
-                    : "Rename only on this device"}
-                </DialogTitle>
+                <DialogTitle>Rename environment</DialogTitle>
                 <DialogDescription>
-                  {renameScope === "global"
-                    ? "This changes the T3 Connect name on devices signed into your account. It does not add the environment to this device."
-                    : "This saves the environment on this device under your chosen name. Its T3 Connect name on other devices will not change."}
+                  This changes the T3 Connect name on devices signed into your account. It does not
+                  add the environment to this device.
                 </DialogDescription>
               </DialogHeader>
               <DialogPanel>

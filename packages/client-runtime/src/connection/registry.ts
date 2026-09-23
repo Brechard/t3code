@@ -499,8 +499,7 @@ export const make = Effect.gen(function* () {
         const previous = (yield* SubscriptionRef.get(entries)).get(environmentId);
         if (
           previous?.target._tag !== "RelayConnectionTarget" ||
-          previous.target.localLabelOverride === true ||
-          previous.target.label === label
+          (previous.target.label === label && previous.target.localLabelOverride !== true)
         )
           return;
         const target = new RelayConnectionTarget({ environmentId, label });

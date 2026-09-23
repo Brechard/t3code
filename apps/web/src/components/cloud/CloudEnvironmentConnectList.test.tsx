@@ -198,46 +198,6 @@ describe("cloud onboarding discovery", () => {
     expect(onDeregister).toHaveBeenCalledWith(linkedMachines.get(newMachineId)!.environment);
   });
 
-  it("offers rename alongside deletion for a discovered environment", async () => {
-    discovery.listEnvironments.mockResolvedValue(linkedMachines);
-    await act(async () => {
-      renderer = create(
-        <CloudEnvironmentConnectRows
-          primaryEnvironmentId={null}
-          savedEnvironments={[]}
-          onDeregister={vi.fn()}
-        />,
-      );
-    });
-
-    expect(
-      renderer!.root
-        .findAllByType("button")
-        .some((button) => button.children.includes("Rename only on this device…")),
-    ).toBe(true);
-
-    const renameButton = renderer!.root
-      .findAllByType("button")
-      .find((button) => button.children.includes("Rename only on this device…"))!;
-    await act(async () => renameButton.props.onClick());
-    const input = renderer!.root.findByType("input");
-    await act(async () => input.props.onChange({ target: { value: "Personal" } }));
-    const saveButton = renderer!.root
-      .findAllByType("button")
-      .find((button) => button.children.includes("Save"))!;
-    await act(async () => saveButton.props.onClick());
-
-    expect(discovery.register).toHaveBeenCalledWith(
-      expect.objectContaining({
-        target: expect.objectContaining({
-          environmentId: newMachineId,
-          label: "Personal",
-          localLabelOverride: true,
-        }),
-      }),
-    );
-  });
-
   it("renames a discovered environment for the account without adding it locally", async () => {
     discovery.listEnvironments.mockResolvedValue(linkedMachines);
     const onRenameGlobally = vi.fn().mockResolvedValue(true);
@@ -253,7 +213,7 @@ describe("cloud onboarding discovery", () => {
     });
     const renameButton = renderer!.root
       .findAllByType("button")
-      .find((button) => button.children.includes("Rename for all devices…"))!;
+      .find((button) => button.children.includes("Rename environment…"))!;
     await act(async () => renameButton.props.onClick());
     await act(async () =>
       renderer!.root.findByType("input").props.onChange({ target: { value: "Work" } }),
@@ -334,11 +294,6 @@ describe("cloud onboarding discovery", () => {
       );
     });
 
-    expect(
-      renderer!.root
-        .findAllByType("button")
-        .some((button) => button.children.includes("Rename only on this device…")),
-    ).toBe(false);
     expect(discovery.register).not.toHaveBeenCalled();
   });
 

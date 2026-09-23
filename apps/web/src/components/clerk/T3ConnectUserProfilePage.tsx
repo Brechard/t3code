@@ -144,7 +144,7 @@ export function T3ConnectEnvironmentRow(props: {
         <Dialog open onOpenChange={(open) => !open && setRenameOpen(false)}>
           <DialogPopup>
             <DialogHeader>
-              <DialogTitle>Rename for all devices</DialogTitle>
+              <DialogTitle>Rename environment</DialogTitle>
               <DialogDescription>
                 Devices signed into this T3 Connect account will show the new name after refreshing.
               </DialogDescription>

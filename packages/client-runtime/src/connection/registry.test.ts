@@ -838,11 +838,93 @@ describe("EnvironmentRegistry", () => {
         expect(
           (yield* SubscriptionRef.get(registry.entries)).get(RELAY_TARGET.environmentId)?.target
             .label,
-        ).toBe("Only here");
+        ).toBe("Work");
+        expect(
+          (yield* SubscriptionRef.get(registry.entries)).get(RELAY_TARGET.environmentId)?.target,
+        ).not.toHaveProperty("localLabelOverride");
         expect(
           (yield* SubscriptionRef.get(registry.entries)).get(RELAY_TARGET.environmentId)
             ?.unsupportedReason,
         ).toBeUndefined();
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
+
+  it.effect("checks compatibility even when the shared label cannot be saved", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness([RELAY_TARGET], [], [], {
+        initialDisabled: [RELAY_TARGET.environmentId],
+        beforeRegistrationRegister: () =>
+          Effect.fail(
+            new Persistence.ConnectionPersistenceError({
+              operation: "register-connection",
+              message: "Disk unavailable",
+            }),
+          ),
+      });
+      const environment = {
+        environmentId: RELAY_TARGET.environmentId,
+        label: "Work",
+        endpoint: {
+          httpBaseUrl: "https://relay.example.test",
+          wsBaseUrl: "wss://relay.example.test",
+          providerKind: "manual" as const,
+        },
+        linkedAt: "2026-09-15T00:00:00Z",
+      };
+      const discoveryState =
+        yield* SubscriptionRef.make<RelayEnvironmentDiscovery.RelayEnvironmentDiscoveryState>({
+          ...RelayEnvironmentDiscovery.EMPTY_RELAY_ENVIRONMENT_DISCOVERY_STATE,
+          environments: new Map([
+            [
+              RELAY_TARGET.environmentId,
+              {
+                environment,
+                availability: "online" as const,
+                status: Option.some({
+                  environmentId: RELAY_TARGET.environmentId,
+                  endpoint: environment.endpoint,
+                  status: "online" as const,
+                  checkedAt: "2026-09-15T00:00:00Z",
+                  descriptor: {
+                    environmentId: RELAY_TARGET.environmentId,
+                    label: "Server",
+                    platform: { os: "linux", arch: "x64" },
+                    serverVersion: "1.0.0",
+                    orchestrationProtocolVersion: ORCHESTRATION_PROTOCOL_VERSION,
+                    capabilities: { repositoryIdentity: true },
+                  },
+                }),
+                error: Option.none(),
+              },
+            ],
+          ]),
+        });
+      const checked = yield* Deferred.make<void>();
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        yield* watchDiscoveredCompatibility().pipe(
+          Effect.provideService(EnvironmentRegistry.EnvironmentRegistry, {
+            ...registry,
+            setCompatibility: (environmentId, error) =>
+              registry
+                .setCompatibility(environmentId, error)
+                .pipe(Effect.andThen(Deferred.succeed(checked, undefined))),
+          }),
+          Effect.provideService(
+            RelayEnvironmentDiscovery.RelayEnvironmentDiscovery,
+            RelayEnvironmentDiscovery.RelayEnvironmentDiscovery.of({
+              state: discoveryState,
+              refresh: Effect.void,
+            }),
+          ),
+          Effect.forkScoped,
+        );
+        yield* Deferred.await(checked);
+        expect(
+          (yield* SubscriptionRef.get(registry.entries)).get(RELAY_TARGET.environmentId)?.target
+            .label,
+        ).toBe(RELAY_TARGET.label);
       }).pipe(Effect.provide(harness.layer), Effect.scoped);
     }),
   );
@@ -995,6 +1077,28 @@ describe("EnvironmentRegistry", () => {
         expect((yield* Ref.get(harness.storedTargets)).get(RELAY_TARGET.environmentId)?.label).toBe(
           "Work",
         );
+      }).pipe(Effect.provide(harness.layer));
+    }),
+  );
+
+  it.effect("clears a legacy local override even when its label matches the shared name", () =>
+    Effect.gen(function* () {
+      const target = new RelayConnectionTarget({
+        ...RELAY_TARGET,
+        localLabelOverride: true,
+      });
+      const harness = yield* makeHarness([target], [], [], {
+        initialDisabled: [target.environmentId],
+      });
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        yield* registry.syncRelayLabel(target.environmentId, target.label);
+        expect(
+          (yield* SubscriptionRef.get(registry.entries)).get(target.environmentId)?.target,
+        ).not.toHaveProperty("localLabelOverride");
+        expect(
+          (yield* Ref.get(harness.storedTargets)).get(target.environmentId),
+        ).not.toHaveProperty("localLabelOverride");
       }).pipe(Effect.provide(harness.layer));
     }),
   );

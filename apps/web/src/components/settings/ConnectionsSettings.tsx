@@ -153,7 +153,6 @@ import { environmentCatalog } from "~/connection/catalog";
 import {
   connectPairing as connectPairingAtom,
   connectSshEnvironment as connectSshEnvironmentAtom,
-  renameEnvironment as renameEnvironmentAtom,
 } from "~/connection/onboarding";
 import { useEnvironmentQuery } from "~/state/query";
 import {
@@ -1437,12 +1436,9 @@ function NetworkAccessDescription({
 
 type SavedBackendListRowProps = {
   environment: EnvironmentPresentation;
-  cloudLabel: string | null;
   mutatingEnvironmentIds: ReadonlySet<EnvironmentId>;
   removingEnvironmentId: EnvironmentId | null;
-  onRename: (environmentId: EnvironmentId, label: string) => Promise<boolean>;
   onRenameGlobally: (environmentId: EnvironmentId, label: string | null) => Promise<boolean>;
-  onUseCloudName: (environmentId: EnvironmentId, label: string) => Promise<boolean>;
   onSetEnabled: (environmentId: EnvironmentId, enabled: boolean) => void;
   onRemove: (environment: EnvironmentPresentation) => void;
   onDeregister: (environment: EnvironmentPresentation) => void;
@@ -1487,22 +1483,16 @@ function savedBackendStatus(environment: EnvironmentPresentation): {
 
 function RenameEnvironmentDialog({
   environment,
-  cloudLabel,
-  scope,
   isSaving,
   onClose,
   onRename,
 }: {
   readonly environment: EnvironmentPresentation;
-  readonly cloudLabel: string | null;
-  readonly scope: "global" | "local";
   readonly isSaving: boolean;
   readonly onClose: () => void;
   readonly onRename: (environmentId: EnvironmentId, label: string) => Promise<boolean>;
 }) {
-  const [label, setLabel] = useState(
-    scope === "global" ? (cloudLabel ?? environment.label) : environment.label,
-  );
+  const [label, setLabel] = useState(environment.label);
   const submit = async () => {
     if (await onRename(environment.environmentId, label)) onClose();
   };
@@ -1511,13 +1501,9 @@ function RenameEnvironmentDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogPopup className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>
-            {scope === "global" ? "Rename for all devices" : "Rename only on this device"}
-          </DialogTitle>
+          <DialogTitle>Rename environment</DialogTitle>
           <DialogDescription>
-            {scope === "global"
-              ? "This name will appear on devices signed into your T3 Connect account. A local-only name on another device will still take precedence there."
-              : "This name overrides the T3 Connect name on this device only."}
+            This name will appear on devices signed into your T3 Connect account.
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
@@ -1559,12 +1545,9 @@ function RenameEnvironmentDialog({
  */
 function SavedBackendListRow({
   environment,
-  cloudLabel,
   mutatingEnvironmentIds,
   removingEnvironmentId,
-  onRename,
   onRenameGlobally,
-  onUseCloudName,
   onSetEnabled,
   onRemove,
   onDeregister,
@@ -1575,7 +1558,7 @@ function SavedBackendListRow({
   const isConnected = environment.connection.phase === "connected";
   const isRemoving = removingEnvironmentId === environmentId;
   const isMutating = mutatingEnvironmentIds.has(environmentId);
-  const [renameScope, setRenameScope] = useState<"global" | "local" | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
   const errorTraceId = environment.connection.traceId;
   const { copyToClipboard: copyTraceIdToClipboard } = useCopyToClipboard<{ traceId: string }>({
     target: "trace ID",
@@ -1725,27 +1708,14 @@ function SavedBackendListRow({
         <MenuPopup align="end" className="min-w-52">
           {environment.entry.target._tag === "RelayConnectionTarget" ? (
             <>
-              <MenuItem onClick={() => setRenameScope("global")}>
+              <MenuItem onClick={() => setRenameOpen(true)}>
                 <PencilIcon className="size-3.5" />
-                Rename for all devices…
+                Rename environment…
               </MenuItem>
               <MenuItem onClick={() => void onRenameGlobally(environmentId, null)}>
                 Use machine name on all devices
               </MenuItem>
             </>
-          ) : null}
-          <MenuItem onClick={() => setRenameScope("local")}>
-            <PencilIcon className="size-3.5" />
-            {environment.entry.target._tag === "RelayConnectionTarget"
-              ? "Rename only on this device…"
-              : "Rename…"}
-          </MenuItem>
-          {environment.entry.target._tag === "RelayConnectionTarget" &&
-          environment.entry.target.localLabelOverride === true &&
-          cloudLabel !== null ? (
-            <MenuItem onClick={() => void onUseCloudName(environmentId, cloudLabel)}>
-              Use T3 Connect name on this device
-            </MenuItem>
           ) : null}
           <EnvironmentIconMenu
             environmentId={environmentId}
@@ -1765,14 +1735,12 @@ function SavedBackendListRow({
           ) : null}
         </MenuPopup>
       </Menu>
-      {renameScope !== null ? (
+      {renameOpen ? (
         <RenameEnvironmentDialog
           environment={environment}
-          cloudLabel={cloudLabel}
-          scope={renameScope}
           isSaving={isMutating}
-          onClose={() => setRenameScope(null)}
-          onRename={renameScope === "global" ? onRenameGlobally : onRename}
+          onClose={() => setRenameOpen(false)}
+          onRename={onRenameGlobally}
         />
       ) : null}
     </EnvironmentRow>
@@ -1966,7 +1934,6 @@ export function ConnectionsSettings() {
   const connectSshEnvironment = useAtomCommand(connectSshEnvironmentAtom, {
     reportFailure: false,
   });
-  const renameEnvironment = useAtomCommand(renameEnvironmentAtom, { reportFailure: false });
   const removeEnvironment = useAtomCommand(environmentCatalog.remove, { reportFailure: false });
   const deregisterEnvironment = useAtomCommand(deregisterManagedRelayEnvironmentCommand, {
     reportFailure: false,
@@ -1977,11 +1944,8 @@ export function ConnectionsSettings() {
   const refreshRelayEnvironments = useAtomCommand(relayEnvironmentDiscovery.refresh, {
     reportFailure: false,
   });
-  const {
-    accountId: managedRelayAccountId,
-    data: managedRelayEnvironments,
-    refresh: refreshManagedRelayEnvironmentList,
-  } = useManagedRelayEnvironments();
+  const { accountId: managedRelayAccountId, refresh: refreshManagedRelayEnvironmentList } =
+    useManagedRelayEnvironments();
   const setEnvironmentEnabled = useAtomCommand(environmentCatalog.setEnabled, {
     reportFailure: false,
   });
@@ -2001,16 +1965,6 @@ export function ConnectionsSettings() {
         (environment) => environment.entry.target._tag !== "PrimaryConnectionTarget",
       ),
     [environments],
-  );
-  const cloudLabelById = useMemo(
-    () =>
-      new Map(
-        managedRelayEnvironments?.map((environment) => [
-          environment.environmentId,
-          environment.label,
-        ]) ?? [],
-      ),
-    [managedRelayEnvironments],
   );
   // The WSL backend is managed from the WSL row under this machine, so it has
   // no row of its own in the list.
@@ -2685,36 +2639,6 @@ export function ConnectionsSettings() {
     [setEnvironmentEnabled],
   );
 
-  const handleRenameSavedBackend = useCallback(
-    async (environmentId: EnvironmentId, label: string) => {
-      setSavedEnvironmentMutating(environmentId, true);
-      setSavedBackendError(null);
-      const result = await renameEnvironment({ environmentId, label });
-      setSavedEnvironmentMutating(environmentId, false);
-      if (result._tag === "Success") {
-        toastManager.add({
-          type: "success",
-          title: "Environment renamed",
-          description: `This environment is now shown as ${label.trim()}.`,
-        });
-        return true;
-      }
-      if (isAtomCommandInterrupted(result)) return false;
-      const error = squashAtomCommandFailure(result);
-      const message = error instanceof Error ? error.message : "Failed to rename environment.";
-      setSavedBackendError(message);
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Could not rename environment",
-          description: message,
-        }),
-      );
-      return false;
-    },
-    [renameEnvironment, setSavedEnvironmentMutating],
-  );
-
   const handleRenameGlobally = useCallback(
     async (environmentId: EnvironmentId, label: string | null) => {
       const accountId = managedRelayAccountId;
@@ -2735,27 +2659,6 @@ export function ConnectionsSettings() {
       if (result._tag === "Success") {
         refreshManagedRelayEnvironmentList();
         await refreshRelayEnvironments();
-        const saved = environments.find((candidate) => candidate.environmentId === environmentId);
-        if (
-          saved?.entry.target._tag === "RelayConnectionTarget" &&
-          saved.entry.target.localLabelOverride === true &&
-          label !== null
-        ) {
-          const localResult = await renameEnvironment({
-            environmentId,
-            label,
-            localOnly: false,
-          });
-          if (localResult._tag !== "Success") {
-            setSavedEnvironmentMutating(environmentId, false);
-            toastManager.add({
-              type: "error",
-              title: "Renamed in T3 Connect, but not on this device",
-              description: "The local-only name still takes precedence here. Try renaming again.",
-            });
-            return true;
-          }
-        }
         setSavedEnvironmentMutating(environmentId, false);
         toastManager.add({
           type: "success",
@@ -2782,31 +2685,8 @@ export function ConnectionsSettings() {
       renameCloudEnvironment,
       refreshManagedRelayEnvironmentList,
       refreshRelayEnvironments,
-      environments,
-      renameEnvironment,
       setSavedEnvironmentMutating,
     ],
-  );
-
-  const handleUseCloudName = useCallback(
-    async (environmentId: EnvironmentId, label: string) => {
-      setSavedEnvironmentMutating(environmentId, true);
-      const result = await renameEnvironment({ environmentId, label, localOnly: false });
-      setSavedEnvironmentMutating(environmentId, false);
-      if (result._tag === "Success") {
-        toastManager.add({ type: "success", title: "Using T3 Connect name on this device" });
-        return true;
-      }
-      if (isAtomCommandInterrupted(result)) return false;
-      const error = squashAtomCommandFailure(result);
-      toastManager.add({
-        type: "error",
-        title: "Could not use T3 Connect name",
-        description: error instanceof Error ? error.message : "The local name could not be reset.",
-      });
-      return false;
-    },
-    [renameEnvironment, setSavedEnvironmentMutating],
   );
 
   // Removing forgets the pairing, credentials, and cached threads on this
@@ -4124,12 +4004,9 @@ export function ConnectionsSettings() {
           <SavedBackendListRow
             key={environment.environmentId}
             environment={environment}
-            cloudLabel={cloudLabelById.get(environment.environmentId) ?? null}
             mutatingEnvironmentIds={mutatingSavedEnvironmentIds}
             removingEnvironmentId={removingSavedEnvironmentId}
-            onRename={handleRenameSavedBackend}
             onRenameGlobally={handleRenameGlobally}
-            onUseCloudName={handleUseCloudName}
             onSetEnabled={handleSetSavedBackendEnabled}
             onRemove={handleRemoveSavedBackend}
             onDeregister={handleDeregisterEnvironment}

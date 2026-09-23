@@ -136,13 +136,18 @@ export function T3ConnectProfilePage() {
 
   const commitRename = async (environment: RelayClientEnvironmentRecord, label: string | null) => {
     const accountId = environmentsState.accountId;
-    if (label === "" || !accountId || mutationPendingRef.current) return;
+    const trimmedLabel = label?.trim() ?? null;
+    if (trimmedLabel === "" || !accountId || mutationPendingRef.current) return;
+    if (trimmedLabel !== null && trimmedLabel.length > 80) {
+      Alert.alert("Name is too long", "Use 80 characters or fewer.");
+      return;
+    }
     mutationPendingRef.current = true;
     setDeregisteringEnvironmentId(environment.environmentId);
     const result = await renameEnvironment({
       accountId,
       environmentId: environment.environmentId,
-      label,
+      label: trimmedLabel,
     });
     mutationPendingRef.current = false;
     setDeregisteringEnvironmentId(null);
@@ -163,7 +168,7 @@ export function T3ConnectProfilePage() {
     const commit = (value: string) => void commitRename(environment, value.trim());
     if (Platform.OS === "ios") {
       Alert.prompt(
-        "Rename for all devices",
+        "Rename environment",
         undefined,
         (value) => void commit(value ?? ""),
         "plain-text",
@@ -172,7 +177,7 @@ export function T3ConnectProfilePage() {
       return;
     }
     showTextInputDialog({
-      title: "Rename for all devices",
+      title: "Rename environment",
       initialValue: environment.label,
       confirmText: "Rename",
       onConfirm: (value) => void commit(value),
@@ -281,7 +286,7 @@ export function T3ConnectProfilePage() {
 }
 
 const ENVIRONMENT_MENU_ACTIONS = [
-  { id: "rename", title: "Rename for all devices", image: "pencil" },
+  { id: "rename", title: "Rename environment", image: "pencil" },
   { id: "reset-name", title: "Use machine name on all devices", image: "arrow.uturn.backward" },
   { id: "deregister", title: "Deregister", image: "trash", attributes: { destructive: true } },
 ] satisfies MenuAction[];
