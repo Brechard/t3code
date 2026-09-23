@@ -227,6 +227,33 @@ describe("cloud onboarding discovery", () => {
     expect(discovery.register).not.toHaveBeenCalled();
   });
 
+  it("keeps a discovered environment's name draft visible during discovery refresh", async () => {
+    discovery.listEnvironments.mockResolvedValue(linkedMachines);
+    await act(async () => {
+      renderer = create(
+        <CloudEnvironmentConnectRows
+          primaryEnvironmentId={null}
+          savedEnvironments={[]}
+          onDeregister={vi.fn()}
+          onRenameGlobally={vi.fn().mockResolvedValue(true)}
+        />,
+      );
+    });
+    const renameButton = renderer!.root
+      .findAllByType("button")
+      .find((button) => button.children.includes("Rename environment…"))!;
+    await act(async () => renameButton.props.onClick());
+    await act(async () =>
+      renderer!.root.findByType("input").props.onChange({ target: { value: "My work laptop" } }),
+    );
+
+    await act(async () => {
+      publish({ ...discovery.state!, environments: new Map(), refreshing: true });
+    });
+
+    expect(renderer!.root.findByType("input").props.value).toBe("My work laptop");
+  });
+
   it("blocks deletion while adding a discovered environment", async () => {
     discovery.listEnvironments.mockResolvedValue(linkedMachines);
     let finishRegistration!: (result: AtomCommandResult<void, never>) => void;

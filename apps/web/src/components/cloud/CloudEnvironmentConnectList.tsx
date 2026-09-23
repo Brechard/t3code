@@ -297,6 +297,56 @@ export function CloudEnvironmentConnectRows({
   }, [shouldRefreshWhileEmpty]);
 
   const standalone = showSavedEnvironments || savedEnvironments.length === 0;
+  const renamingEnvironmentId = renamingEnvironment?.environmentId;
+  const renameDialog = renamingEnvironmentId ? (
+    <Dialog open onOpenChange={(open) => !open && setRenamingEnvironment(null)}>
+      <DialogPopup className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Rename environment</DialogTitle>
+          <DialogDescription>
+            This changes the T3 Connect name on devices signed into your account. It does not add
+            the environment to this device.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogPanel>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-foreground">Name</span>
+            <Input
+              value={renameLabel}
+              onChange={(event) => setRenameLabel(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+                if (event.key === "Enter" && renameLabel.trim() !== "") {
+                  event.preventDefault();
+                  void renameDiscoveredEnvironment();
+                }
+              }}
+              disabled={connectingEnvironmentIds.has(renamingEnvironmentId)}
+              autoFocus
+              maxLength={80}
+            />
+          </label>
+        </DialogPanel>
+        <DialogFooter variant="bare">
+          <Button
+            variant="outline"
+            disabled={connectingEnvironmentIds.has(renamingEnvironmentId)}
+            onClick={() => setRenamingEnvironment(null)}
+          >
+            Cancel
+          </Button>
+          <Button
+            disabled={
+              connectingEnvironmentIds.has(renamingEnvironmentId) || renameLabel.trim() === ""
+            }
+            onClick={() => void renameDiscoveredEnvironment()}
+          >
+            {connectingEnvironmentIds.has(renamingEnvironmentId) ? "Saving…" : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogPopup>
+    </Dialog>
+  ) : null;
 
   if (
     !refreshWhileEmpty &&
@@ -305,7 +355,12 @@ export function CloudEnvironmentConnectRows({
     environmentsState.refreshing &&
     environmentsState.environments.size === 0
   ) {
-    return <RemoteEnvironmentRowsSkeleton />;
+    return (
+      <>
+        <RemoteEnvironmentRowsSkeleton />
+        {renameDialog}
+      </>
+    );
   }
 
   if (standalone && visibleEnvironments.length === 0) {
@@ -316,26 +371,34 @@ export function CloudEnvironmentConnectRows({
       : (Option.getOrNull(environmentsState.error)?.message ?? null);
     if (discoveryProblem !== null && !environmentsState.refreshing) {
       return (
-        <div className={ITEM_ROW_CLASSNAME}>
-          <p className="text-sm font-medium text-destructive">
-            Could not load T3 Connect environments
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">{discoveryProblem}</p>
-          <Button
-            size="sm"
-            variant="outline"
-            className="mt-3"
-            onClick={() => void refreshRelayEnvironments()}
-          >
-            Try again
-          </Button>
-        </div>
+        <>
+          <div className={ITEM_ROW_CLASSNAME}>
+            <p className="text-sm font-medium text-destructive">
+              Could not load T3 Connect environments
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{discoveryProblem}</p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-3"
+              onClick={() => void refreshRelayEnvironments()}
+            >
+              Try again
+            </Button>
+          </div>
+          {renameDialog}
+        </>
       );
     }
-    return empty;
+    return (
+      <>
+        {empty}
+        {renameDialog}
+      </>
+    );
   }
 
-  return visibleEnvironments.map(({ environment, availability, error, status }) => {
+  const rows = visibleEnvironments.map(({ environment, availability, error, status }) => {
     const savedEnvironment = savedById.get(environment.environmentId);
     const compatibilityError = discoveredCompatibilityError(status);
     const unsupported =
@@ -554,57 +617,13 @@ export function CloudEnvironmentConnectRows({
             ) : null}
           </div>
         </div>
-        {renamingEnvironment?.environmentId === environment.environmentId ? (
-          <Dialog open onOpenChange={(open) => !open && setRenamingEnvironment(null)}>
-            <DialogPopup className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>Rename environment</DialogTitle>
-                <DialogDescription>
-                  This changes the T3 Connect name on devices signed into your account. It does not
-                  add the environment to this device.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogPanel>
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium text-foreground">Name</span>
-                  <Input
-                    value={renameLabel}
-                    onChange={(event) => setRenameLabel(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-                      if (event.key === "Enter" && renameLabel.trim() !== "") {
-                        event.preventDefault();
-                        void renameDiscoveredEnvironment();
-                      }
-                    }}
-                    disabled={connectingEnvironmentIds.has(environment.environmentId)}
-                    autoFocus
-                    maxLength={80}
-                  />
-                </label>
-              </DialogPanel>
-              <DialogFooter variant="bare">
-                <Button
-                  variant="outline"
-                  disabled={connectingEnvironmentIds.has(environment.environmentId)}
-                  onClick={() => setRenamingEnvironment(null)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  disabled={
-                    connectingEnvironmentIds.has(environment.environmentId) ||
-                    renameLabel.trim() === ""
-                  }
-                  onClick={() => void renameDiscoveredEnvironment()}
-                >
-                  {connectingEnvironmentIds.has(environment.environmentId) ? "Saving…" : "Save"}
-                </Button>
-              </DialogFooter>
-            </DialogPopup>
-          </Dialog>
-        ) : null}
       </div>
     );
   });
+  return (
+    <>
+      {rows}
+      {renameDialog}
+    </>
+  );
 }
