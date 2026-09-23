@@ -2698,8 +2698,11 @@ export function ConnectionsSettings() {
         });
         return;
       }
+      const saved = environments.some(
+        (candidate) => candidate.environmentId === environment.environmentId,
+      );
       const confirmed = await requestConfirmDialog(
-        `Delete ${environment.label} from T3 Connect?\nThis revokes its T3 Connect access and removes any managed tunnel. The environment must be linked again to restore it.`,
+        `Delete ${environment.label} from T3 Connect?\nThis revokes its T3 Connect access and removes any managed tunnel.${saved ? " It also removes this device's pairing and cached threads." : ""} The environment must be linked again to restore it.`,
         { variant: "destructive" },
       );
       if (confirmed !== true) return;
@@ -2709,7 +2712,6 @@ export function ConnectionsSettings() {
       setSavedBackendError(null);
       const result = await deregisterEnvironment({ accountId, environmentId });
       if (result._tag === "Success") {
-        const saved = environments.some((candidate) => candidate.environmentId === environmentId);
         if (saved) {
           const removeResult = await removeEnvironment(environmentId);
           const message = localRemovalFailureMessage(removeResult);
