@@ -838,12 +838,11 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
                     : "Clipboard copy is unavailable here. Manually copy this code into another client."}
                 </DialogDescription>
               </DialogHeader>
-              <DialogPanel className="space-y-4">
+              <DialogPanel>
                 <Textarea
                   readOnly
                   value={revealValue}
                   rows={isRevealValueUrl ? 4 : 3}
-                  className="text-xs leading-relaxed"
                   onFocus={(event) => event.currentTarget.select()}
                   onClick={(event) => event.currentTarget.select()}
                 />
@@ -935,9 +934,7 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
                     </code>
                   }
                 />
-                <TooltipPopup side="top" className="max-w-80 break-all">
-                  {qrPairingUrl}
-                </TooltipPopup>
+                <TooltipPopup side="top">{qrPairingUrl}</TooltipPopup>
               </Tooltip>
               <Button
                 size="xs"
@@ -1145,7 +1142,7 @@ const AuthorizedClientsHeaderAction = memo(function AuthorizedClientsHeaderActio
               authorized client.
             </DialogDescription>
           </DialogHeader>
-          <DialogPanel className="space-y-5">
+          <DialogPanel>
             <label className="block">
               <span className="mb-1.5 block text-xs font-medium text-foreground">
                 Client label (optional)
@@ -1344,9 +1341,7 @@ const AdvertisedEndpointListRow = memo(function AdvertisedEndpointListRow({
                   </p>
                 }
               />
-              <TooltipPopup side="top" className="max-w-80">
-                {endpoint.httpBaseUrl}
-              </TooltipPopup>
+              <TooltipPopup side="top">{endpoint.httpBaseUrl}</TooltipPopup>
             </Tooltip>
           ) : null}
           {!isAvailable ? (
@@ -1648,7 +1643,7 @@ function SavedBackendListRow({
           >
             {subtitleText}
           </TooltipTrigger>
-          <TooltipPopup side="top" className="max-w-80 whitespace-pre-wrap leading-tight">
+          <TooltipPopup side="top" className="whitespace-pre-wrap">
             {unsupported
               ? (environment.connection.error ?? connectionStatusText(environment.connection))
               : enabled
@@ -1701,9 +1696,8 @@ function SavedBackendListRow({
           render={
             <Button
               type="button"
-              variant="ghost"
+              variant="ghost-muted"
               size="icon-xs"
-              className="text-muted-foreground hover:text-foreground"
               disabled={isRemoving || isMutating}
               aria-label={`More actions for ${environment.label}`}
             />
@@ -2962,7 +2956,7 @@ export function ConnectionsSettings() {
                         <AutocompleteItem
                           key={`${target.alias}:${target.hostname}:${target.port ?? ""}`}
                           value={target}
-                          className="h-8 min-h-8 gap-2 whitespace-nowrap"
+                          className="h-8 min-h-8 whitespace-nowrap"
                         >
                           <span className="min-w-0 truncate text-sm font-medium">
                             {target.alias}
@@ -2982,7 +2976,7 @@ export function ConnectionsSettings() {
                     })}
                   </AutocompleteList>
                 ) : (
-                  <AutocompleteEmpty className="break-all px-3 py-2 text-xs">
+                  <AutocompleteEmpty className="break-all">
                     No hosts match "{savedBackendSshHost.trim()}".
                   </AutocompleteEmpty>
                 )}
@@ -3515,16 +3509,15 @@ export function ConnectionsSettings() {
                     render={
                       <Button
                         type="button"
-                        variant="ghost"
+                        variant="ghost-muted"
                         size="icon-xs"
-                        className="text-muted-foreground hover:text-foreground"
                         aria-label="More actions for this machine"
                       />
                     }
                   >
                     <EllipsisIcon className="size-3.5" />
                   </MenuTrigger>
-                  <MenuPopup align="end" className="min-w-52">
+                  <MenuPopup align="end">
                     <EnvironmentIconMenu
                       environmentId={primaryEnvironmentId}
                       serverConfig={primaryServerConfig}
@@ -3831,7 +3824,7 @@ export function ConnectionsSettings() {
                   Tailscale to proxy HTTPS traffic to this backend.
                 </DialogDescription>
               </DialogHeader>
-              <DialogPanel className="space-y-4">
+              <DialogPanel>
                 <label className="block">
                   <span className="text-sm font-medium text-foreground">HTTPS port</span>
                   <Input
@@ -3860,9 +3853,7 @@ export function ConnectionsSettings() {
                       }
                     />
                     {pendingTailscaleServeBaseUrl ? (
-                      <TooltipPopup side="top" className="max-w-80">
-                        {pendingTailscaleServeBaseUrl}
-                      </TooltipPopup>
+                      <TooltipPopup side="top">{pendingTailscaleServeBaseUrl}</TooltipPopup>
                     ) : null}
                   </Tooltip>
                 </div>
@@ -3912,11 +3903,7 @@ export function ConnectionsSettings() {
         headerAction={
           <div className="flex items-center gap-1">
             {savedServerUpdateTargets.length > 0 ? (
-              <ServerUpdatesAction
-                targets={savedServerUpdateTargets}
-                variant="ghost"
-                className="font-normal text-muted-foreground/60 hover:text-muted-foreground"
-              />
+              <ServerUpdatesAction targets={savedServerUpdateTargets} variant="ghost-muted" />
             ) : null}
             <Dialog
               open={addBackendDialogOpen}
@@ -3932,12 +3919,7 @@ export function ConnectionsSettings() {
                   render={
                     <DialogTrigger
                       render={
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          className="font-normal text-muted-foreground/60 hover:text-muted-foreground"
-                          aria-label="Add environment"
-                        >
+                        <Button size="xs" variant="ghost-muted" aria-label="Add environment">
                           <PlusIcon className="size-3" />
                           <span>Add environment</span>
                         </Button>
