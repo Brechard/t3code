@@ -314,6 +314,7 @@ const renameConnection = Effect.fn("clientRuntime.connection.onboarding.renameCo
     const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
     const credentials = yield* ConnectionCredentialStore.ConnectionCredentialStore;
     const entry = (yield* SubscriptionRef.get(registry.entries)).get(input.environmentId);
+    if (entry !== undefined && input.label.trim() === entry.target.label) return;
     const credential =
       entry?.target._tag === "BearerConnectionTarget"
         ? yield* credentials.get(entry.target.connectionId)

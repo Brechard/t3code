@@ -1518,6 +1518,7 @@ function RenameEnvironmentDialog({
               value={label}
               onChange={(event) => setLabel(event.target.value)}
               onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing || event.keyCode === 229) return;
                 if (event.key === "Enter" && label.trim() !== "") {
                   event.preventDefault();
                   void submit();
