@@ -19,7 +19,7 @@ import type {
   RelayEnvironmentStatusResponse,
 } from "@t3tools/contracts/relay";
 import * as Option from "effect/Option";
-import { EllipsisIcon } from "lucide-react";
+import { EllipsisIcon, PencilIcon } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useEffectEvent, useState } from "react";
 
 import { environmentCatalog } from "~/connection/catalog";
@@ -32,6 +32,16 @@ import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { ITEM_ROW_CLASSNAME, ITEM_ROW_INNER_CLASSNAME } from "../settings/itemRows";
 import { Checkbox } from "../ui/checkbox";
 import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "../ui/dialog";
+import { Input } from "../ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Skeleton } from "../ui/skeleton";
 import { toastManager } from "../ui/toast";
@@ -112,12 +122,12 @@ export function CloudEnvironmentConnectRows({
     await refreshRelayEnvironments();
   });
   const connectRelayEnvironment = useCallback(
-    (environment: RelayClientEnvironmentRecord) =>
+    (environment: RelayClientEnvironmentRecord, label: string) =>
       registerEnvironment(
         new RelayConnectionRegistration({
           target: new RelayConnectionTarget({
             environmentId: environment.environmentId,
-            label: environment.label,
+            label,
           }),
         }),
       ),
@@ -126,6 +136,9 @@ export function CloudEnvironmentConnectRows({
   const [connectingEnvironmentIds, setConnectingEnvironmentIds] = useState<
     ReadonlySet<EnvironmentId>
   >(new Set());
+  const [renamingEnvironment, setRenamingEnvironment] =
+    useState<RelayClientEnvironmentRecord | null>(null);
+  const [renameLabel, setRenameLabel] = useState("");
   const savedById = new Map(
     savedEnvironments.map((environment) => [environment.environmentId, environment]),
   );
@@ -150,7 +163,7 @@ export function CloudEnvironmentConnectRows({
     )
       return false;
     setConnectingEnvironmentIds((current) => new Set([...current, environment.environmentId]));
-    const result = await connectRelayEnvironment(environment);
+    const result = await connectRelayEnvironment(environment, environment.label);
     setConnectingEnvironmentIds((current) => {
       const next = new Set(current);
       next.delete(environment.environmentId);
@@ -186,6 +199,34 @@ export function CloudEnvironmentConnectRows({
         : undefined,
     });
     return false;
+  };
+
+  const renameDiscoveredEnvironment = async () => {
+    if (renamingEnvironment === null || renameLabel.trim() === "") return;
+    const environment = renamingEnvironment;
+    setConnectingEnvironmentIds((current) => new Set([...current, environment.environmentId]));
+    const result = await connectRelayEnvironment(environment, renameLabel.trim());
+    setConnectingEnvironmentIds((current) => {
+      const next = new Set(current);
+      next.delete(environment.environmentId);
+      return next;
+    });
+    if (result._tag === "Success") {
+      setRenamingEnvironment(null);
+      toastManager.add({
+        type: "success",
+        title: "Environment renamed",
+        description: `Added to this device as ${renameLabel.trim()}.`,
+      });
+      return;
+    }
+    if (isAtomCommandInterrupted(result)) return;
+    const cause = squashAtomCommandFailure(result);
+    toastManager.add({
+      type: "error",
+      title: "Could not rename environment",
+      description: cause instanceof Error ? cause.message : "Could not save this environment.",
+    });
   };
 
   const visibleEnvironments = [...environmentsState.environments.values()].filter(
@@ -492,6 +533,17 @@ export function CloudEnvironmentConnectRows({
                   <EllipsisIcon className="size-3.5" />
                 </MenuTrigger>
                 <MenuPopup align="end" className="min-w-52">
+                  {!savedEnvironment ? (
+                    <MenuItem
+                      onClick={() => {
+                        setRenameLabel(environment.label);
+                        setRenamingEnvironment(environment);
+                      }}
+                    >
+                      <PencilIcon className="size-3.5" />
+                      Rename…
+                    </MenuItem>
+                  ) : null}
                   <MenuItem variant="destructive" onClick={() => onDeregister(environment)}>
                     {deregisteringEnvironmentIds?.has(environment.environmentId)
                       ? "Deleting…"
@@ -502,6 +554,56 @@ export function CloudEnvironmentConnectRows({
             ) : null}
           </div>
         </div>
+        {renamingEnvironment?.environmentId === environment.environmentId ? (
+          <Dialog open onOpenChange={(open) => !open && setRenamingEnvironment(null)}>
+            <DialogPopup className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Rename environment</DialogTitle>
+                <DialogDescription>
+                  This saves the environment on this device under your chosen name. Its T3 Connect
+                  name on other devices will not change.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogPanel>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-foreground">Name</span>
+                  <Input
+                    value={renameLabel}
+                    onChange={(event) => setRenameLabel(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+                      if (event.key === "Enter" && renameLabel.trim() !== "") {
+                        event.preventDefault();
+                        void renameDiscoveredEnvironment();
+                      }
+                    }}
+                    disabled={connectingEnvironmentIds.has(environment.environmentId)}
+                    autoFocus
+                    maxLength={80}
+                  />
+                </label>
+              </DialogPanel>
+              <DialogFooter variant="bare">
+                <Button
+                  variant="outline"
+                  disabled={connectingEnvironmentIds.has(environment.environmentId)}
+                  onClick={() => setRenamingEnvironment(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  disabled={
+                    connectingEnvironmentIds.has(environment.environmentId) ||
+                    renameLabel.trim() === ""
+                  }
+                  onClick={() => void renameDiscoveredEnvironment()}
+                >
+                  {connectingEnvironmentIds.has(environment.environmentId) ? "Saving…" : "Save"}
+                </Button>
+              </DialogFooter>
+            </DialogPopup>
+          </Dialog>
+        ) : null}
       </div>
     );
   });

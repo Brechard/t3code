@@ -66,6 +66,20 @@ vi.mock("../ui/button", () => ({
     <button {...props}>{children}</button>
   ),
 }));
+vi.mock("../ui/dialog", () => ({
+  Dialog: ({ children }: { children: ReactNode }) => children,
+  DialogPopup: ({ children }: { children: ReactNode }) => children,
+  DialogHeader: ({ children }: { children: ReactNode }) => children,
+  DialogTitle: ({ children }: { children: ReactNode }) => children,
+  DialogDescription: ({ children }: { children: ReactNode }) => children,
+  DialogPanel: ({ children }: { children: ReactNode }) => children,
+  DialogFooter: ({ children }: { children: ReactNode }) => children,
+}));
+vi.mock("../ui/input", () => ({
+  Input: (props: { value: string; onChange: (event: { target: { value: string } }) => void }) => (
+    <input {...props} />
+  ),
+}));
 vi.mock("../ui/menu", () => ({
   Menu: ({ children }: { children: ReactNode }) => children,
   MenuTrigger: ({ children, render }: { children: ReactNode; render: ReactNode }) => (
@@ -182,6 +196,40 @@ describe("cloud onboarding discovery", () => {
     expect(deleteButton).toBeDefined();
     await act(async () => deleteButton!.props.onClick());
     expect(onDeregister).toHaveBeenCalledWith(linkedMachines.get(newMachineId)!.environment);
+  });
+
+  it("offers rename alongside deletion for a discovered environment", async () => {
+    discovery.listEnvironments.mockResolvedValue(linkedMachines);
+    await act(async () => {
+      renderer = create(
+        <CloudEnvironmentConnectRows
+          primaryEnvironmentId={null}
+          savedEnvironments={[]}
+          onDeregister={vi.fn()}
+        />,
+      );
+    });
+
+    expect(
+      renderer!.root.findAllByType("button").some((button) => button.children.includes("Rename…")),
+    ).toBe(true);
+
+    const renameButton = renderer!.root
+      .findAllByType("button")
+      .find((button) => button.children.includes("Rename…"))!;
+    await act(async () => renameButton.props.onClick());
+    const input = renderer!.root.findByType("input");
+    await act(async () => input.props.onChange({ target: { value: "Personal" } }));
+    const saveButton = renderer!.root
+      .findAllByType("button")
+      .find((button) => button.children.includes("Save"))!;
+    await act(async () => saveButton.props.onClick());
+
+    expect(discovery.register).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: expect.objectContaining({ environmentId: newMachineId, label: "Personal" }),
+      }),
+    );
   });
 
   it("signals that the section can expand after initial discovery settles", async () => {
