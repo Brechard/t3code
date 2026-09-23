@@ -216,7 +216,11 @@ export function CloudEnvironmentConnectRows({
       next.delete(environment.environmentId);
       return next;
     });
-    if (renamed) setRenamingEnvironment(null);
+    if (renamed) {
+      setRenamingEnvironment((current) =>
+        current?.environmentId === environment.environmentId ? null : current,
+      );
+    }
   };
 
   const visibleEnvironments = [...environmentsState.environments.values()].filter(

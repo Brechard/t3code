@@ -254,6 +254,59 @@ describe("cloud onboarding discovery", () => {
     expect(renderer!.root.findByType("input").props.value).toBe("My work laptop");
   });
 
+  it("does not close another environment's draft when an earlier rename finishes", async () => {
+    const secondMachineId = EnvironmentId.make("home-desktop");
+    const firstMachine = linkedMachines.get(newMachineId)!;
+    discovery.listEnvironments.mockResolvedValue(
+      new Map([
+        ...linkedMachines,
+        [
+          secondMachineId,
+          {
+            ...firstMachine,
+            environment: {
+              ...firstMachine.environment,
+              environmentId: secondMachineId,
+              label: "Home desktop",
+            },
+          },
+        ],
+      ]),
+    );
+    let finishFirstRename!: (renamed: boolean) => void;
+    const onRenameGlobally = vi.fn(
+      () => new Promise<boolean>((resolve) => (finishFirstRename = resolve)),
+    );
+    await act(async () => {
+      renderer = create(
+        <CloudEnvironmentConnectRows
+          primaryEnvironmentId={null}
+          savedEnvironments={[]}
+          onDeregister={vi.fn()}
+          onRenameGlobally={onRenameGlobally}
+        />,
+      );
+    });
+    const renameButtons = renderer!.root
+      .findAllByType("button")
+      .filter((button) => button.children.includes("Rename environment…"));
+    await act(async () => renameButtons[0]!.props.onClick());
+    const saveButton = renderer!.root
+      .findAllByType("button")
+      .find((button) => button.children.includes("Save"))!;
+    await act(async () => saveButton.props.onClick());
+    await act(async () => renderer!.root.findByProps({ open: true }).props.onOpenChange(false));
+    await act(async () => renameButtons[1]!.props.onClick());
+    await act(async () =>
+      renderer!.root.findByType("input").props.onChange({ target: { value: "Home draft" } }),
+    );
+
+    await act(async () => finishFirstRename(true));
+
+    expect(renderer!.root.findByType("input").props.value).toBe("Home draft");
+    expect(onRenameGlobally).toHaveBeenCalledWith(newMachineId, "Work laptop");
+  });
+
   it("blocks deletion while adding a discovered environment", async () => {
     discovery.listEnvironments.mockResolvedValue(linkedMachines);
     let finishRegistration!: (result: AtomCommandResult<void, never>) => void;
