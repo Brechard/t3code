@@ -263,6 +263,48 @@ describe("cloud onboarding discovery", () => {
     expect(menuButton.props.disabled).toBe(false);
   });
 
+  it("does not offer local rename for an incompatible discovered environment", async () => {
+    const base = linkedMachines.get(newMachineId)!;
+    discovery.listEnvironments.mockResolvedValue(
+      new Map([
+        [
+          newMachineId,
+          {
+            ...base,
+            status: Option.some({
+              environmentId: newMachineId,
+              endpoint: base.environment.endpoint,
+              status: "online" as const,
+              checkedAt: "2026-09-15T00:00:00Z",
+              descriptor: {
+                environmentId: newMachineId,
+                label: base.environment.label,
+                platform: { os: "linux" as const, arch: "x64" as const },
+                serverVersion: "1.0.0",
+                orchestrationProtocolVersion: ORCHESTRATION_PROTOCOL_VERSION + 1,
+                capabilities: { repositoryIdentity: true },
+              },
+            }),
+          },
+        ],
+      ]),
+    );
+    await act(async () => {
+      renderer = create(
+        <CloudEnvironmentConnectRows
+          primaryEnvironmentId={null}
+          savedEnvironments={[]}
+          onDeregister={vi.fn()}
+        />,
+      );
+    });
+
+    expect(
+      renderer!.root.findAllByType("button").some((button) => button.children.includes("Rename…")),
+    ).toBe(false);
+    expect(discovery.register).not.toHaveBeenCalled();
+  });
+
   it("signals that the section can expand after initial discovery settles", async () => {
     let finishDiscovery!: (environments: DiscoveredEnvironments) => void;
     discovery.listEnvironments.mockReturnValue(

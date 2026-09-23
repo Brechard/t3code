@@ -204,6 +204,18 @@ export function CloudEnvironmentConnectRows({
   const renameDiscoveredEnvironment = async () => {
     if (renamingEnvironment === null || renameLabel.trim() === "") return;
     const environment = renamingEnvironment;
+    if (
+      discoveredCompatibilityError(
+        environmentsState.environments.get(environment.environmentId)?.status,
+      ) !== null
+    ) {
+      toastManager.add({
+        type: "error",
+        title: "Could not rename environment",
+        description: "Client not supported. Update the server before adding it to this device.",
+      });
+      return;
+    }
     setConnectingEnvironmentIds((current) => new Set([...current, environment.environmentId]));
     const result = await connectRelayEnvironment(environment, renameLabel.trim());
     setConnectingEnvironmentIds((current) => {
@@ -536,7 +548,7 @@ export function CloudEnvironmentConnectRows({
                   <EllipsisIcon className="size-3.5" />
                 </MenuTrigger>
                 <MenuPopup align="end" className="min-w-52">
-                  {!savedEnvironment ? (
+                  {!savedEnvironment && !unsupported ? (
                     <MenuItem
                       onClick={() => {
                         setRenameLabel(environment.label);
