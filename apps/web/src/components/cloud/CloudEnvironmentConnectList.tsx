@@ -525,7 +525,10 @@ export function CloudEnvironmentConnectRows({
                       type="button"
                       variant="ghost-muted"
                       size="icon-xs"
-                      disabled={deregisteringEnvironmentIds?.has(environment.environmentId)}
+                      disabled={
+                        deregisteringEnvironmentIds?.has(environment.environmentId) ||
+                        connectingEnvironmentIds.has(environment.environmentId)
+                      }
                       aria-label={`More actions for ${environment.label}`}
                     />
                   }

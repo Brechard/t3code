@@ -232,6 +232,37 @@ describe("cloud onboarding discovery", () => {
     );
   });
 
+  it("blocks deletion while adding a discovered environment", async () => {
+    discovery.listEnvironments.mockResolvedValue(linkedMachines);
+    let finishRegistration!: (result: AtomCommandResult<void, never>) => void;
+    discovery.register.mockReturnValue(
+      new Promise((resolve) => {
+        finishRegistration = resolve;
+      }),
+    );
+    await act(async () => {
+      renderer = create(
+        <CloudEnvironmentConnectRows
+          primaryEnvironmentId={null}
+          savedEnvironments={[]}
+          onDeregister={vi.fn()}
+        />,
+      );
+    });
+
+    const addButton = renderer!.root
+      .findAllByType("button")
+      .find((button) => button.children.includes("Add"))!;
+    await act(async () => addButton.props.onClick());
+    const menuButton = renderer!.root
+      .findAllByType("button")
+      .find((button) => button.props["aria-label"] === "More actions for Work laptop")!;
+    expect(menuButton.props.disabled).toBe(true);
+
+    await act(async () => finishRegistration(AsyncResult.success(undefined)));
+    expect(menuButton.props.disabled).toBe(false);
+  });
+
   it("signals that the section can expand after initial discovery settles", async () => {
     let finishDiscovery!: (environments: DiscoveredEnvironments) => void;
     discovery.listEnvironments.mockReturnValue(
