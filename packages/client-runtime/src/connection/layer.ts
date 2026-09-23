@@ -44,7 +44,7 @@ export const watchDiscoveredCompatibility = Effect.fn("connection.watchDiscovere
                 Effect.catch((error) =>
                   Effect.logWarning("Could not sync discovered environment label.", {
                     environmentId,
-                    error,
+                    operation: error.operation,
                   }),
                 ),
               );
