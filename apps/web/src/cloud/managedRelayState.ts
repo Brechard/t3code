@@ -19,6 +19,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useCallback, useEffect } from "react";
 
@@ -78,13 +79,22 @@ const EMPTY_DEVICES_ATOM = Atom.make(
   AsyncResult.success<ReadonlyArray<RelayClientDeviceRecord>>([]),
 ).pipe(Atom.keepAlive, Atom.withLabel("managed-relay:web:devices:null"));
 
-export function useManagedRelayEnvironments() {
+function useManagedRelayEnvironmentQuery() {
   const session = useAtomValue(managedRelaySessionAtom);
   const accountId = session?.accountId ?? null;
   const atom = accountId
     ? managedRelayQueryManager.environmentsAtom(accountId)
     : EMPTY_ENVIRONMENTS_ATOM;
   const result = useAtomValue(atom);
+  return { accountId, result };
+}
+
+export function useManagedRelayEnvironmentRecords() {
+  return Option.getOrNull(AsyncResult.value(useManagedRelayEnvironmentQuery().result));
+}
+
+export function useManagedRelayEnvironments() {
+  const { accountId, result } = useManagedRelayEnvironmentQuery();
   const snapshot = readManagedRelaySnapshotState(result);
   useEffect(() => {
     if (snapshot.error) {

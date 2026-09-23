@@ -74,6 +74,10 @@ import { LocalEnvironmentSetting } from "./LocalEnvironmentSetting";
 import { searchableSetting } from "./settingsSearch";
 import { EnvironmentIconMenu } from "./EnvironmentIconPicker";
 import {
+  PrimaryEnvironmentRenameControl,
+  RenameEnvironmentDialog,
+} from "./EnvironmentRenameControl";
+import {
   EnvironmentRow,
   environmentTransportLabel,
   formatDesktopSshTarget,
@@ -1481,63 +1485,6 @@ function savedBackendStatus(environment: EnvironmentPresentation): {
   }
 }
 
-function RenameEnvironmentDialog({
-  environment,
-  isSaving,
-  onClose,
-  onRename,
-}: {
-  readonly environment: EnvironmentPresentation;
-  readonly isSaving: boolean;
-  readonly onClose: () => void;
-  readonly onRename: (environmentId: EnvironmentId, label: string) => Promise<boolean>;
-}) {
-  const [label, setLabel] = useState(environment.label);
-  const submit = async () => {
-    if (await onRename(environment.environmentId, label)) onClose();
-  };
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogPopup className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Rename environment</DialogTitle>
-          <DialogDescription>
-            This name will appear on devices signed into your T3 Connect account.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogPanel>
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-foreground">Name</span>
-            <Input
-              value={label}
-              onChange={(event) => setLabel(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-                if (event.key === "Enter" && label.trim() !== "") {
-                  event.preventDefault();
-                  void submit();
-                }
-              }}
-              disabled={isSaving}
-              autoFocus
-              maxLength={80}
-            />
-          </label>
-        </DialogPanel>
-        <DialogFooter variant="bare">
-          <Button variant="outline" disabled={isSaving} onClick={onClose}>
-            Cancel
-          </Button>
-          <Button disabled={isSaving || label.trim() === ""} onClick={() => void submit()}>
-            {isSaving ? "Saving…" : "Save"}
-          </Button>
-        </DialogFooter>
-      </DialogPopup>
-    </Dialog>
-  );
-}
-
 /**
  * One added machine in the Environments list. The switch is the main action;
  * the update icon appears only when that machine can take an update; the
@@ -1944,12 +1891,19 @@ export function ConnectionsSettings() {
   const refreshRelayEnvironments = useAtomCommand(relayEnvironmentDiscovery.refresh, {
     reportFailure: false,
   });
-  const { accountId: managedRelayAccountId, refresh: refreshManagedRelayEnvironmentList } =
-    useManagedRelayEnvironments();
+  const {
+    accountId: managedRelayAccountId,
+    data: managedRelayEnvironments,
+    refresh: refreshManagedRelayEnvironmentList,
+  } = useManagedRelayEnvironments();
   const setEnvironmentEnabled = useAtomCommand(environmentCatalog.setEnabled, {
     reportFailure: false,
   });
   const primaryEnvironmentId = primaryEnvironment?.environmentId ?? null;
+  const primaryCloudEnvironment =
+    managedRelayEnvironments?.find(
+      (environment) => environment.environmentId === primaryEnvironmentId,
+    ) ?? null;
   const primarySessionState = usePrimarySessionState();
   const currentSessionScopes = desktopBridge
     ? AuthAdministrativeScopes
@@ -3526,7 +3480,9 @@ export function ConnectionsSettings() {
           <SettingsSection
             {...searchableSetting("connections-environment")}
             title={
-              primaryEnvironment?.label ?? (desktopBridge ? "This machine" : "Primary environment")
+              primaryCloudEnvironment?.label ??
+              primaryEnvironment?.label ??
+              (desktopBridge ? "This machine" : "Primary environment")
             }
             icon={
               <EnvironmentMachineIcon
@@ -3541,26 +3497,35 @@ export function ConnectionsSettings() {
             }
             headerAction={
               primaryEnvironmentId !== null ? (
-                <Menu>
-                  <MenuTrigger
-                    render={
-                      <Button
-                        type="button"
-                        variant="ghost-muted"
-                        size="icon-xs"
-                        aria-label="More actions for this machine"
-                      />
-                    }
-                  >
-                    <EllipsisIcon className="size-3.5" />
-                  </MenuTrigger>
-                  <MenuPopup align="end">
-                    <EnvironmentIconMenu
-                      environmentId={primaryEnvironmentId}
-                      serverConfig={primaryServerConfig}
+                <div className="flex items-center gap-1">
+                  {hasCloudPublicConfig() ? (
+                    <PrimaryEnvironmentRenameControl
+                      environment={primaryCloudEnvironment}
+                      isSaving={mutatingSavedEnvironmentIds.has(primaryEnvironmentId)}
+                      onRename={handleRenameGlobally}
                     />
-                  </MenuPopup>
-                </Menu>
+                  ) : null}
+                  <Menu>
+                    <MenuTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="ghost-muted"
+                          size="icon-xs"
+                          aria-label="More actions for this machine"
+                        />
+                      }
+                    >
+                      <EllipsisIcon className="size-3.5" />
+                    </MenuTrigger>
+                    <MenuPopup align="end">
+                      <EnvironmentIconMenu
+                        environmentId={primaryEnvironmentId}
+                        serverConfig={primaryServerConfig}
+                      />
+                    </MenuPopup>
+                  </Menu>
+                </div>
               ) : null
             }
           >
