@@ -1152,7 +1152,7 @@ describe("EnvironmentRegistry", () => {
     }),
   );
 
-  it.effect("moves durable streams to a replacement supervisor", () =>
+  it.effect("keeps durable streams through label sync and follows a replacement supervisor", () =>
     Effect.gen(function* () {
       const replacement = new RelayConnectionTarget({
         environmentId: RELAY_TARGET.environmentId,
@@ -1199,6 +1199,10 @@ describe("EnvironmentRegistry", () => {
         );
 
         yield* Deferred.await(firstObserved).pipe(Effect.timeout("1 second"));
+        yield* registry.syncRelayLabel(RELAY_TARGET.environmentId, "Display name");
+        // Drain subscription work so an unwanted restart is observed before replacement.
+        for (let index = 0; index < 20; index++) yield* Effect.yieldNow;
+        expect(yield* Ref.get(labels)).toEqual([RELAY_TARGET.label]);
         yield* registry.register(new RelayConnectionRegistration({ target: replacement }));
         yield* Deferred.await(secondObserved).pipe(Effect.timeout("1 second"));
         yield* Fiber.interrupt(subscription);

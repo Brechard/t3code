@@ -376,24 +376,19 @@ export const make = Effect.gen(function* () {
     ).pipe(
       Stream.map((current) => Option.fromUndefinedOr(current.get(environmentId))),
       Stream.changes,
-      Stream.switchMap(
-        Option.match({
-          onNone: () => Stream.empty,
-          onSome: () =>
-            Stream.unwrap(
-              acquireSupervisor(environmentId).pipe(
-                Effect.match({
-                  onFailure: () => Stream.empty,
-                  onSuccess: (supervisor) =>
-                    Stream.provideService(
-                      stream,
-                      EnvironmentSupervisor.EnvironmentSupervisor,
-                      supervisor,
-                    ),
-                }),
-              ),
+      Stream.mapEffect((entry) =>
+        Option.isNone(entry)
+          ? Effect.succeed(null)
+          : acquireSupervisor(environmentId).pipe(
+              Effect.catchTag("EnvironmentNotRegisteredError", () => Effect.succeed(null)),
             ),
-        }),
+      ),
+      // Catalog labels can change while the runtime supervisor stays the same.
+      Stream.changes,
+      Stream.switchMap((supervisor) =>
+        supervisor === null
+          ? Stream.empty
+          : Stream.provideService(stream, EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
       ),
     );
 
