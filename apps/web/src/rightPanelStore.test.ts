@@ -21,6 +21,28 @@ beforeEach(() => {
 });
 
 describe("rightPanelStore", () => {
+  it("keeps a revealed span, and drops one that does not run forwards", () => {
+    useRightPanelStore.getState().openFile(refA, "src/index.ts", 42, 87);
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
+    ).toEqual([
+      {
+        id: "file:src/index.ts",
+        kind: "file",
+        relativePath: "src/index.ts",
+        revealLine: 42,
+        revealEndLine: 87,
+        revealRequestId: 1,
+      },
+    ]);
+
+    useRightPanelStore.getState().openFile(refA, "src/index.ts", 42, 42);
+    useRightPanelStore.getState().openFile(refA, "src/index.ts", 42, 10);
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces[0],
+    ).toMatchObject({ revealLine: 42, revealEndLine: null });
+  });
+
   it("gives each host/device its own tab and preserves renamed tabs", () => {
     const store = useRightPanelStore.getState();
     const android = {
@@ -292,6 +314,7 @@ describe("rightPanelStore", () => {
               kind: "file",
               relativePath: "src/index.ts",
               revealLine: null,
+              revealEndLine: null,
               revealRequestId: 0,
             },
           ],
@@ -480,6 +503,7 @@ describe("rightPanelStore", () => {
           kind: "file",
           relativePath: "src/index.ts",
           revealLine: null,
+          revealEndLine: null,
           revealRequestId: 2,
         },
         {
@@ -487,6 +511,7 @@ describe("rightPanelStore", () => {
           kind: "file",
           relativePath: "README.md",
           revealLine: null,
+          revealEndLine: null,
           revealRequestId: 1,
         },
       ],
@@ -543,6 +568,7 @@ describe("rightPanelStore", () => {
           kind: "file",
           relativePath: "report.pdf",
           revealLine: null,
+          revealEndLine: null,
           revealRequestId: 0,
           attachment,
         },
@@ -580,6 +606,7 @@ describe("rightPanelStore", () => {
           kind: "file",
           relativePath: "src/index.ts",
           revealLine: 87,
+          revealEndLine: null,
           revealRequestId: 2,
         },
       ],
@@ -596,6 +623,7 @@ describe("rightPanelStore", () => {
           kind: "file",
           relativePath: "src/index.ts",
           revealLine: null,
+          revealEndLine: null,
           revealRequestId: 3,
         },
       ],
@@ -646,6 +674,7 @@ describe("rightPanelStore", () => {
           kind: "file",
           relativePath: "report.pdf",
           revealLine: null,
+          revealEndLine: null,
           revealRequestId: 0,
           attachment,
         },
@@ -928,6 +957,7 @@ describe("rightPanelStore", () => {
           kind: "file",
           relativePath: "src/index.ts",
           revealLine: null,
+          revealEndLine: null,
           revealRequestId: 1,
         },
       ],

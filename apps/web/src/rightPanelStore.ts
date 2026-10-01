@@ -59,6 +59,7 @@ export type RightPanelSurface =
       /** Workspace-relative, or absolute for a host file outside the workspace. */
       relativePath: string;
       revealLine: number | null;
+      revealEndLine: number | null;
       revealRequestId: number;
       /** Present when the file lives in the thread's attachment store rather
           than at a workspace or host path. */
@@ -134,7 +135,7 @@ interface RightPanelStoreState {
   openDevice: (ref: ScopedThreadRef, target: DeviceTabTarget, automatic?: boolean) => void;
   renameDevice: (ref: ScopedThreadRef, surfaceId: string, title: string) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
-  openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
+  openFile: (ref: ScopedThreadRef, relativePath: string, line?: number, endLine?: number) => void;
   openAttachment: (ref: ScopedThreadRef, attachment: ChatFileAttachment) => void;
   openPullRequest: (
     ref: ScopedThreadRef,
@@ -204,12 +205,14 @@ const browserSurface = (tabId: string | null): RightPanelSurface =>
 const fileSurface = (
   relativePath: string,
   revealLine: number | null,
+  revealEndLine: number | null,
   revealRequestId: number,
 ): RightPanelSurface => ({
   id: `file:${relativePath}`,
   kind: "file",
   relativePath,
   revealLine,
+  revealEndLine,
   revealRequestId,
 });
 
@@ -218,6 +221,7 @@ const attachmentSurface = (attachment: ChatFileAttachment): RightPanelSurface =>
   kind: "file",
   relativePath: attachment.name,
   revealLine: null,
+  revealEndLine: null,
   revealRequestId: 0,
   attachment,
 });
@@ -379,7 +383,24 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                         surface.revealRequestId >= 0
                           ? surface.revealRequestId
                           : 0;
-                      return [{ ...surface, revealLine, revealRequestId }];
+                      const revealEndLine = normalizeRevealLine(
+                        typeof surface.revealEndLine === "number"
+                          ? surface.revealEndLine
+                          : undefined,
+                      );
+                      return [
+                        {
+                          ...surface,
+                          revealLine,
+                          revealEndLine:
+                            revealLine !== null &&
+                            revealEndLine !== null &&
+                            revealEndLine > revealLine
+                              ? revealEndLine
+                              : null,
+                          revealRequestId,
+                        },
+                      ];
                     }
                     if (surface.kind === "pull-request") {
                       if (
@@ -575,7 +596,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               : next;
           }),
         ),
-      openFile: (ref, requestedPath, line) =>
+      openFile: (ref, requestedPath, line, endLine) =>
         set((state) =>
           userAction(state, scopedThreadKey(ref), (current) => {
             if (requestedPath === ".") {
@@ -593,9 +614,16 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               (surface): surface is Extract<RightPanelSurface, { kind: "file" }> =>
                 surface.id === surfaceId && surface.kind === "file",
             );
+            const normalizedLine = normalizeRevealLine(line);
+            const normalizedEndLine = normalizeRevealLine(endLine);
             const surface = fileSurface(
               relativePath,
-              normalizeRevealLine(line),
+              normalizedLine,
+              normalizedLine !== null &&
+                normalizedEndLine !== null &&
+                normalizedEndLine > normalizedLine
+                ? normalizedEndLine
+                : null,
               (existing?.revealRequestId ?? 0) + 1,
             );
             return {

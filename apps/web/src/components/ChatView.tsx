@@ -9676,6 +9676,11 @@ export default function ChatView(props: ChatViewProps) {
               ? (renderedRightPanelSurface.revealLine ?? null)
               : null
           }
+          revealEndLine={
+            renderedRightPanelSurface.kind === "file"
+              ? (renderedRightPanelSurface.revealEndLine ?? null)
+              : null
+          }
           revealRequestId={
             renderedRightPanelSurface.kind === "file"
               ? renderedRightPanelSurface.revealRequestId

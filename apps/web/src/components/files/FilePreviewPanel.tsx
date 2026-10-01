@@ -103,6 +103,7 @@ interface FilePreviewPanelProps {
   keybindings: ResolvedKeybindingsConfig;
   availableEditors: ReadonlyArray<EditorId>;
   revealLine: number | null;
+  revealEndLine: number | null;
   revealRequestId: number;
   onOpenFile: (relativePath: string) => void;
   onPendingChange: (relativePath: string, pending: boolean) => void;
@@ -341,19 +342,28 @@ function clampFileLine(contents: string, requestedLine: number): number {
   return Math.min(Math.max(1, requestedLine), lineCount);
 }
 
-function updateFileLinkReveal(fileContainer: HTMLElement, line: number | null): void {
+function updateFileLinkReveal(
+  fileContainer: HTMLElement,
+  line: number | null,
+  endLine: number | null,
+): void {
   const root = fileContainer.shadowRoot ?? fileContainer;
   for (const element of root.querySelectorAll<HTMLElement>(`[${FILE_LINK_REVEAL_ATTRIBUTE}]`)) {
     element.removeAttribute(FILE_LINK_REVEAL_ATTRIBUTE);
   }
   if (line === null) return;
+  const lastLine = endLine !== null && endLine > line ? endLine : line;
 
-  root
-    .querySelector<HTMLElement>(`[data-line="${line}"]`)
-    ?.setAttribute(FILE_LINK_REVEAL_ATTRIBUTE, "");
-  root
-    .querySelector<HTMLElement>(`[data-column-number="${line}"]`)
-    ?.setAttribute(FILE_LINK_REVEAL_ATTRIBUTE, "");
+  // Scanning the mounted rows keeps a span of any size to one pass; this runs
+  // on every post-render, so virtualized rows pick the mark up as they scroll in.
+  for (const element of root.querySelectorAll<HTMLElement>("[data-line], [data-column-number]")) {
+    const rawValue =
+      element.getAttribute("data-line") ?? element.getAttribute("data-column-number");
+    const lineNumber = rawValue === null ? Number.NaN : Number(rawValue);
+    if (Number.isFinite(lineNumber) && lineNumber >= line && lineNumber <= lastLine) {
+      element.setAttribute(FILE_LINK_REVEAL_ATTRIBUTE, "");
+    }
+  }
 }
 
 /**
@@ -380,6 +390,7 @@ interface FileRevealState {
 function useFileLineReveal(
   relativePath: string | null,
   revealLine: number | null,
+  revealEndLine: number | null,
   revealRequestId: number,
 ): FilePostRender {
   const [revealStatesByPath] = useState(() => new Map<string, FileRevealState>());
@@ -413,7 +424,13 @@ function useFileLineReveal(
       const contents = instance.file?.contents;
       const targetLine =
         revealLine === null || contents === undefined ? null : clampFileLine(contents, revealLine);
-      updateFileLinkReveal(fileContainer, targetLine);
+      updateFileLinkReveal(
+        fileContainer,
+        targetLine,
+        contents === undefined || revealEndLine === null
+          ? null
+          : clampFileLine(contents, revealEndLine),
+      );
 
       if (!(instance instanceof VirtualizedFile)) return;
 
@@ -530,7 +547,13 @@ function useFileLineReveal(
             if (attempt < REVEAL_MAX_ATTEMPTS) scheduleReveal(attempt + 1);
             return;
           }
-          updateFileLinkReveal(fileContainer, line);
+          updateFileLinkReveal(
+            fileContainer,
+            line,
+            currentContents === undefined || revealEndLine === null
+              ? null
+              : clampFileLine(currentContents, revealEndLine),
+          );
 
           scrollContainer.scrollTop = targetTop;
           state.handledRequestId = revealRequestId;
@@ -540,7 +563,7 @@ function useFileLineReveal(
 
       scheduleReveal(0);
     },
-    [revealStatesByPath, relativePath, revealLine, revealRequestId],
+    [revealStatesByPath, relativePath, revealLine, revealEndLine, revealRequestId],
   );
 }
 
@@ -850,6 +873,7 @@ function RenderedMarkdownSurface({
   | "resolvedTheme"
   | "composerDraftTarget"
   | "revealLine"
+  | "revealEndLine"
   | "revealRequestId"
   | "wordWrap"
   | "onPostRender"
@@ -915,6 +939,7 @@ export default function FilePreviewPanel({
   keybindings,
   availableEditors,
   revealLine,
+  revealEndLine,
   revealRequestId,
   onOpenFile,
   onPendingChange,
@@ -1034,7 +1059,12 @@ export default function FilePreviewPanel({
     isBrowserPreviewFile(previewPath);
   const absolutePath =
     relativePath && attachment === undefined ? resolvePathLinkTarget(relativePath, cwd) : null;
-  const onFilePostRender = useFileLineReveal(relativePath, revealLine, revealRequestId);
+  const onFilePostRender = useFileLineReveal(
+    relativePath,
+    revealLine,
+    revealEndLine,
+    revealRequestId,
+  );
   useWorkspaceMutationRefresh({
     enabled:
       attachment === undefined &&

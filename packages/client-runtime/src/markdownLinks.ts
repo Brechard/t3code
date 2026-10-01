@@ -3,14 +3,14 @@ import { isWindowsAbsolutePath } from "@t3tools/shared/path";
 const SLASH_PREFIXED_WINDOWS_DRIVE_PATTERN = /^\/[A-Za-z]:[\\/]/;
 const RELATIVE_PATH_PREFIX_PATTERN = /^(~\/|\.{1,2}\/)/;
 const RELATIVE_FILE_PATH_PATTERN =
-  /^(?:[A-Za-z0-9._-]+(?: +[A-Za-z0-9._-]+)*\/)+[A-Za-z0-9._-]+(?: +[A-Za-z0-9._-]+)*(?::\d+){0,2}$/;
+  /^(?:[A-Za-z0-9._-]+(?: +[A-Za-z0-9._-]+)*\/)+[A-Za-z0-9._-]+(?: +[A-Za-z0-9._-]+)*(?::\d+(?::\d+|-\d+)?)?$/;
 const RELATIVE_FILE_NAME_PATTERN =
-  /^[A-Za-z0-9._-]+(?: +[A-Za-z0-9._-]+)*\.[A-Za-z0-9_-]+(?::\d+){0,2}$/;
+  /^[A-Za-z0-9._-]+(?: +[A-Za-z0-9._-]+)*\.[A-Za-z0-9_-]+(?::\d+(?::\d+|-\d+)?)?$/;
 const EXTERNAL_SCHEME_PATTERN = /^([A-Za-z][A-Za-z0-9+.-]*):(.*)$/;
-const POSITION_SUFFIX_PATTERN = /:\d+(?::\d+)?$/;
+const POSITION_SUFFIX_PATTERN = /:\d+(?::\d+|-\d+)?$/;
 const POSITION_SUFFIX_CAPTURE_PATTERN = /:(\d+)(?::(\d+))?$/;
 const POSITION_HASH_PATTERN = /^#L(\d+)(?:C(\d+))?$/i;
-const POSITION_ONLY_PATTERN = /^\d+(?::\d+)?$/;
+const POSITION_ONLY_PATTERN = /^\d+(?::\d+|-\d+)?$/;
 const INLINE_CODE_DISQUALIFIER_PATTERN = /[\s`]/;
 const PATH_SEPARATOR_PATTERN = /[\\/]/;
 const FILE_EXTENSION_PATTERN = /\.[A-Za-z0-9_-]+$/;
@@ -243,10 +243,23 @@ export function parseFileUrlHref(
 export interface FilePathPosition {
   readonly path: string;
   readonly line?: number;
+  readonly endLine?: number;
   readonly column?: number;
 }
 
 export function splitFilePathPosition(path: string, hash = ""): FilePathPosition {
+  const spanSuffix = path.match(/:(\d+)-(\d+)$/);
+  const spanMatch =
+    spanSuffix ?? (!POSITION_SUFFIX_PATTERN.test(path) ? hash.match(/^#L(\d+)-L?(\d+)$/i) : null);
+  if (spanMatch?.[1] && spanMatch[2]) {
+    const line = Number.parseInt(spanMatch[1], 10);
+    const endLine = Number.parseInt(spanMatch[2], 10);
+    return {
+      path: spanSuffix ? path.slice(0, -spanSuffix[0].length) : path,
+      ...(line > 0 ? { line } : {}),
+      ...(line > 0 && endLine > line ? { endLine } : {}),
+    };
+  }
   const suffixMatch = path.match(POSITION_SUFFIX_CAPTURE_PATTERN);
   const match = suffixMatch ?? hash.match(POSITION_HASH_PATTERN);
   if (!match?.[1]) return { path };
@@ -262,7 +275,7 @@ export function splitFilePathPosition(path: string, hash = ""): FilePathPosition
 
 export function formatFilePathPosition(position: FilePathPosition): string {
   if (!position.line) return position.path;
-  return `${position.path}:${position.line}${position.column ? `:${position.column}` : ""}`;
+  return `${position.path}:${position.line}${position.endLine ? `-${position.endLine}` : position.column ? `:${position.column}` : ""}`;
 }
 
 export function isRelativeFilePath(path: string): boolean {

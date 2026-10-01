@@ -17,6 +17,18 @@ describe("resolveMarkdownLinkIcon", () => {
 });
 
 describe("resolveMarkdownLinkPresentation", () => {
+  it.each(["src/main.ts:20-40", "src/main.ts#L20-L40"])(
+    "labels %s as a span and opens its first line",
+    (href) => {
+      expect(resolveMarkdownLinkPresentation(href)).toMatchObject({
+        kind: "file",
+        label: "main.ts:20-40",
+        path: "src/main.ts",
+        line: 20,
+      });
+    },
+  );
+
   it("treats protocol-relative media as an external URL, not a filesystem path", () => {
     expect(resolveMarkdownLinkPresentation("//cdn.example.com/clip.mp4?sig=a%2fb#t=2")).toEqual({
       kind: "external",

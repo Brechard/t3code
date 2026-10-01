@@ -26,6 +26,7 @@ export interface MarkdownFileLinkMeta {
   workspaceRelativePath: string | null;
   basename: string;
   line?: number;
+  endLine?: number;
   column?: number;
 }
 
@@ -107,7 +108,7 @@ export function resolveMarkdownFileLinkMeta(
 }
 
 function buildFileLinkMetaFromTarget(targetPath: string, cwd?: string): MarkdownFileLinkMeta {
-  const { path, line, column } = splitFilePathPosition(targetPath);
+  const { path, line, endLine, column } = splitFilePathPosition(targetPath);
   return {
     filePath: path,
     targetPath,
@@ -115,6 +116,7 @@ function buildFileLinkMetaFromTarget(targetPath: string, cwd?: string): Markdown
     workspaceRelativePath: workspaceRelativeFilePath(path, cwd),
     basename: fileBasename(path),
     ...(line !== undefined ? { line } : {}),
+    ...(endLine !== undefined ? { endLine } : {}),
     ...(column !== undefined ? { column } : {}),
   };
 }

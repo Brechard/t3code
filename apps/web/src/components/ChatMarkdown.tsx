@@ -1193,12 +1193,13 @@ interface MarkdownFileLinkProps {
       absolute host path outside it, null when the panel cannot show the file. */
   panelPath: string | null;
   line?: number | undefined;
+  endLine?: number | undefined;
   label: string;
   copyMarkdown: string;
   theme: "light" | "dark";
   threadRef?: ScopedThreadRef | undefined;
   onOpen?: ((targetPath: string) => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
-  onOpenInPanel: (panelPath: string, line: number | undefined) => void;
+  onOpenInPanel: (panelPath: string, line: number | undefined, endLine: number | undefined) => void;
   openInEditorMenuLabel: string;
   onOpenInBrowser?: (() => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
   onOpenMedia?: (() => void) | undefined;
@@ -1932,6 +1933,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
   displayPath,
   panelPath,
   line,
+  endLine,
   label,
   copyMarkdown,
   theme,
@@ -1984,7 +1986,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
 
   const handleOpenInFilePreview = useCallback(() => {
     if (threadRef && panelPath) {
-      onOpenInPanel(panelPath, line);
+      onOpenInPanel(panelPath, line, endLine);
       return;
     }
     if (onOpenMedia) {
@@ -1992,7 +1994,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
       return;
     }
     handleOpenInEditor();
-  }, [handleOpenInEditor, line, onOpenInPanel, onOpenMedia, panelPath, threadRef]);
+  }, [endLine, handleOpenInEditor, line, onOpenInPanel, onOpenMedia, panelPath, threadRef]);
 
   const handleOpenInBrowser = useCallback(() => {
     if (!onOpenInBrowser) {
@@ -2272,6 +2274,7 @@ function areMarkdownFileLinkPropsEqual(
     previous.displayPath === next.displayPath &&
     previous.panelPath === next.panelPath &&
     previous.line === next.line &&
+    previous.endLine === next.endLine &&
     previous.label === next.label &&
     previous.copyMarkdown === next.copyMarkdown &&
     previous.theme === next.theme &&
@@ -2580,13 +2583,13 @@ function useChatMarkdownState({
   // A bare filename resolves to the workspace root, which is rarely where the
   // file is, so ask the index before opening. Absolute host paths open as-is.
   const openFileInPanel = useCallback(
-    (panelPath: string, line: number | undefined) => {
+    (panelPath: string, line: number | undefined, endLine: number | undefined) => {
       if (!threadRef) return;
       // Claimed on every open so a synchronous one supersedes a lookup already
       // in flight.
       const isLatestLookup = claimWorkspaceBasenameLookup();
       const openAt = (path: string) =>
-        useRightPanelStore.getState().openFile(threadRef, path, line);
+        useRightPanelStore.getState().openFile(threadRef, path, line, endLine);
       if (!cwd || !needsWorkspaceBasenameLookup(panelPath)) {
         openAt(panelPath);
         return;
@@ -2621,7 +2624,9 @@ function useChatMarkdownState({
       }
       if (fileLinkMeta.line) {
         labelParts.push(
-          `L${fileLinkMeta.line}${fileLinkMeta.column ? `:C${fileLinkMeta.column}` : ""}`,
+          fileLinkMeta.endLine
+            ? `L${fileLinkMeta.line}-${fileLinkMeta.endLine}`
+            : `L${fileLinkMeta.line}${fileLinkMeta.column ? `:C${fileLinkMeta.column}` : ""}`,
         );
       }
       const mediaPath = mediaSource ?? fileLinkMeta.filePath;
@@ -2643,6 +2648,7 @@ function useChatMarkdownState({
           displayPath={fileLinkMeta.displayPath}
           panelPath={panelPath}
           line={fileLinkMeta.line}
+          endLine={fileLinkMeta.endLine}
           label={labelParts.join(" · ")}
           copyMarkdown={copyMarkdown}
           theme={resolvedTheme}
