@@ -1461,11 +1461,11 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           );
         }
         const persistedBinding = Option.getOrUndefined(yield* directory.getBinding(threadId));
-        if (
+        const resumingAcrossInstances =
           persistedBinding?.provider === resolvedProvider &&
           persistedBinding.providerInstanceId !== resolvedInstanceId &&
-          (input.resumeCursor != null || persistedBinding.resumeCursor != null)
-        ) {
+          (input.resumeCursor != null || persistedBinding.resumeCursor != null);
+        if (resumingAcrossInstances) {
           const previousInstanceId = yield* requireBindingInstanceId(
             "ProviderService.startSession",
             persistedBinding,
@@ -1525,6 +1525,18 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           }
         }
         const adapter = yield* registry.getByInstance(resolvedInstanceId);
+        // Codex cannot resume a conversation while its previous app-server owns the writer.
+        if (resumingAcrossInstances && resolvedProvider === "codex") {
+          const previousInstanceId = yield* requireBindingInstanceId(
+            "ProviderService.startSession",
+            persistedBinding,
+          );
+          const previousAdapter = yield* registry.getByInstance(previousInstanceId);
+          yield* previousAdapter.stopSession(threadId);
+          yield* analytics.record("provider.session.stopped", {
+            provider: previousAdapter.provider,
+          });
+        }
         yield* clearTurnAnalyticsSession(resolvedInstanceId, threadId);
         yield* prepareMcpSession(threadId, resolvedInstanceId);
         const session = yield* adapter

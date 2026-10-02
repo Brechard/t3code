@@ -143,27 +143,28 @@ function makeFakeCodexAdapter(
   const sessions = new Map<ThreadId, ProviderSession>();
   const runtimeEventPubSub = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
 
-  const startSession = vi.fn((input: ProviderSessionStartInput) =>
-    Effect.sync(() => {
-      const now = "2026-01-01T00:00:00.000Z";
-      const session: ProviderSession = {
-        provider,
-        ...(input.providerInstanceId !== undefined
-          ? { providerInstanceId: input.providerInstanceId }
-          : {}),
-        status: "ready",
-        runtimeMode: input.runtimeMode,
-        threadId: input.threadId,
-        resumeCursor: input.resumeCursor ?? {
-          opaque: `resume-${String(input.threadId)}`,
-        },
-        cwd: input.cwd ?? process.cwd(),
-        createdAt: now,
-        updatedAt: now,
-      };
-      sessions.set(session.threadId, session);
-      return session;
-    }),
+  const startSession = vi.fn(
+    (input: ProviderSessionStartInput): Effect.Effect<ProviderSession, ProviderAdapterError> =>
+      Effect.sync(() => {
+        const now = "2026-01-01T00:00:00.000Z";
+        const session: ProviderSession = {
+          provider,
+          ...(input.providerInstanceId !== undefined
+            ? { providerInstanceId: input.providerInstanceId }
+            : {}),
+          status: "ready",
+          runtimeMode: input.runtimeMode,
+          threadId: input.threadId,
+          resumeCursor: input.resumeCursor ?? {
+            opaque: `resume-${String(input.threadId)}`,
+          },
+          cwd: input.cwd ?? process.cwd(),
+          createdAt: now,
+          updatedAt: now,
+        };
+        sessions.set(session.threadId, session);
+        return session;
+      }),
   );
 
   const sendTurn = vi.fn(
@@ -1060,6 +1061,142 @@ it.effect("ProviderServiceLive rejects new sessions for disabled custom instance
 );
 
 const routing = makeProviderServiceLayer();
+
+const sharedCodexWork = makeFakeCodexAdapter();
+const sharedCodexPersonal = makeFakeCodexAdapter();
+const sharedCodexPersonalId = ProviderInstanceId.make("codex_personal");
+const sharedCodexRegistry = makeStaticInstanceRegistry([
+  [codexInstanceId, sharedCodexWork.adapter],
+  [
+    sharedCodexPersonalId,
+    {
+      ...sharedCodexPersonal.adapter,
+      startSession: (input) =>
+        Effect.gen(function* () {
+          if (yield* sharedCodexWork.adapter.hasSession(input.threadId)) {
+            return yield* new ProviderAdapterRequestError({
+              provider: CODEX_DRIVER,
+              method: "thread/resume",
+              detail: "conversation already has an active writer",
+            });
+          }
+          return yield* sharedCodexPersonal.adapter.startSession(input);
+        }),
+    },
+  ],
+]);
+const sharedCodexRouting = makeProviderServiceLayer({
+  registry: {
+    ...sharedCodexRegistry,
+    getInstanceInfo: (instanceId) =>
+      sharedCodexRegistry.getInstanceInfo(instanceId).pipe(
+        Effect.map((info) => ({
+          ...info,
+          continuationIdentity: {
+            driverKind: CODEX_DRIVER,
+            continuationKey: "codex:home:shared",
+          },
+        })),
+      ),
+  },
+});
+sharedCodexRouting.layer("ProviderService shared Codex accounts", (it) => {
+  it.effect(
+    "resumes a shared Codex conversation on another account after releasing its writer",
+    () =>
+      Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        const threadId = asThreadId("thread-account-switch");
+        const first = yield* provider.startSession(threadId, {
+          providerInstanceId: codexInstanceId,
+          threadId,
+          runtimeMode: "full-access",
+        });
+        const switched = yield* provider.startSession(threadId, {
+          providerInstanceId: sharedCodexPersonalId,
+          threadId,
+          runtimeMode: "full-access",
+          resumeCursor: first.resumeCursor,
+        });
+        assert.equal(switched.providerInstanceId, sharedCodexPersonalId);
+        assert.deepEqual(switched.resumeCursor, first.resumeCursor);
+        assert.deepEqual(
+          (yield* provider.listSessions()).filter((session) => session.threadId === threadId),
+          [switched],
+        );
+        yield* provider.sendTurn({ threadId, input: "continue" });
+      }),
+  );
+
+  it.effect("does not start the replacement when the source writer fails to stop", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-account-stop-failure");
+      const first = yield* provider.startSession(threadId, {
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const targetStarts = sharedCodexPersonal.startSession.mock.calls.length;
+      const stopError = new ProviderAdapterRequestError({
+        provider: CODEX_DRIVER,
+        method: "stopSession",
+        detail: "writer release failed",
+      });
+      sharedCodexWork.stopSession.mockImplementationOnce(() => Effect.fail(stopError));
+      const failure = yield* Effect.flip(
+        provider.startSession(threadId, {
+          providerInstanceId: sharedCodexPersonalId,
+          threadId,
+          runtimeMode: "full-access",
+          resumeCursor: first.resumeCursor,
+        }),
+      );
+      assert.equal(failure, stopError);
+      assert.equal(sharedCodexPersonal.startSession.mock.calls.length, targetStarts);
+      assert.isTrue(yield* sharedCodexWork.adapter.hasSession(threadId));
+      const binding = yield* (yield* ProviderSessionDirectory.ProviderSessionDirectory).getBinding(
+        threadId,
+      );
+      assert.equal(Option.getOrThrow(binding).providerInstanceId, codexInstanceId);
+      assert.deepEqual(Option.getOrThrow(binding).resumeCursor, first.resumeCursor);
+    }),
+  );
+
+  it.effect("keeps the saved source cursor available after replacement startup fails", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-account-start-failure");
+      const first = yield* provider.startSession(threadId, {
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const startError = new ProviderAdapterRequestError({
+        provider: CODEX_DRIVER,
+        method: "thread/resume",
+        detail: "account unavailable",
+      });
+      sharedCodexPersonal.startSession.mockImplementationOnce(() => Effect.fail(startError));
+      const input = {
+        providerInstanceId: sharedCodexPersonalId,
+        threadId,
+        runtimeMode: "full-access" as const,
+        resumeCursor: first.resumeCursor,
+      };
+      assert.equal(yield* Effect.flip(provider.startSession(threadId, input)), startError);
+      assert.isFalse(yield* sharedCodexWork.adapter.hasSession(threadId));
+      const binding = yield* (yield* ProviderSessionDirectory.ProviderSessionDirectory).getBinding(
+        threadId,
+      );
+      assert.equal(Option.getOrThrow(binding).providerInstanceId, codexInstanceId);
+      assert.deepEqual(Option.getOrThrow(binding).resumeCursor, first.resumeCursor);
+      const retried = yield* provider.startSession(threadId, input);
+      assert.equal(retried.providerInstanceId, sharedCodexPersonalId);
+      assert.deepEqual(retried.resumeCursor, first.resumeCursor);
+    }),
+  );
+});
 
 const customCompactionDriver = ProviderDriverKind.make("custom-compaction-provider");
 const nativeCompactionInstanceId = ProviderInstanceId.make("native-compaction");
