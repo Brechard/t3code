@@ -163,6 +163,7 @@ export function buildThreadModelOptions(
     );
     return (
       nextProvider?.driver === currentProvider.driver &&
+      nextProvider.auth.status === "authenticated" &&
       nextProvider.continuation?.groupKey === groupKey &&
       !nextProvider.requiresNewThreadForModelChange
     );

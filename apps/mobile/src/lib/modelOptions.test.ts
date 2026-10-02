@@ -464,6 +464,19 @@ describe("existing-thread model options", () => {
     ).toEqual(["codex_work"]);
   });
 
+  it("hides compatible accounts while their authentication is unconfirmed", () => {
+    expect(instanceIds(config([work, { ...personal, auth: { status: "unknown" } }]))).toEqual([
+      "codex_work",
+    ]);
+  });
+
+  it("retains the current account when its authentication is unconfirmed", () => {
+    expect(instanceIds(config([{ ...work, auth: { status: "unknown" } }, personal]))).toEqual([
+      "codex_work",
+      "codex_personal",
+    ]);
+  });
+
   it("honors providers that require a new thread for model changes", () => {
     expect(
       instanceIds(config([work, { ...personal, requiresNewThreadForModelChange: true }])),
