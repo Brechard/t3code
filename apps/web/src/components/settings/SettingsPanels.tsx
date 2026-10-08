@@ -619,6 +619,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.followUpBehavior !== DEFAULT_UNIFIED_SETTINGS.followUpBehavior
         ? ["Follow-up behavior"]
         : []),
+      ...(settings.threadCycleOrder !== DEFAULT_UNIFIED_SETTINGS.threadCycleOrder
+        ? ["Conversation switching"]
+        : []),
       ...(settings.contextWindowMeterEnabled !== DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled
         ? ["Context window indicator"]
         : []),
@@ -683,6 +686,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.composerRichTextEnabled,
       settings.sendShortcut,
       settings.followUpBehavior,
+      settings.threadCycleOrder,
       settings.addProjectBaseDirectory,
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
@@ -805,6 +809,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       composerRichTextEnabled: DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled,
       sendShortcut: DEFAULT_UNIFIED_SETTINGS.sendShortcut,
       followUpBehavior: DEFAULT_UNIFIED_SETTINGS.followUpBehavior,
+      threadCycleOrder: DEFAULT_UNIFIED_SETTINGS.threadCycleOrder,
       contextWindowMeterEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled,
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
@@ -2875,6 +2880,45 @@ export function GeneralSettingsPanel() {
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 <SelectItem value="queue">Queue</SelectItem>
                 <SelectItem value="steer">Steer</SelectItem>
+              </SelectPopup>
+            </Select>
+          }
+        />
+
+        <SettingsRow
+          {...searchableSetting("thread-cycle-order")}
+          description="Arc-style previews recent conversations while Ctrl is held and opens your selection on release. Chrome-style switches immediately in sidebar order. Use Ctrl+Tab to cycle; add Shift to reverse."
+          resetAction={
+            settings.threadCycleOrder !== DEFAULT_UNIFIED_SETTINGS.threadCycleOrder ? (
+              <SettingResetButton
+                label="conversation switching"
+                onClick={() =>
+                  updateSettings({ threadCycleOrder: DEFAULT_UNIFIED_SETTINGS.threadCycleOrder })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.threadCycleOrder}
+              onValueChange={(value) => {
+                if (value === "recent" || value === "sidebar") {
+                  updateSettings({ threadCycleOrder: value });
+                }
+              }}
+            >
+              <SelectTrigger
+                size="sm"
+                className="w-auto min-w-0"
+                aria-label="Conversation switching"
+              >
+                <SelectValue>
+                  {settings.threadCycleOrder === "recent" ? "Arc-style" : "Chrome-style"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem value="recent">Arc-style</SelectItem>
+                <SelectItem value="sidebar">Chrome-style</SelectItem>
               </SelectPopup>
             </Select>
           }
