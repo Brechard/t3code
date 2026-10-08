@@ -121,7 +121,9 @@ export function useThreadCycleShortcut(input: {
     }
   });
   const onKeyUp = useEffectEvent((event: KeyboardEvent) => {
-    if (heldModifiers.current.includes(event.key)) commit();
+    if (!heldModifiers.current.includes(event.key)) return;
+    heldModifiers.current = heldModifiers.current.filter((key) => key !== event.key);
+    if (heldModifiers.current.length === 0) commit();
   });
 
   useEffect(() => {

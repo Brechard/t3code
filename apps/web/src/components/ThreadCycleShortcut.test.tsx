@@ -4,7 +4,7 @@ import { ProviderInstanceId, RunId, type ScopedThreadRef } from "@t3tools/contra
 import { EMPTY_ENVIRONMENT_THREAD_STATE } from "@t3tools/client-runtime/state/threads";
 import { makeThreadFixture, type ThreadFixtureOverrides } from "../test-fixtures";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
-import { act } from "react";
+import { act, Profiler } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -83,10 +83,10 @@ beforeEach(async () => {
   container.querySelector("textarea")?.focus();
 });
 
-async function render(threadKeys = keys) {
+async function render(threadKeys = keys, onCommit = () => {}) {
   await act(() =>
     root.render(
-      <>
+      <Profiler id="switcher" onRender={onCommit}>
         <textarea aria-label="Draft" defaultValue="Unsent message" />
         <ThreadCycleShortcut
           keybindings={DEFAULT_RESOLVED_KEYBINDINGS}
@@ -95,7 +95,7 @@ async function render(threadKeys = keys) {
           terminalOpen={false}
           navigateToThread={navigate}
         />
-      </>,
+      </Profiler>,
     ),
   );
 }
@@ -223,6 +223,22 @@ describe("conversation switcher", () => {
     expect(navigate).not.toHaveBeenCalled();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(document.activeElement).toBe(container.querySelector("textarea"));
+    expect(container.querySelector("textarea")?.value).toBe("Unsent message");
+  });
+
+  it("never presents a stale selection when the selected conversation is removed", async () => {
+    await key("keydown", "Tab");
+    expect(selectedTitle()).toBe("Conversation b");
+    const openDialogs: string[] = [];
+    await render(["local:a", "remote:c"], () => {
+      const dialog = document.querySelector('[role="dialog"]');
+      if (dialog) openDialogs.push(dialog.textContent ?? "");
+    });
+    expect(openDialogs).toEqual([]);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(container.querySelector("textarea"));
+    await key("keyup", "Control", false);
+    expect(navigate).not.toHaveBeenCalled();
     expect(container.querySelector("textarea")?.value).toBe("Unsent message");
   });
 

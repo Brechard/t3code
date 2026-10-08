@@ -251,6 +251,36 @@ describe("conversation cycle shortcut", () => {
     expect(controls.preview).toBeNull();
   });
 
+  it.each([
+    ["Control", "Alt"],
+    ["Alt", "Control"],
+    ["Control", "Meta"],
+    ["Meta", "Control"],
+  ])("keeps a multi-modifier preview open after %s until %s is released", async (first, last) => {
+    const meta = first === "Meta" || last === "Meta";
+    const keybindings = compileResolvedKeybindingsConfig([
+      { key: meta ? "ctrl+meta+tab" : "ctrl+alt+tab", command: "thread.cycleNext" },
+    ]);
+    await act(() => renderer?.update(<Harness keybindings={keybindings} />));
+    press({ altKey: !meta, metaKey: meta });
+    expect(controls.preview?.selectedKey).toBe("remote:a");
+    release(first);
+    release("Shift");
+    expect(state.navigate).not.toHaveBeenCalled();
+    expect(controls.preview?.selectedKey).toBe("remote:a");
+    press({
+      key: "ArrowDown",
+      ctrlKey: last === "Control",
+      altKey: last === "Alt",
+      metaKey: last === "Meta",
+    });
+    expect(controls.preview?.selectedKey).toBe("local:a");
+    release(last);
+    release(first);
+    expect(state.navigate.mock.calls).toEqual([["local:a"]]);
+    expect(controls.preview).toBeNull();
+  });
+
   it("supports arrows and Enter in the preview, and choosing a card", () => {
     press();
     press({ key: "ArrowRight" });

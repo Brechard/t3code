@@ -171,12 +171,12 @@ export function ThreadCycleShortcut(props: Parameters<typeof useThreadCycleShort
 
   return (
     <Dialog
-      open={preview !== null}
+      open={selectedIndex >= 0}
       onOpenChange={(open) => {
         if (!open) cancel();
       }}
     >
-      {preview ? (
+      {preview && selectedIndex >= 0 ? (
         <DialogPopup
           className="w-160 max-w-full"
           showCloseButton={false}
