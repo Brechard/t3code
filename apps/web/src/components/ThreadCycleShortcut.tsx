@@ -1,4 +1,3 @@
-import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { parseScopedThreadKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
   AlertTriangleIcon,
@@ -25,6 +24,7 @@ import {
   resolveSidebarThreadStatus,
   resolveThreadLastVisitedAt,
 } from "./Sidebar.logic";
+import { Dialog, DialogDescription, DialogPopup, DialogTitle } from "./ui/dialog";
 import { MiddleTruncate } from "./ui/middle-truncate";
 
 const STATUS_PRESENTATION = {
@@ -170,56 +170,55 @@ export function ThreadCycleShortcut(props: Parameters<typeof useThreadCycleShort
     new Set(keys.map((key) => parseScopedThreadKey(key)?.environmentId)).size > 1;
 
   return (
-    <DialogPrimitive.Root
+    <Dialog
       open={preview !== null}
       onOpenChange={(open) => {
         if (!open) cancel();
       }}
     >
       {preview ? (
-        <DialogPrimitive.Portal>
-          <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/25" />
-          <DialogPrimitive.Viewport className="fixed inset-0 z-50 flex items-center justify-center p-6">
-            <DialogPrimitive.Popup
-              className="dialog-glass flex max-h-full w-160 max-w-full flex-col rounded-2xl border p-4 text-popover-foreground outline-none [-webkit-app-region:no-drag]"
-              initialFocus={() => document.getElementById(id)}
+        <DialogPopup
+          className="w-160 max-w-full"
+          showCloseButton={false}
+          bottomStickOnMobile={false}
+          initialFocus={() => document.getElementById(id)}
+        >
+          <div className="flex min-h-0 flex-col p-4">
+            <div className="mb-3 flex items-center justify-between gap-4 px-3">
+              <DialogTitle>Recent conversations</DialogTitle>
+              <span className="text-xs text-muted-foreground">
+                {selectedIndex + 1} / {keys.length}
+              </span>
+            </div>
+            <div
+              id={id}
+              role="listbox"
+              aria-label="Recent conversations"
+              aria-orientation="vertical"
+              aria-activedescendant={`${id}-${preview.selectedKey}`}
+              tabIndex={0}
+              className="flex min-h-0 flex-col gap-1 overflow-y-auto p-1 outline-none"
             >
-              <div className="mb-3 flex items-center justify-between gap-4 px-3">
-                <DialogPrimitive.Title className="text-sm font-medium">
-                  Recent conversations
-                </DialogPrimitive.Title>
-                <span className="text-xs text-muted-foreground">
-                  {selectedIndex + 1} / {keys.length}
-                </span>
-              </div>
-              <div
-                id={id}
-                role="listbox"
-                aria-label="Recent conversations"
-                aria-orientation="vertical"
-                aria-activedescendant={`${id}-${preview.selectedKey}`}
-                tabIndex={0}
-                className="flex min-h-0 flex-col gap-1 overflow-y-auto p-1 outline-none"
-              >
-                {keys.slice(start, start + 5).map((key) => (
-                  <ConversationOption
-                    key={key}
-                    id={`${id}-${key}`}
-                    threadKey={key}
-                    selected={preview.selectedKey === key}
-                    showEnvironment={showEnvironment}
-                    onChoose={() => commit(key)}
-                  />
-                ))}
-              </div>
-              <ConversationWorkspace threadKey={preview.selectedKey} />
-              <DialogPrimitive.Description className="mt-4 text-center text-xs text-muted-foreground">
+              {keys.slice(start, start + 5).map((key) => (
+                <ConversationOption
+                  key={key}
+                  id={`${id}-${key}`}
+                  threadKey={key}
+                  selected={preview.selectedKey === key}
+                  showEnvironment={showEnvironment}
+                  onChoose={() => commit(key)}
+                />
+              ))}
+            </div>
+            <ConversationWorkspace threadKey={preview.selectedKey} />
+            <div className="mt-4 text-center">
+              <DialogDescription>
                 Release to open · Shift to reverse · Esc to cancel
-              </DialogPrimitive.Description>
-            </DialogPrimitive.Popup>
-          </DialogPrimitive.Viewport>
-        </DialogPrimitive.Portal>
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogPopup>
       ) : null}
-    </DialogPrimitive.Root>
+    </Dialog>
   );
 }
