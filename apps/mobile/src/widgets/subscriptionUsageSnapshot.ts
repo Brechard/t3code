@@ -4,8 +4,14 @@ import {
   type LimitAccount,
   type LimitPresentations,
 } from "@t3tools/shared/usageLimits";
+import type { AndroidSubscriptionUsageSnapshot } from "./androidSubscriptionUsageSnapshot";
 
 export interface SubscriptionUsageSnapshot {
+  androidWidgetUrl?: string;
+  android?: {
+    defaults: AndroidSubscriptionUsageSnapshot;
+    widgets: Record<string, AndroidSubscriptionUsageSnapshot>;
+  };
   url?: string;
   checkedAt: number;
   providers: Array<{
