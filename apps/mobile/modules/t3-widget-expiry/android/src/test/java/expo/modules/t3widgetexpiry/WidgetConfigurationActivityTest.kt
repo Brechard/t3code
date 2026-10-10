@@ -21,13 +21,17 @@ import org.robolectric.annotation.Config
 class WidgetConfigurationActivityTest {
   private fun registerActivity(url: String?) {
     val application = RuntimeEnvironment.getApplication()
-    shadowOf(application.packageManager).addOrUpdateActivity(ActivityInfo().apply {
-      name = WidgetConfigurationActivity::class.java.name
-      packageName = application.packageName
-      if (url != null) metaData = Bundle().apply {
-        putString("t3code.widgetConfigurationUrl", url)
+    shadowOf(application.packageManager).addOrUpdateActivity(
+      ActivityInfo().apply {
+        name = WidgetConfigurationActivity::class.java.name
+        packageName = application.packageName
+        if (url != null) {
+          metaData = Bundle().apply {
+            putString("t3code.widgetConfigurationUrl", url)
+          }
+        }
       }
-    })
+    )
   }
 
   @Test

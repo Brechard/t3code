@@ -7,7 +7,10 @@ import {
   type LimitAccount,
 } from "@t3tools/shared/usageLimits";
 
-import type { SubscriptionUsageSnapshot } from "./subscriptionUsageSnapshot";
+import type {
+  AndroidSubscriptionUsageSnapshot,
+  SubscriptionUsageSnapshot,
+} from "./subscriptionUsageTypes";
 import type {
   SubscriptionWidgetConfiguration,
   SubscriptionWidgetPreferences,
@@ -20,29 +23,7 @@ type WidgetPresentations = ReadonlyMap<
   }
 >;
 
-export interface AndroidSubscriptionUsageSnapshot {
-  configuration: Pick<
-    SubscriptionWidgetConfiguration,
-    "density" | "theme" | "percentage" | "showBars" | "showResetTimes" | "showUpdatedAt"
-  >;
-  checkedAt: number;
-  groups: Array<{
-    id: string;
-    name: string;
-    detail: string;
-    windows: Array<{
-      id: string;
-      label: string;
-      remaining: number;
-      reset: string;
-      resetsAt: number | null;
-      resetDisplay: SubscriptionWidgetConfiguration["resetDisplay"];
-      expiresAt: number;
-    }>;
-    totalWindows: number;
-  }>;
-  emptyMessage: string;
-}
+export type { AndroidSubscriptionUsageSnapshot } from "./subscriptionUsageTypes";
 
 const MAX_AGE = 15 * 60_000;
 const KIND_ORDER = { session: 0, weekly: 1, monthly: 2, other: 3 };

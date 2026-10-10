@@ -4,24 +4,9 @@ import {
   type LimitAccount,
   type LimitPresentations,
 } from "@t3tools/shared/usageLimits";
-import type { AndroidSubscriptionUsageSnapshot } from "./androidSubscriptionUsageSnapshot";
+import type { SubscriptionUsageSnapshot } from "./subscriptionUsageTypes";
 
-export interface SubscriptionUsageSnapshot {
-  androidWidgetUrl?: string;
-  android?: {
-    defaults: AndroidSubscriptionUsageSnapshot;
-    widgets: Record<string, AndroidSubscriptionUsageSnapshot>;
-  };
-  url?: string;
-  checkedAt: number;
-  providers: Array<{
-    name: string;
-    detail: string;
-    windows: Array<{ kind?: string; label: string; remaining: number; reset: string }>;
-    expiresAt: number;
-    totalWindows: number;
-  }>;
-}
+export type { SubscriptionUsageSnapshot } from "./subscriptionUsageTypes";
 
 // Snapshots expire after 15 minutes; background refresh needs a
 // separate authenticated transport while the mobile app is suspended.

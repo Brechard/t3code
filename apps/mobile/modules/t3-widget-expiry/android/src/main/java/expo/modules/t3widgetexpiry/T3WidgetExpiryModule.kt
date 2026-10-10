@@ -20,7 +20,9 @@ class T3WidgetExpiryModule : Module() {
       if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return@Function false
       val manager = AppWidgetManager.getInstance(context)
       manager.isRequestPinAppWidgetSupported && manager.requestPinAppWidget(
-        ComponentName(context.packageName, "${context.packageName}.SubscriptionUsageProvider"), null, null
+        ComponentName(context.packageName, "${context.packageName}.SubscriptionUsageProvider"),
+        null,
+        null
       )
     }
     Function("schedule") { name: String, deadlines: List<Double> ->
