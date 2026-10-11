@@ -161,8 +161,8 @@ describe("Android account-aware widget snapshots", () => {
     expect(selected.groups[0]).toMatchObject({
       name: "Codex · business",
       windows: [
-        { remaining: 60, resetDisplay: "reset" },
-        { remaining: 50, resetDisplay: "reset" },
+        { remaining: 60, resetDisplay: "both" },
+        { remaining: 50, resetDisplay: "both" },
       ],
     });
   });
@@ -342,10 +342,13 @@ describe("Android account-aware widget snapshots", () => {
         defaults: { ...DEFAULT_WIDGET_CONFIGURATION, ...patch },
         widgets: {},
       });
-    expect(androidWidgetRefreshDeadlines(make({}), now)).toEqual([
+    expect(androidWidgetRefreshDeadlines(make({ resetDisplay: "reset" }), now)).toEqual([
       now + 10 * 60_000,
       now + 15 * 60_000,
     ]);
+    expect(androidWidgetRefreshDeadlines(make({}), now)).toEqual(
+      Array.from({ length: 15 }, (_, i) => now + (i + 1) * 60_000),
+    );
     const countdown = make({ resetDisplay: "remaining" });
     expect(androidWidgetRefreshDeadlines(countdown, now)).toEqual(
       Array.from({ length: 15 }, (_, i) => now + (i + 1) * 60_000),
@@ -631,21 +634,25 @@ describe("widget preference selection", () => {
           accountIds: ["codex:work@example.com"],
           showEnvironment: false,
         },
+        "13": { ...DEFAULT_WIDGET_CONFIGURATION, resetDisplay: "reset" },
+        "14": { ...DEFAULT_WIDGET_CONFIGURATION, resetDisplay: "remaining" },
       },
     });
     expect(upgraded.defaults).toMatchObject({
       theme: "dark",
-      resetDisplay: "reset",
+      resetDisplay: "both",
       quotaResetDisplays: {},
       showEnvironment: true,
     });
     expect(upgraded.widgets["12"]).toMatchObject({
       windowsPerAccount: 1,
       accountIds: ["codex:work@example.com"],
-      resetDisplay: "reset",
+      resetDisplay: "both",
       quotaResetDisplays: {},
       showEnvironment: false,
     });
+    expect(upgraded.widgets["13"]?.resetDisplay).toBe("reset");
+    expect(upgraded.widgets["14"]?.resetDisplay).toBe("remaining");
   });
 
   it("defaults to automatic visibility when no saved choice exists", () => {

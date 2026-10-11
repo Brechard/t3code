@@ -18,7 +18,7 @@ export const SubscriptionWidgetConfiguration = Schema.Struct({
   theme: Schema.Literals(["system", "light", "dark"]),
   showBars: Schema.Boolean,
   showResetTimes: Schema.Boolean,
-  resetDisplay: WidgetResetDisplay.pipe(Schema.withDecodingDefault(Effect.succeed("reset"))),
+  resetDisplay: WidgetResetDisplay.pipe(Schema.withDecodingDefault(Effect.succeed("both"))),
   quotaResetDisplays: Schema.Record(Schema.String, WidgetResetDisplay).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
@@ -43,7 +43,7 @@ export const DEFAULT_WIDGET_CONFIGURATION: SubscriptionWidgetConfiguration = {
   theme: "system",
   showBars: true,
   showResetTimes: true,
-  resetDisplay: "reset",
+  resetDisplay: "both",
   quotaResetDisplays: {},
   showEnvironment: "auto",
   showUpdatedAt: true,

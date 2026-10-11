@@ -136,9 +136,10 @@ Claude quotas. Tap a quota to open **Usage → Limits**. On Android, use **Setti
 or long-press the widget and choose its launcher edit action to select accounts, environments,
 quota periods, and appearance. Accounts appear separately with their configured names by default;
 choose a combined view to pool them. Each home screen widget can use its own settings or follow the
-defaults. For each quota, show the next reset time, time left, or both. Scroll the widget to see
-additional accounts and quotas. Environment names are hidden automatically when only one environment
-is connected; choose **Always show** or **Always hide** to override this. On iOS, use **Edit Widget**
+defaults. Quotas show both the next reset time and time left by default; choose either alone for
+each quota if preferred. Scroll the widget to see additional accounts and quotas. Environment names
+are hidden automatically when only one environment is connected; choose **Always show** or
+**Always hide** to override this. On iOS, use **Edit Widget**
 to choose Session, Weekly, or both for each provider. Reopen T3 to refresh expired readings.
 
 ## Keyboard shortcuts
