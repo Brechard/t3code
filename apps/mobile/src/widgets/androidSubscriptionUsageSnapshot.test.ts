@@ -536,12 +536,50 @@ describe("widget preference selection", () => {
       defaults,
       widgets: { "12": compact, "13": "broken" },
     });
-    expect(recovered).toEqual({ defaults, widgets: { "12": compact } });
+    expect(recovered.defaults).toEqual(defaults);
+    expect(recovered.widgets["12"]).toEqual(compact);
+    expect(recovered.widgets["13"]?.accountIds).toEqual([]);
     const savedAgain = resolveWidgetPreferences({
       ...recovered,
       widgets: { ...recovered.widgets, "14": { ...defaults, providers: ["claudeAgent"] } },
     });
     expect(savedAgain.widgets["12"]).toEqual(compact);
+  });
+
+  it.each(["broken", null, 42])(
+    "keeps unreadable widget overrides empty instead of inheriting all accounts (%j)",
+    (invalid) => {
+      const recovered = resolveWidgetPreferences({
+        defaults: DEFAULT_WIDGET_CONFIGURATION,
+        widgets: { "12": invalid },
+      });
+      const snapshot = withAndroidWidgetSnapshots(
+        buildSubscriptionUsageSnapshot(presentations(), "t3code-dev://settings/usage"),
+        presentations(),
+        recovered,
+      );
+      expect(snapshot.android?.defaults.groups.length).toBeGreaterThan(0);
+      expect(snapshot.android?.widgets["12"]?.groups).toEqual([]);
+      expect(snapshot.android?.widgets["12"]?.emptyMessage).toBe(
+        "No accounts selected. Configure in T3.",
+      );
+      expect(resolveWidgetPreferences(recovered).widgets["12"]).toEqual(recovered.widgets["12"]);
+    },
+  );
+
+  it("uses fresh defaults only when absent and keeps unreadable saved defaults empty", () => {
+    expect(resolveWidgetPreferences(undefined).defaults).toEqual(DEFAULT_WIDGET_CONFIGURATION);
+    const work = { ...DEFAULT_WIDGET_CONFIGURATION, accountIds: ["codex:work@example.com"] };
+    const recovered = resolveWidgetPreferences({ defaults: "broken", widgets: { "12": work } });
+    const snapshot = withAndroidWidgetSnapshots(
+      buildSubscriptionUsageSnapshot(presentations(), "t3code-dev://settings/usage"),
+      presentations(),
+      recovered,
+    );
+    expect(snapshot.android?.defaults.groups).toEqual([]);
+    expect(snapshot.android?.widgets["12"]?.groups.map((group) => group.name)).toEqual([
+      "Codex · Work",
+    ]);
   });
 
   it("preserves account and environment selections when a profile display field is invalid", () => {

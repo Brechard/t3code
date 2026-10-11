@@ -62,35 +62,32 @@ const configurationFields = Object.entries(SubscriptionWidgetConfiguration.field
 
 function recoverConfiguration(value: unknown) {
   const decoded = decodeConfiguration(value);
-  if (Option.isSome(decoded)) return decoded;
-  return Option.map(decodeRecord(value), (saved) => {
-    const configuration: SubscriptionWidgetConfiguration = {
-      ...DEFAULT_WIDGET_CONFIGURATION,
-      providers: [],
-      accountIds: [],
-      environmentIds: [],
-    };
-    for (const { key, decode } of configurationFields) {
-      const field = decode(saved[key]);
-      if (Option.isSome(field)) Object.assign(configuration, { [key]: field.value });
-    }
-    return configuration;
-  });
+  if (Option.isSome(decoded)) return decoded.value;
+  const configuration: SubscriptionWidgetConfiguration = {
+    ...DEFAULT_WIDGET_CONFIGURATION,
+    providers: [],
+    accountIds: [],
+    environmentIds: [],
+  };
+  const saved = Option.getOrUndefined(decodeRecord(value));
+  if (!saved) return configuration;
+  for (const { key, decode } of configurationFields) {
+    const field = decode(saved[key]);
+    if (Option.isSome(field)) Object.assign(configuration, { [key]: field.value });
+  }
+  return configuration;
 }
 
 export function resolveWidgetPreferences(value: unknown): SubscriptionWidgetPreferences {
   const saved = Option.getOrUndefined(decodeRecord(value));
   const widgets = Option.getOrElse(decodeRecord(saved?.widgets), () => ({}));
   return {
-    defaults: Option.getOrElse(
-      recoverConfiguration(saved?.defaults),
-      () => DEFAULT_WIDGET_CONFIGURATION,
-    ),
+    defaults:
+      saved?.defaults === undefined
+        ? DEFAULT_WIDGET_CONFIGURATION
+        : recoverConfiguration(saved.defaults),
     widgets: Object.fromEntries(
-      Object.entries(widgets).flatMap(([id, value]) => {
-        const decoded = recoverConfiguration(value);
-        return Option.isSome(decoded) ? [[id, decoded.value]] : [];
-      }),
+      Object.entries(widgets).map(([id, value]) => [id, recoverConfiguration(value)]),
     ),
   };
 }
