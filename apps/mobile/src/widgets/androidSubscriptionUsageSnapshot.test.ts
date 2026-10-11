@@ -5,9 +5,11 @@ import {
   UsageLimitSourceId,
   type ServerProvider,
 } from "@t3tools/contracts";
+import { collectLimitAccounts } from "@t3tools/shared/usageLimits";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  subscriptionWidgetAccountId,
   buildAndroidSubscriptionUsageSnapshot,
   collectSubscriptionWidgetQuotas,
   androidWidgetRefreshDeadlines,
@@ -166,6 +168,67 @@ describe("Android account-aware widget snapshots", () => {
       ],
     });
   });
+
+  it.each([1, 2])(
+    "preserves account and quota selections when excluding %i known workspaces",
+    (workspaceCount) => {
+      const input = presentations();
+      const local = input.get(EnvironmentId.make("laptop"))!;
+      const unknown = {
+        ...provider("unknown", "", 80),
+        auth: { status: "authenticated" as const, email: "same@example.com" },
+      };
+      local.serverConfig.providers.splice(0, local.serverConfig.providers.length, unknown);
+      input.set(EnvironmentId.make("remote"), {
+        entry: { target: { label: "Remote" } },
+        connection: { phase: "connected" },
+        serverConfig: {
+          providers: Array.from({ length: workspaceCount }, (_, index) => ({
+            ...provider(`workspace-${index}`, "", 10),
+            auth: {
+              status: "authenticated" as const,
+              email: "same@example.com",
+              workspaceId: `workspace-${index}`,
+            },
+            usageLimits: {
+              ...unknown.usageLimits!,
+              checkedAt: "2026-10-10T12:01:00.000Z",
+              windows: unknown.usageLimits!.windows.map((window) => ({
+                ...window,
+                usedPercent: 10,
+              })),
+            },
+          })),
+        },
+      });
+      const account = collectLimitAccounts(input).find(
+        (candidate) => candidate.key === "laptop:unknown",
+      )!;
+      const configuration = {
+        ...DEFAULT_WIDGET_CONFIGURATION,
+        accountIds: [subscriptionWidgetAccountId(account)],
+      };
+      const initial = buildAndroidSubscriptionUsageSnapshot(input, configuration);
+      const quotas = collectSubscriptionWidgetQuotas(input, configuration);
+      const selected = { ...configuration, environmentIds: ["laptop"] };
+      const snapshot = buildAndroidSubscriptionUsageSnapshot(input, {
+        ...selected,
+        quotaResetDisplays: { [quotas[0]!.id]: "remaining" },
+      });
+      expect(snapshot.groups).toHaveLength(1);
+      expect(snapshot.groups[0]).toMatchObject({
+        id: initial.groups[0]!.id,
+        name: initial.groups[0]!.name,
+        detail: "Laptop",
+        windows: [
+          { remaining: 20, resetDisplay: "remaining" },
+          { remaining: 10, resetDisplay: "both" },
+        ],
+      });
+      expect(snapshot.checkedAt).toBe(now);
+      expect(collectSubscriptionWidgetQuotas(input, selected)).toEqual(quotas);
+    },
+  );
 
   it("automatically shows names only with multiple connected environments", () => {
     const input = presentations();

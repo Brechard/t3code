@@ -54,7 +54,7 @@ function collectWidgetGroups(
       ([id]) => configuration.environmentIds === null || configuration.environmentIds.includes(id),
     ),
   );
-  const allAccounts = collectLimitAccounts(selected).filter(
+  const allAccounts = collectLimitAccounts(selected, presentations).filter(
     (account) =>
       (account.driver === "codex" || account.driver === "claudeAgent") &&
       configuration.providers.includes(account.driver === "codex" ? "codex" : "claudeAgent"),
