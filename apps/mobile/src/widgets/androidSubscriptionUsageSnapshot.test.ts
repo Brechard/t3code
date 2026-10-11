@@ -111,6 +111,34 @@ describe("Android account-aware widget snapshots", () => {
     });
   });
 
+  it("keeps unnamed account labels and group identities stable as reports and environments change", () => {
+    const input = presentations();
+    const local = input.get(EnvironmentId.make("laptop"))!;
+    const personal = provider("personal", "");
+    const work = provider("work", "", 80);
+    local.serverConfig.providers.splice(0, local.serverConfig.providers.length, personal, work);
+    const initial = buildAndroidSubscriptionUsageSnapshot(input, DEFAULT_WIDGET_CONFIGURATION);
+    const original = initial.groups.find((group) => group.windows[0]?.remaining === 20)!;
+    expect(new Set(initial.groups.map((group) => group.id)).size).toBe(2);
+
+    local.serverConfig.providers.splice(0, 1);
+    const withoutPersonal = buildAndroidSubscriptionUsageSnapshot(
+      input,
+      DEFAULT_WIDGET_CONFIGURATION,
+    );
+    expect(withoutPersonal.groups[0]).toMatchObject({ id: original.id, name: original.name });
+
+    input.set(EnvironmentId.make("remote"), {
+      ...local,
+      entry: { target: { label: "Remote" } },
+    });
+    input.delete(EnvironmentId.make("laptop"));
+    const moved = buildAndroidSubscriptionUsageSnapshot(input, DEFAULT_WIDGET_CONFIGURATION);
+    expect(moved.groups[0]).toMatchObject({ id: original.id, name: original.name });
+    expect(JSON.stringify(moved)).not.toContain("work@example.com");
+    expect(JSON.stringify(moved)).not.toContain("credential-work");
+  });
+
   it("selects separate workspaces for one email and overrides only the chosen quota", () => {
     const input = presentations();
     const providers = input.get(EnvironmentId.make("laptop"))!.serverConfig.providers;
@@ -483,7 +511,7 @@ describe("widget preference selection", () => {
     expect(toggleWidgetSelection([], ["a", "b"], "a")).toEqual(["a"]);
   });
 
-  it("retains valid per-widget profiles and resets malformed saved settings", () => {
+  it("retains valid per-widget profiles when default display settings are malformed", () => {
     const preferences = {
       defaults: DEFAULT_WIDGET_CONFIGURATION,
       widgets: { "12": { ...DEFAULT_WIDGET_CONFIGURATION, density: "compact" as const } },
@@ -494,7 +522,60 @@ describe("widget preference selection", () => {
         ...preferences,
         defaults: { ...preferences.defaults, theme: "broken" },
       }),
-    ).toEqual({ defaults: DEFAULT_WIDGET_CONFIGURATION, widgets: {} });
+    ).toEqual({ defaults: DEFAULT_WIDGET_CONFIGURATION, widgets: preferences.widgets });
+  });
+
+  it("recovers each widget profile independently without discarding valid defaults or profiles", () => {
+    const defaults = { ...DEFAULT_WIDGET_CONFIGURATION, theme: "dark" as const };
+    const compact = {
+      ...defaults,
+      density: "compact" as const,
+      accountIds: ["codex:work@example.com"],
+    };
+    const recovered = resolveWidgetPreferences({
+      defaults,
+      widgets: { "12": compact, "13": "broken" },
+    });
+    expect(recovered).toEqual({ defaults, widgets: { "12": compact } });
+    const savedAgain = resolveWidgetPreferences({
+      ...recovered,
+      widgets: { ...recovered.widgets, "14": { ...defaults, providers: ["claudeAgent"] } },
+    });
+    expect(savedAgain.widgets["12"]).toEqual(compact);
+  });
+
+  it("preserves account and environment selections when a profile display field is invalid", () => {
+    const configuration = {
+      ...DEFAULT_WIDGET_CONFIGURATION,
+      accountIds: ["codex:work@example.com"],
+      environmentIds: ["laptop"],
+      showEnvironment: false,
+    };
+    const recovered = resolveWidgetPreferences({
+      defaults: { ...configuration, theme: "broken" },
+      widgets: { "12": { ...configuration, density: "broken" } },
+    });
+    expect(recovered.defaults).toEqual(configuration);
+    expect(recovered.widgets["12"]).toEqual(configuration);
+    const snapshot = withAndroidWidgetSnapshots(
+      buildSubscriptionUsageSnapshot(presentations(), "t3code-dev://settings/usage"),
+      presentations(),
+      recovered,
+    );
+    expect(snapshot.android?.widgets["12"]?.groups.map((group) => group.name)).toEqual([
+      "Codex · Work",
+    ]);
+  });
+
+  it("does not expand a malformed saved account selection to all accounts", () => {
+    const recovered = resolveWidgetPreferences({
+      defaults: DEFAULT_WIDGET_CONFIGURATION,
+      widgets: { "12": { ...DEFAULT_WIDGET_CONFIGURATION, accountIds: 42 } },
+    });
+    expect(recovered.widgets["12"]?.accountIds).toEqual([]);
+    expect(
+      buildAndroidSubscriptionUsageSnapshot(presentations(), recovered.widgets["12"]!).groups,
+    ).toEqual([]);
   });
 
   it("upgrades saved widget configurations without resetting their existing choices", () => {

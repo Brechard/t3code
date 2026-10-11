@@ -16,6 +16,7 @@ import {
   buildAndroidSubscriptionUsageSnapshot,
   collectSubscriptionWidgetQuotas,
   subscriptionWidgetAccountId,
+  subscriptionWidgetAccountName,
 } from "../../widgets/androidSubscriptionUsageSnapshot";
 import {
   DEFAULT_WIDGET_CONFIGURATION,
@@ -98,7 +99,11 @@ export function SettingsUsageWidgetRouteScreen() {
   const preferences = resolveWidgetPreferences(
     AsyncResult.isSuccess(result) ? result.value.subscriptionWidgets : undefined,
   );
-  const [widgetIds, setWidgetIds] = useState<number[]>([]);
+  const native = requireOptionalNativeModule<{
+    getWidgetIds: () => number[];
+    pinWidget: () => boolean;
+  }>("T3WidgetExpiry");
+  const [widgetIds, setWidgetIds] = useState(() => native?.getWidgetIds() ?? []);
   const [selection, setSelection] = useState(() => ({
     params: route.params,
     target: route.params?.widgetId ?? "defaults",
@@ -108,10 +113,6 @@ export function SettingsUsageWidgetRouteScreen() {
   }
   const { target } = selection;
   const setTarget = (target: string) => setSelection({ params: route.params, target });
-  const native = requireOptionalNativeModule<{
-    getWidgetIds: () => number[];
-    pinWidget: () => boolean;
-  }>("T3WidgetExpiry");
   useEffect(() => {
     if (!focused) return;
     const update = () => setWidgetIds(native?.getWidgetIds() ?? []);
@@ -257,11 +258,11 @@ export function SettingsUsageWidgetRouteScreen() {
             value={configuration.accountIds === null}
             onValueChange={(enabled) => save({ accountIds: enabled ? null : availableAccounts })}
           />
-          {accounts.map((account, index) => (
+          {accounts.map((account) => (
             <SettingsSwitchRow
               key={account.key}
               icon="person.crop.circle"
-              label={account.displayName ?? `Account ${index + 1}`}
+              label={subscriptionWidgetAccountName(account)}
               subtitle={`${account.driver === "codex" ? "Codex" : "Claude"} · ${account.environments.map((e) => e.label).join(", ") || account.sourceLabel || "Usage source"}`}
               disabled={disabled}
               value={

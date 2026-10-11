@@ -54,13 +54,45 @@ const WidgetPreferences = Schema.Struct({
   widgets: Schema.Record(Schema.String, SubscriptionWidgetConfiguration),
 });
 export type SubscriptionWidgetPreferences = typeof WidgetPreferences.Type;
-const decodePreferences = Schema.decodeUnknownOption(WidgetPreferences);
+const decodeRecord = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Unknown));
+const decodeConfiguration = Schema.decodeUnknownOption(SubscriptionWidgetConfiguration);
+const configurationFields = Object.entries(SubscriptionWidgetConfiguration.fields).map(
+  ([key, field]) => ({ key, decode: Schema.decodeUnknownOption(field) }),
+);
+
+function recoverConfiguration(value: unknown) {
+  const decoded = decodeConfiguration(value);
+  if (Option.isSome(decoded)) return decoded;
+  return Option.map(decodeRecord(value), (saved) => {
+    const configuration: SubscriptionWidgetConfiguration = {
+      ...DEFAULT_WIDGET_CONFIGURATION,
+      providers: [],
+      accountIds: [],
+      environmentIds: [],
+    };
+    for (const { key, decode } of configurationFields) {
+      const field = decode(saved[key]);
+      if (Option.isSome(field)) Object.assign(configuration, { [key]: field.value });
+    }
+    return configuration;
+  });
+}
 
 export function resolveWidgetPreferences(value: unknown): SubscriptionWidgetPreferences {
-  return Option.getOrElse(decodePreferences(value), () => ({
-    defaults: DEFAULT_WIDGET_CONFIGURATION,
-    widgets: {},
-  }));
+  const saved = Option.getOrUndefined(decodeRecord(value));
+  const widgets = Option.getOrElse(decodeRecord(saved?.widgets), () => ({}));
+  return {
+    defaults: Option.getOrElse(
+      recoverConfiguration(saved?.defaults),
+      () => DEFAULT_WIDGET_CONFIGURATION,
+    ),
+    widgets: Object.fromEntries(
+      Object.entries(widgets).flatMap(([id, value]) => {
+        const decoded = recoverConfiguration(value);
+        return Option.isSome(decoded) ? [[id, decoded.value]] : [];
+      }),
+    ),
+  };
 }
 
 export function toggleWidgetSelection(

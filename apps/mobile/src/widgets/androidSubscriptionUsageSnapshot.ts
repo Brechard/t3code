@@ -2,6 +2,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import {
   collectLimitAccounts,
   collectLimitPools,
+  limitAccountDisplayId,
   type LimitPresentations,
   type LimitPoolWindow,
   type LimitAccount,
@@ -31,6 +32,12 @@ const KIND_ORDER = { session: 0, weekly: 1, monthly: 2, other: 3 };
 /** Device-local selection survives deduplication across environments; never published to the OS. */
 export function subscriptionWidgetAccountId(account: LimitAccount) {
   return account.subscriptionKey ?? account.key;
+}
+
+export function subscriptionWidgetAccountName(account: LimitAccount) {
+  return (
+    account.displayName ?? `Account ${limitAccountDisplayId(account).slice(0, 8).toUpperCase()}`
+  );
 }
 
 function collectWidgetGroups(
@@ -64,10 +71,7 @@ function collectWidgetGroups(
   const groups = pools.map((pool) => {
     const providerName = pool.driver === "codex" ? "Codex" : "Claude";
     const account = pool.accounts[0]!;
-    const index = allAccounts
-      .filter((candidate) => candidate.driver === pool.driver)
-      .indexOf(account);
-    const accountName = account.displayName ?? `Account ${index + 1}`;
+    const accountName = subscriptionWidgetAccountName(account);
     const period = pool.driver === "codex" ? configuration.codexPeriod : configuration.claudePeriod;
     const windows = pool.windows
       .filter((window) => period === "all" || period === "tightest" || window.kind === period)
@@ -89,7 +93,10 @@ function collectWidgetGroups(
       .filter(Boolean)
       .join(" · ");
     return {
-      id: configuration.grouping === "pooled" ? pool.driver : `${pool.driver}:${index}`,
+      id:
+        configuration.grouping === "pooled"
+          ? pool.driver
+          : `${pool.driver}:${limitAccountDisplayId(account)}`,
       name: configuration.grouping === "pooled" ? providerName : `${providerName} · ${accountName}`,
       detail: windows.length === 0 ? `No ${period} limit reported` : detail,
       windows: windows.slice(0, limit).map((window) => {

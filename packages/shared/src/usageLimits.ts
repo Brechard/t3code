@@ -5,6 +5,7 @@
  *
  * @module usageLimits
  */
+import { sha256 } from "@noble/hashes/sha2";
 import {
   type EnvironmentId,
   type UsageLimitsReport,
@@ -23,6 +24,14 @@ import * as DateTime from "effect/DateTime";
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
+
+/** Stable display keys without publishing the subscription's email or credential identity. */
+export function limitAccountDisplayId(account: LimitAccount) {
+  return Array.from(
+    sha256(new TextEncoder().encode(account.subscriptionKey ?? account.key)).slice(0, 12),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
 
 export const CHATGPT_USAGE_URL = "https://chatgpt.com/#settings/Usage";
 
