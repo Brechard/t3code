@@ -11,7 +11,7 @@ describe("user message intent badge", () => {
   it("explains the queued history without claiming delivery", () => {
     expect(resolveUserMessageIntentBadge("queued_turn")).toEqual({
       label: "queued",
-      accessibilityLabel: "Originally queued",
+      accessibilityLabel: "Queued behind the active turn",
       explanation:
         "This badge records that the message was queued. It stays visible after the message leaves the queue.",
       tone: "queued",
@@ -21,7 +21,7 @@ describe("user message intent badge", () => {
   it("explains the intent to steer without claiming delivery", () => {
     expect(resolveUserMessageIntentBadge("steer")).toEqual({
       label: "steer",
-      accessibilityLabel: "Message intended to steer the active turn",
+      accessibilityLabel: "Steered the active turn",
       explanation: "This message was intended to steer the agent while its turn was still running.",
       tone: "steer",
     });

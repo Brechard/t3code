@@ -14,7 +14,7 @@ export function resolveUserMessageIntentBadge(
     case "queued_turn":
       return {
         label: "queued",
-        accessibilityLabel: "Originally queued",
+        accessibilityLabel: "Queued behind the active turn",
         explanation:
           "This badge records that the message was queued. It stays visible after the message leaves the queue.",
         tone: "queued",
@@ -22,7 +22,7 @@ export function resolveUserMessageIntentBadge(
     case "steer":
       return {
         label: "steer",
-        accessibilityLabel: "Message intended to steer the active turn",
+        accessibilityLabel: "Steered the active turn",
         explanation:
           "This message was intended to steer the agent while its turn was still running.",
         tone: "steer",
