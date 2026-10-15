@@ -8,10 +8,12 @@ describe("user message intent badge", () => {
     expect(resolveUserMessageIntentBadge("turn_start")).toBeNull();
   });
 
-  it("labels messages waiting behind the active turn", () => {
+  it("explains that messages originally queued have since been sent", () => {
     expect(resolveUserMessageIntentBadge("queued_turn")).toEqual({
       label: "queued",
-      accessibilityLabel: "Queued behind the active turn",
+      accessibilityLabel: "Sent from queue",
+      explanation:
+        "This message was originally queued and has since been sent to the agent. It is no longer waiting in the queue.",
       tone: "queued",
     });
   });
@@ -20,6 +22,7 @@ describe("user message intent badge", () => {
     expect(resolveUserMessageIntentBadge("steer")).toEqual({
       label: "steer",
       accessibilityLabel: "Steered the active turn",
+      explanation: "This message was sent to the agent while its turn was still running.",
       tone: "steer",
     });
   });
@@ -28,6 +31,8 @@ describe("user message intent badge", () => {
     expect(resolveUserMessageIntentBadge("promoted_queued_to_steer")).toEqual({
       label: "queued → steer",
       accessibilityLabel: "Originally queued, then promoted to steer the active turn",
+      explanation:
+        "This message was originally queued, then sent to the agent while its turn was still running. It is no longer waiting in the queue.",
       tone: "steer",
     });
   });
