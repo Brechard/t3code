@@ -1,3 +1,5 @@
+import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
+import * as Dialog from "../../components/ui/Dialog";
 import { PullRequestMentionInput as TextInput } from "./PullRequestMentionInput";
 import {
   PullRequestPermissionButton,
@@ -14,25 +16,18 @@ import { useNavigation, type StaticScreenProps } from "@react-navigation/native"
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { PullRequestThreadComment, PullRequestThreadStatus } from "@t3tools/contracts";
 import { useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Linking,
-  Platform,
-  Pressable,
-  ScrollView,
-  View,
-} from "react-native";
+import { Linking, Platform, Pressable, ScrollView, View } from "react-native";
 import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-controller";
 import { NativeScrollViewMarker as ScrollViewMarker } from "../../native/NativeScrollViewMarker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AppText as Text } from "../../components/AppText";
-import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
-import { ControlPillMenu } from "../../components/ControlPillMenu";
-import { MaterialButton } from "../../components/MaterialButton";
-import { SymbolView } from "../../components/AppSymbol";
-import { GlassSurface } from "../../components/GlassSurface";
-import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/StackHeader";
+import { AppText as Text } from "../../components/ui/AppText";
+import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
+import { Menu } from "../../components/ui/Menu";
+import { Button } from "../../components/ui/Button";
+import { SymbolView } from "../../components/ui/AppSymbol";
+import { GlassSurface } from "../../components/ui/GlassSurface";
+import { Toolbar } from "../../components/ui/Toolbar";
+import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { relativeTime } from "../../lib/time";
 import { composerPullRequests } from "../../state/pull-requests";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -193,7 +188,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
       setEditing(null);
     });
   const removeComment = (comment: PullRequestThreadComment) =>
-    Alert.alert("Delete comment?", "This removes your comment from the pull request.", [
+    Dialog.alert("Delete comment?", "This removes your comment from the pull request.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
@@ -235,7 +230,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
     Boolean(thread && !thread.isResolved) &&
     pullRequestSuggestion(comment.body) !== null;
   const applySuggestion = (comment: PullRequestThreadComment) =>
-    Alert.alert(
+    Dialog.alert(
       "Apply suggestion?",
       `Commit the suggested code to the source branch of PR #${params.number}.`,
       [
@@ -320,7 +315,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
             onPress={() => removeComment(comment)}
           />
         ) : null}
-        <ControlPillMenu
+        <Menu
           title="Comment actions"
           actions={commentActions(comment)}
           onPressAction={({ nativeEvent }) => onCommentAction(comment, nativeEvent.event)}
@@ -333,7 +328,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
           >
             <SymbolView name="ellipsis" size={20} tintColorClassName="accent-icon-muted" />
           </Pressable>
-        </ControlPillMenu>
+        </Menu>
       </View>
     );
   };
@@ -392,13 +387,13 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
           />
         ) : null}
         {permissions.canResolve && thread ? (
-          <NativeHeaderToolbar placement="right">
-            <NativeHeaderToolbar.Button
+          <Toolbar placement="right">
+            <Toolbar.Button
               label={resolveLabel}
               disabled={busy || activity.isPending}
               onPress={() => void toggleResolved()}
             />
-          </NativeHeaderToolbar>
+          </Toolbar>
         ) : null}
         <ScrollViewMarker style={{ flex: 1 }}>
           <ScrollView
@@ -410,7 +405,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
               paddingBottom: canReply ? composerHeight + bottomInset + 24 : 24,
             }}
           >
-            {activity.isPending && !thread && !discussion ? <ActivityIndicator /> : null}
+            {activity.isPending && !thread && !discussion ? <AppActivityIndicator /> : null}
             {thread ? (
               <View className="gap-2 pb-4">
                 <Text selectable className="font-mono text-xs text-foreground-muted">
@@ -423,7 +418,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
                   {thread.isResolved ? "Resolved" : "Unresolved"}
                   {thread.isOutdated ? " · Outdated" : ""}
                 </Text>
-                <MaterialButton
+                <Button
                   label="View file diff"
                   onPress={() =>
                     navigation.navigate("PullRequestFile", { ...params, path: thread.path })
@@ -439,7 +434,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
                   Status: {statusLabels[status]}
                 </Text>
                 {permissions.canResolve && detail.data?.capabilities.review.threadStatuses ? (
-                  <ControlPillMenu
+                  <Menu
                     title="Discussion status"
                     actions={detail.data.capabilities.review.threadStatuses.map((value) => ({
                       id: value,
@@ -467,7 +462,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
                     >
                       <Text className="text-primary-text">Change status</Text>
                     </Pressable>
-                  </ControlPillMenu>
+                  </Menu>
                 ) : null}
               </View>
             ) : null}
@@ -495,16 +490,12 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
                       className="min-h-24 rounded-xl border border-border-subtle p-3 text-foreground"
                     />
                     <View className="flex-row gap-2">
-                      <MaterialButton
+                      <Button
                         label="Save comment"
                         disabled={busy || !editing.body.trim()}
                         onPress={() => void saveComment(comment)}
                       />
-                      <MaterialButton
-                        label="Cancel"
-                        disabled={busy}
-                        onPress={() => setEditing(null)}
-                      />
+                      <Button label="Cancel" disabled={busy} onPress={() => setEditing(null)} />
                     </View>
                   </View>
                 ) : (
@@ -514,7 +505,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
               </View>
             ))}
             {nextCursor ? (
-              <MaterialButton
+              <Button
                 label={busy ? "Loading…" : "Load more replies"}
                 disabled={busy}
                 onPress={() => void more()}

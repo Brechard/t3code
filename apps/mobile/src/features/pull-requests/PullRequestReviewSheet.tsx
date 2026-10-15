@@ -10,9 +10,9 @@ import { Platform, Pressable, View } from "react-native";
 import { clearSubmittedReview } from "./pullRequestReviewDrafts";
 import { usePullRequestReviewDraft } from "./usePullRequestReviewDraft";
 import { reviewPositionLabel } from "./pullRequestDiffComments";
-import { AppText as Text } from "../../components/AppText";
-import { PullRequestPermissionButton as MaterialButton } from "./PullRequestPermissionButton";
-import { SegmentedControl } from "../../components/SegmentedControl";
+import { AppText as Text } from "../../components/ui/AppText";
+import { PullRequestPermissionButton as Button } from "./PullRequestPermissionButton";
+import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { composerPullRequests } from "../../state/pull-requests";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -135,7 +135,7 @@ export function PullRequestReviewSheet({
       subtitle={`#${params.number}${reviewing && result.data?.headSha ? ` · reviewing ${result.data.headSha.slice(0, 7)}` : ` · ${params.repository}`}`}
       busy={submission.busy}
       footer={
-        <MaterialButton
+        <Button
           reason={
             result.data?.viewerPermissions.deniedActions?.[
               params.mode === "review" ? "vote" : "comment"

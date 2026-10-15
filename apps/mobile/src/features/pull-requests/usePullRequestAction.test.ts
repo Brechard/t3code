@@ -6,7 +6,7 @@ vi.mock("react", () => ({
   useRef: (current: unknown) => ({ current }),
   useState: (value: unknown) => [value, vi.fn()],
 }));
-vi.mock("react-native", () => ({ Alert: { alert: vi.fn() } }));
+vi.mock("../../components/ui/Dialog", () => ({ alert: vi.fn() }));
 vi.mock("../../state/pull-requests", () => ({ composerPullRequests: { runAction: {} } }));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => run }));
 vi.mock("./usePullRequestPermissions", () => ({

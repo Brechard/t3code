@@ -1,7 +1,7 @@
 import { useRef, useState, type ComponentProps } from "react";
 import { View } from "react-native";
-import { AppTextInput } from "../../components/AppText";
-import { MaterialButton } from "../../components/MaterialButton";
+import { AppTextInput } from "../../components/ui/AppText";
+import { Button } from "../../components/ui/Button";
 import { composerPullRequests } from "../../state/pull-requests";
 import { useEnvironmentQuery } from "../../state/query";
 import { pullRequestTarget, type PullRequestParams } from "./usePullRequestDiff";
@@ -75,7 +75,7 @@ function MentionChoices({
         .filter(([, name]) => name.toLowerCase().includes(query.toLowerCase()))
         .slice(0, 6)
         .map(([id, name]) => (
-          <MaterialButton key={id} label={`@${name}`} onPress={() => select(id)} />
+          <Button key={id} label={`@${name}`} onPress={() => select(id)} />
         ))}
     </View>
   );

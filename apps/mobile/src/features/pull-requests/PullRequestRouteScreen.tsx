@@ -1,6 +1,9 @@
+import { Toolbar } from "../../components/ui/Toolbar";
+import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
+import { Chip } from "../../components/ui/Chip";
 import { usePullRequestPreviousVisit } from "./usePullRequestPreviousVisit";
 import { AzureDevOpsPullRequestActions } from "./AzureDevOpsPullRequestActions";
-import { AndroidAnchoredMenu } from "../../components/AndroidAnchoredMenu";
+import { AndroidAnchoredMenu } from "../../components/ui/AndroidAnchoredMenu";
 import { pullRequestTabOffset } from "./pullRequestTabScroll";
 import { guideFocusedRows, type GuideDiffFocus } from "./guide/guideDiffFocus";
 import { PullRequestGuideContent } from "./guide/PullRequestGuideScreen";
@@ -27,9 +30,9 @@ import {
   PR_ACTION_LABELS,
 } from "./pullRequestActions";
 import * as Clipboard from "expo-clipboard";
-import { ControlPillMenu } from "../../components/ControlPillMenu";
-import { MaterialIconButton } from "../../components/MaterialIconButton";
-import { MaterialButton } from "../../components/MaterialButton";
+import { Menu } from "../../components/ui/Menu";
+import { IconButton } from "../../components/ui/IconButton";
+import { Button } from "../../components/ui/Button";
 import { usePullRequestReviewDraft } from "./usePullRequestReviewDraft";
 import { usePullRequestFilesViewed } from "./usePullRequestFilesViewed";
 import { usePullRequestPermissions } from "./usePullRequestPermissions";
@@ -51,7 +54,6 @@ import { PullRequestOverviewLoading } from "./PullRequestOverviewLoading";
 import { pullRequestStatus } from "./pullRequestStatus";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Linking,
   Platform,
   Pressable,
@@ -64,17 +66,17 @@ import {
 import { NativeScrollViewMarker as ScrollViewMarker } from "../../native/NativeScrollViewMarker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AppText as Text } from "../../components/AppText";
-import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
-import { useAndroidControlSizing } from "../../components/useAndroidControlSizing";
+import { AppText as Text } from "../../components/ui/AppText";
+import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
+import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { AndroidWorkspaceSidebarButton } from "../layout/workspace-sidebar-toolbar";
 import { useAndroidWorkspaceBack } from "../workspace/useAndroidWorkspaceNavigation";
-import { EmptyState } from "../../components/EmptyState";
-import { SegmentedControl } from "../../components/SegmentedControl";
-import { SymbolView } from "../../components/AppSymbol";
+import { EmptyState } from "../../components/ui/EmptyState";
+import { SegmentedControl } from "../../components/ui/SegmentedControl";
+import { SymbolView } from "../../components/ui/AppSymbol";
 import { relativeTime } from "../../lib/time";
-import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/StackHeader";
+import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { usePullRequestConnected } from "./usePullRequestConnected";
 import { composerPullRequests } from "../../state/pull-requests";
 import { useEnvironmentQuery } from "../../state/query";
@@ -275,9 +277,7 @@ function PullRequestOverview(props: {
       {pr.labels.length ? (
         <Animated.View layout={PR_ROW_LAYOUT} className="flex-row flex-wrap gap-2">
           {pr.labels.map((label) => (
-            <View key={label.name} className="rounded-full bg-grouped-card px-3 py-1">
-              <Text className="text-2xs text-foreground-muted">{label.name}</Text>
-            </View>
+            <Chip key={label.name} label={label.name} size="small" />
           ))}
         </Animated.View>
       ) : null}
@@ -496,7 +496,7 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
                         }}
                       >
                         {(open) => (
-                          <MaterialIconButton
+                          <IconButton
                             accessibilityLabel="More actions"
                             icon="ellipsis"
                             tintColorClassName="accent-header-foreground"
@@ -508,44 +508,42 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
                   }
                 />
               ) : null}
-              <NativeHeaderToolbar placement="right">
-                <NativeHeaderToolbar.Menu
+              <Toolbar placement="right">
+                <Toolbar.Menu
                   title="Pull request"
                   accessibilityLabel="Pull request actions"
                   icon="ellipsis"
                 >
                   {permissions.verdicts.length ? (
-                    <NativeHeaderToolbar.MenuAction
+                    <Toolbar.MenuAction
                       icon="text.bubble"
                       onPress={() =>
                         navigation.navigate("PullRequestReview", { ...params, mode: "review" })
                       }
                     >
-                      <NativeHeaderToolbar.Label>Submit review</NativeHeaderToolbar.Label>
-                    </NativeHeaderToolbar.MenuAction>
+                      <Toolbar.Label>Submit review</Toolbar.Label>
+                    </Toolbar.MenuAction>
                   ) : null}
                   {permissions.canComment ? (
-                    <NativeHeaderToolbar.MenuAction
+                    <Toolbar.MenuAction
                       icon="plus.bubble"
                       onPress={() =>
                         navigation.navigate("PullRequestReview", { ...params, mode: "comment" })
                       }
                     >
-                      <NativeHeaderToolbar.Label>Add comment</NativeHeaderToolbar.Label>
-                    </NativeHeaderToolbar.MenuAction>
+                      <Toolbar.Label>Add comment</Toolbar.Label>
+                    </Toolbar.MenuAction>
                   ) : null}
                   {pr ? (
-                    <NativeHeaderToolbar.MenuAction
+                    <Toolbar.MenuAction
                       icon="arrow.up.right"
                       onPress={() => void Linking.openURL(pr.url)}
                     >
-                      <NativeHeaderToolbar.Label>
-                        {openOnProviderLabel(pr.provider)}
-                      </NativeHeaderToolbar.Label>
-                    </NativeHeaderToolbar.MenuAction>
+                      <Toolbar.Label>{openOnProviderLabel(pr.provider)}</Toolbar.Label>
+                    </Toolbar.MenuAction>
                   ) : null}
                   {showsDeleteBranch ? (
-                    <NativeHeaderToolbar.MenuAction
+                    <Toolbar.MenuAction
                       icon={PR_ACTION_ICONS["delete-branch"]}
                       destructive
                       disabled={!action.available("delete-branch")}
@@ -558,14 +556,12 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
                       }
                       onPress={confirmDeleteBranch}
                     >
-                      <NativeHeaderToolbar.Label>
-                        {PR_ACTION_LABELS["delete-branch"]}
-                      </NativeHeaderToolbar.Label>
-                    </NativeHeaderToolbar.MenuAction>
+                      <Toolbar.Label>{PR_ACTION_LABELS["delete-branch"]}</Toolbar.Label>
+                    </Toolbar.MenuAction>
                   ) : null}
                   {azure?.nativeMenu}
-                </NativeHeaderToolbar.Menu>
-              </NativeHeaderToolbar>
+                </Toolbar.Menu>
+              </Toolbar>
             </>
           )}
         </AzureDevOpsPullRequestActions>
@@ -1037,7 +1033,7 @@ export function PullRequestFileRouteScreen({
           title={title}
           onBack={() => navigation.goBack()}
           trailing={
-            <ControlPillMenu
+            <Menu
               actions={[
                 {
                   id: "word-wrap",
@@ -1080,69 +1076,65 @@ export function PullRequestFileRouteScreen({
               }}
             >
               <View pointerEvents="none">
-                <MaterialIconButton icon="ellipsis" accessibilityLabel="Diff options" />
+                <IconButton icon="ellipsis" accessibilityLabel="Diff options" />
               </View>
-            </ControlPillMenu>
+            </Menu>
           }
         />
       ) : null}
-      <NativeHeaderToolbar placement="right">
-        <NativeHeaderToolbar.Menu
-          title="Diff options"
-          accessibilityLabel="Diff options"
-          icon="ellipsis"
-        >
+      <Toolbar placement="right">
+        <Toolbar.Menu title="Diff options" accessibilityLabel="Diff options" icon="ellipsis">
           {permissions.verdicts.length ? (
-            <NativeHeaderToolbar.MenuAction
+            <Toolbar.MenuAction
               icon="text.bubble"
               onPress={() =>
                 navigation.navigate("PullRequestReview", { ...route.params, mode: "review" })
               }
             >
-              <NativeHeaderToolbar.Label>Submit review</NativeHeaderToolbar.Label>
-            </NativeHeaderToolbar.MenuAction>
+              <Toolbar.Label>Submit review</Toolbar.Label>
+            </Toolbar.MenuAction>
           ) : null}
           {permissions.canComment ? (
-            <NativeHeaderToolbar.MenuAction
+            <Toolbar.MenuAction
               icon="plus.bubble"
               onPress={() =>
                 navigation.navigate("PullRequestReview", { ...route.params, mode: "comment" })
               }
             >
-              <NativeHeaderToolbar.Label>Add comment</NativeHeaderToolbar.Label>
-            </NativeHeaderToolbar.MenuAction>
+              <Toolbar.Label>Add comment</Toolbar.Label>
+            </Toolbar.MenuAction>
           ) : null}
-          <NativeHeaderToolbar.MenuAction
+          <Toolbar.MenuAction
             icon="text.alignleft"
             isOn={appearance.codeWordBreak}
             onPress={() => setCodeWordBreak(!appearance.codeWordBreak)}
           >
-            <NativeHeaderToolbar.Label>Word wrap</NativeHeaderToolbar.Label>
-          </NativeHeaderToolbar.MenuAction>
-          <NativeHeaderToolbar.MenuAction
+            <Toolbar.Label>Word wrap</Toolbar.Label>
+          </Toolbar.MenuAction>
+          <Toolbar.MenuAction
             icon="line.3.horizontal.decrease"
             isOn={filter.hideTestFiles}
             onPress={toggleTestFiles}
           >
-            <NativeHeaderToolbar.Label>Hide test files</NativeHeaderToolbar.Label>
-          </NativeHeaderToolbar.MenuAction>
+            <Toolbar.Label>Hide test files</Toolbar.Label>
+          </Toolbar.MenuAction>
           {selectedRow && selectedFile && canCommentOnDiff ? (
-            <NativeHeaderToolbar.MenuAction icon="bubble.left" onPress={() => commentOnLine()}>
-              <NativeHeaderToolbar.Label>
+            <Toolbar.MenuAction icon="bubble.left" onPress={() => commentOnLine()}>
+              <Toolbar.Label>
                 {route.params.replacingDraftId ? "Move draft to this line" : "Add review comment"}
-              </NativeHeaderToolbar.Label>
-            </NativeHeaderToolbar.MenuAction>
+              </Toolbar.Label>
+            </Toolbar.MenuAction>
           ) : null}
           {selectedRow && selectedFile ? (
-            <NativeHeaderToolbar.MenuAction
+            <Toolbar.MenuAction
               icon="document.on.document"
               onPress={() => void Clipboard.setStringAsync(selectedRow.content ?? "")}
             >
-              <NativeHeaderToolbar.Label>Copy line</NativeHeaderToolbar.Label>
-            </NativeHeaderToolbar.MenuAction>
+              <Toolbar.Label>Copy line</Toolbar.Label>
+            </Toolbar.MenuAction>
           ) : null}
-        </NativeHeaderToolbar.Menu>
-      </NativeHeaderToolbar>
+        </Toolbar.Menu>
+      </Toolbar>
       {route.params.replacingDraftId ? (
         <Text className="px-4 py-2 text-xs text-foreground-muted">
           Select a current line, then choose “Move draft to this line” from its menu.
@@ -1159,7 +1151,7 @@ export function PullRequestFileRouteScreen({
           <Text className="min-w-0 flex-1 text-xs text-foreground-muted">
             The branch changed. Reload before adding line comments.
           </Text>
-          <MaterialButton
+          <Button
             label="Reload changes"
             onPress={() => {
               result.refresh();
@@ -1267,9 +1259,7 @@ export function PullRequestFileRouteScreen({
             <EmptyState
               title="Only test files changed"
               detail="Test files are hidden from this review."
-              action={
-                <MaterialButton label="Show test files" tone="contrast" onPress={filter.showAll} />
-              }
+              action={<Button label="Show test files" tone="contrast" onPress={filter.showAll} />}
               variant="plain"
             />
           </View>
@@ -1282,7 +1272,7 @@ export function PullRequestFileRouteScreen({
         ) : null}
         {result.nextCursor && result.isPending && data.rows.length && !seekingFile ? (
           <View className="flex-row items-center justify-center gap-2 py-2">
-            <ActivityIndicator size="small" />
+            <AppActivityIndicator size="small" />
             <Text className="text-xs text-foreground-muted">Loading more files…</Text>
           </View>
         ) : null}

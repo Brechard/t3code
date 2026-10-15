@@ -1,3 +1,4 @@
+import * as Dialog from "../../components/ui/Dialog";
 import { PullRequestPermissionButton } from "./PullRequestPermissionButton";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -32,14 +33,14 @@ import { File } from "expo-file-system";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { MenuAction } from "@react-native-menu/menu";
-import { NativeHeaderToolbar } from "../../native/StackHeader";
-import { Alert, Linking, Platform, Pressable, ScrollView, Switch, View } from "react-native";
+import { Toolbar } from "../../components/ui/Toolbar";
+import { Linking, Platform, Pressable, ScrollView, Switch, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AppSheet } from "../../components/AppSheet";
-import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
-import { MaterialButton } from "../../components/MaterialButton";
-import { ControlPillMenu } from "../../components/ControlPillMenu";
+import { Sheet } from "../../components/ui/Sheet";
+import { AppText as Text, AppTextInput as TextInput } from "../../components/ui/AppText";
+import { Button } from "../../components/ui/Button";
+import { Menu } from "../../components/ui/Menu";
 import { composerPullRequests } from "../../state/pull-requests";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useEnvironmentQuery } from "../../state/query";
@@ -106,7 +107,7 @@ function Actions({ pr, params, children }: ActionsProps) {
       const message =
         cause instanceof Error ? cause.message : "Azure could not complete this action.";
       setError(message);
-      if (openSection.current === null) Alert.alert("Azure DevOps", message);
+      if (openSection.current === null) Dialog.alert("Azure DevOps", message);
     } finally {
       pending.current = false;
       setBusy(false);
@@ -115,7 +116,7 @@ function Actions({ pr, params, children }: ActionsProps) {
   const hostAction = async (action: PullRequestHostAction) => {
     const value = settled(await command({ ...target, input: { ...target.input, action } }));
     setResult(value);
-    if (openSection.current === null) Alert.alert("Azure DevOps", value.message);
+    if (openSection.current === null) Dialog.alert("Azure DevOps", value.message);
   };
   const execute = (action: PullRequestHostAction) => operate(() => hostAction(action));
   const disabled = busy || !allowed;
@@ -140,7 +141,7 @@ function Actions({ pr, params, children }: ActionsProps) {
       ) : null}
       {result ? <Text>{result.message}</Text> : null}
       {resultUrl ? (
-        <MaterialButton label="View result" onPress={() => void Linking.openURL(resultUrl)} />
+        <Button label="View result" onPress={() => void Linking.openURL(resultUrl)} />
       ) : null}
     </>
   );
@@ -192,14 +193,14 @@ function Actions({ pr, params, children }: ActionsProps) {
     attributes: { disabled: entry.disabled || Boolean(entry.reason) },
   });
   const nativeAction = (entry: (typeof entries)[number]) => (
-    <NativeHeaderToolbar.MenuAction
+    <Toolbar.MenuAction
       key={entry.id}
       disabled={entry.disabled || Boolean(entry.reason)}
       subtitle={entry.reason}
       onPress={entry.onPress}
     >
-      <NativeHeaderToolbar.Label>{entry.title}</NativeHeaderToolbar.Label>
-    </NativeHeaderToolbar.MenuAction>
+      <Toolbar.Label>{entry.title}</Toolbar.Label>
+    </Toolbar.MenuAction>
   );
   return (
     <>
@@ -219,12 +220,10 @@ function Actions({ pr, params, children }: ActionsProps) {
           if (entry && !entry.disabled && !entry.reason) entry.onPress();
         },
         nativeMenu: (
-          <NativeHeaderToolbar.Menu title="Azure DevOps">
-            <NativeHeaderToolbar.Menu title="Your review">
-              {voteEntries.map(nativeAction)}
-            </NativeHeaderToolbar.Menu>
+          <Toolbar.Menu title="Azure DevOps">
+            <Toolbar.Menu title="Your review">{voteEntries.map(nativeAction)}</Toolbar.Menu>
             {entries.map(nativeAction)}
-          </NativeHeaderToolbar.Menu>
+          </Toolbar.Menu>
         ),
       })}
       <AzureActionSheet
@@ -307,13 +306,13 @@ function AzureActionSheet({
     });
   const confirm = (title: string, action: PullRequestHostAction | null) => {
     if (!action) return;
-    Alert.alert(title, `Apply this action to pull request #${pr.number}?`, [
+    Dialog.alert(title, `Apply this action to pull request #${pr.number}?`, [
       { text: "Cancel", style: "cancel" },
       { text: "Confirm", onPress: () => void execute(action) },
     ]);
   };
   return (
-    <AppSheet title={section} onClose={onClose}>
+    <Sheet title={section} onClose={onClose}>
       <KeyboardAvoidingView automaticOffset behavior="padding" className="flex-1">
         <ScrollView
           className="flex-1"
@@ -471,11 +470,11 @@ function AzureActionSheet({
                 {details?.attachments.map((file) => (
                   <View key={file.url} className="gap-2">
                     <Text>{file.name}</Text>
-                    <MaterialButton
+                    <Button
                       label="Open attachment"
                       onPress={() => void Linking.openURL(file.url)}
                     />
-                    <MaterialButton
+                    <Button
                       label="Copy Markdown link"
                       onPress={() =>
                         copyTextWithHaptic(
@@ -547,7 +546,7 @@ function AzureActionSheet({
                       {policy.name} · {policy.required ? "Required" : "Optional"} · {policy.status}
                     </Text>
                     {policy.url ? (
-                      <MaterialButton
+                      <Button
                         label="View policy"
                         onPress={() => {
                           if (policy.url) void Linking.openURL(policy.url);
@@ -591,7 +590,7 @@ function AzureActionSheet({
                   onPress={() => void execute({ type: "restart-merge" })}
                 />
                 {mergePreviewUrl ? (
-                  <MaterialButton
+                  <Button
                     label="View merge changes"
                     onPress={() => void Linking.openURL(mergePreviewUrl)}
                   />
@@ -621,7 +620,7 @@ function AzureActionSheet({
             ) : null}
             {section === "Completion options" ? (
               <View className="gap-3">
-                <ControlPillMenu
+                <Menu
                   title="Merge strategy"
                   actions={AzureDevOpsMergeStrategy.literals.map((value) => ({
                     id: value,
@@ -646,7 +645,7 @@ function AzureActionSheet({
                   >
                     <Text>{azureMergeStrategyLabels[options.strategy]} ▾</Text>
                   </Pressable>
-                </ControlPillMenu>
+                </Menu>
                 {azureCompletionToggles.map((toggle) => {
                   const reason = toggle.permission ? denied[toggle.permission] : undefined;
                   return (
@@ -708,6 +707,6 @@ function AzureActionSheet({
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </AppSheet>
+    </Sheet>
   );
 }

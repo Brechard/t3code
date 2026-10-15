@@ -1,3 +1,4 @@
+import * as Dialog from "../../components/ui/Dialog";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type {
   PullRequestAction,
@@ -5,7 +6,6 @@ import type {
   PullRequestUpdateMethod,
 } from "@t3tools/contracts";
 import { useRef, useState } from "react";
-import { Alert } from "react-native";
 import { composerPullRequests } from "../../state/pull-requests";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { canPerformPullRequestAction } from "./pullRequestActions";
@@ -38,7 +38,7 @@ export function usePullRequestAction(params: PullRequestParams, pr: PullRequestD
       });
       if (response._tag === "Failure") throw squashAtomCommandFailure(response);
     } catch (cause) {
-      Alert.alert(
+      Dialog.alert(
         "Couldn't update this pull request",
         cause instanceof Error ? cause.message : "Try again.",
       );
@@ -48,7 +48,7 @@ export function usePullRequestAction(params: PullRequestParams, pr: PullRequestD
     }
   };
   const confirm = (action: PullRequestAction, title: string, message: string) =>
-    Alert.alert(title, message, [
+    Dialog.alert(title, message, [
       { text: "Cancel", style: "cancel" },
       {
         text: title,
