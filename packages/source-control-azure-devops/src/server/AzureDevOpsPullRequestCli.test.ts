@@ -1767,3 +1767,20 @@ layer("Azure comment likes", (it) => {
     }),
   );
 });
+
+it("keeps raw read failures out of display text and preserves bounded refusal messages", () => {
+  const cause = "remote response containing private details";
+  const fields = { command: "az" as const, cwd: "/w", operation: "read", cause };
+  const unreadable = new AzureDevOpsPullRequestCli.AzureDevOpsPullRequestReadError(fields);
+  expect(unreadable.detail).toBe("Azure CLI returned an unreadable read response.");
+  expect(unreadable.message).not.toContain(cause);
+  expect(unreadable.cause).toBe(cause);
+  const refused = new AzureDevOpsPullRequestCli.AzureDevOpsPullRequestReadError({
+    ...fields,
+    reason: "stale-suggestion",
+  });
+  expect(refused.detail).toBe(
+    "The source branch changed. Refresh the pull request before applying this suggestion.",
+  );
+  expect(refused.cause).toBe(cause);
+});

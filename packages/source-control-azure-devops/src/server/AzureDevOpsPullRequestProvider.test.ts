@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
+import * as AzureDevOpsCli from "./AzureDevOpsCli.ts";
 import * as AzureDevOpsPullRequestCli from "./AzureDevOpsPullRequestCli.ts";
 import {
   LOCATION_CACHE_CAPACITY,
@@ -657,11 +658,13 @@ it.effect(
                 attempts++;
                 return credentialKey === "restricted"
                   ? Effect.fail(
-                      new AzureDevOpsPullRequestCli.AzureDevOpsPullRequestReadError({
+                      new AzureDevOpsCli.AzureDevOpsNativeRequestError({
                         cwd: "/w",
                         command: "az",
-                        operation: "reply",
-                        cause: "Access denied: missing permission",
+                        operation: "execute",
+                        argumentCount: 3,
+                        reason: "permission-denied",
+                        cause: "private SDK refusal text",
                       }),
                     )
                   : Effect.void;
@@ -733,11 +736,12 @@ it.effect("lets Azure decide a write when the permission read fails, keeping lea
     let readable = false;
     let refuse = false;
     let attempts = 0;
-    const readError = (cause: string) =>
+    const readError = (cause: string, reason?: "permission-denied") =>
       new AzureDevOpsPullRequestCli.AzureDevOpsPullRequestReadError({
         cwd: "/w",
         command: "az",
         operation: "permissions",
+        reason,
         cause,
       });
     const provider = yield* make.pipe(
@@ -754,7 +758,7 @@ it.effect("lets Azure decide a write when the permission read fails, keeping lea
             Effect.suspend(() => {
               attempts++;
               return refuse
-                ? Effect.fail(readError("Access denied: missing permission"))
+                ? Effect.fail(readError("Access denied: missing permission", "permission-denied"))
                 : Effect.void;
             }),
         }),

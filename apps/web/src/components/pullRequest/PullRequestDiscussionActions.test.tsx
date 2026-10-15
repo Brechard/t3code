@@ -23,6 +23,12 @@ vi.mock("~/state/pullRequests", () => ({
   },
 }));
 vi.mock("../ui/button", () => ({ Button: "button" }));
+vi.mock("../ui/select", () => ({
+  Select: "select",
+  SelectTrigger: "button",
+  SelectPopup: "div",
+  SelectItem: "option",
+}));
 vi.mock("../ui/tooltip", () => ({
   Tooltip: ({ children }: { children: ReactNode }) => children,
   TooltipTrigger: ({ render, children }: { render: ReactElement; children: ReactNode }) =>
@@ -91,26 +97,20 @@ it("preserves native states, reports failure, and refuses changes after permissi
     renderer = create(render());
   });
   for (const status of statuses.slice(1)) {
-    await act(async () =>
-      renderer!.root.findByType("select").props.onChange({ target: { value: status } }),
-    );
+    await act(async () => renderer!.root.findByType("select").props.onValueChange(status));
     expect(state.run).toHaveBeenLastCalledWith({
       environmentId: props.environmentId,
       input: { ...props.reference, threadId: "7734", status, resolved: status !== "pending" },
     });
   }
   state.run.mockResolvedValueOnce({ _tag: "Failure" });
-  await act(async () =>
-    renderer!.root.findByType("select").props.onChange({ target: { value: "fixed" } }),
-  );
+  await act(async () => renderer!.root.findByType("select").props.onValueChange("fixed"));
   expect(renderer!.root.findByType("select").props.value).toBe("byDesign");
   expect(renderer!.root.findByProps({ role: "alert" })).toBeDefined();
   state.allowed = false;
   act(() => renderer!.update(render()));
   state.run.mockClear();
-  await act(async () =>
-    renderer!.root.findByType("select").props.onChange({ target: { value: "fixed" } }),
-  );
+  await act(async () => renderer!.root.findByType("select").props.onValueChange("fixed"));
   expect(state.run).not.toHaveBeenCalled();
 });
 it("keeps a chosen status until activity reports it, then follows later changes", async () => {
@@ -128,7 +128,7 @@ it("keeps a chosen status until activity reports it, then follows later changes"
   });
   const change = deferred();
   state.run.mockReturnValueOnce(change.promise);
-  act(() => select().onChange({ target: { value: "fixed" } }));
+  act(() => select().onValueChange("fixed"));
   expect(select()).toMatchObject({ value: "fixed", disabled: true });
   await act(async () => change.resolve({ _tag: "Success" }));
   expect(select()).toMatchObject({ value: "fixed", disabled: false });
@@ -143,7 +143,7 @@ it("keeps a chosen status until activity reports it, then follows later changes"
 
   const refused = deferred();
   state.run.mockReturnValueOnce(refused.promise);
-  act(() => select().onChange({ target: { value: "wontFix" } }));
+  act(() => select().onValueChange("wontFix"));
   expect(select().value).toBe("wontFix");
   await act(async () => refused.resolve({ _tag: "Failure" }));
   expect(select().value).toBe("active");
@@ -151,13 +151,13 @@ it("keeps a chosen status until activity reports it, then follows later changes"
 
   const overtaken = deferred();
   state.run.mockReturnValueOnce(overtaken.promise);
-  act(() => select().onChange({ target: { value: "closed" } }));
+  act(() => select().onValueChange("closed"));
   act(() => renderer!.update(render("byDesign")));
   expect(select().value).toBe("byDesign");
   await act(async () => overtaken.resolve({ _tag: "Success" }));
   expect(select().value).toBe("byDesign");
 
-  await act(async () => select().onChange({ target: { value: "pending" } }));
+  await act(async () => select().onValueChange("pending"));
   expect(select().value).toBe("pending");
   act(() => renderer!.update(render("byDesign", "other")));
   expect(select().value).toBe("byDesign");

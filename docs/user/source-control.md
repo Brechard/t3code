@@ -192,8 +192,7 @@ an uncertain result is never automatically retried elsewhere. Listings, diffs, a
 PR creation from Git actions continue to use the project's environment.
 
 For Azure DevOps, comments stay grouped in discussions, including replies on lines of the diff.
-Use the icons beside a comment to like it or edit and delete your own comment. Its menu lets you
-copy a link to it. Resolve a discussion after replying, or choose another Azure status. Resolved discussions are hidden by
+You can like comments, edit or delete your own, and copy a comment’s link. Resolve a discussion after replying, or choose another Azure status. Resolved discussions are hidden by
 default; include them in the comment filter to reactivate one. Applying a code suggestion commits
 it to the source branch; refresh first if someone has pushed new changes.
 

@@ -1,3 +1,5 @@
+import { Checkbox } from "../ui/checkbox";
+import { Select, SelectItem, SelectPopup, SelectTrigger } from "../ui/select";
 import {
   PullRequestPermissionButton,
   PullRequestPermissionHint,
@@ -61,8 +63,6 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
 } from "../ui/alert-dialog";
-
-const selectClass = "rounded border border-border bg-background px-2 py-1 text-xs text-foreground";
 
 function settled<A, E>(result: AtomCommandResult<A, E>) {
   if (result._tag === "Failure") throw squashAtomCommandFailure(result);
@@ -628,9 +628,8 @@ function AzureActionDialog({
             <div className="space-y-2">
               <label className="flex items-center gap-2">
                 Target branch{" "}
-                <input
+                <Input
                   aria-label="Target branch"
-                  className={selectClass}
                   list="azure-target-branches"
                   value={branch}
                   onChange={(event) => setBranch(event.target.value)}
@@ -703,41 +702,42 @@ function AzureActionDialog({
             <div className="space-y-2">
               <label className="flex items-center gap-2">
                 Merge strategy{" "}
-                <select
-                  aria-label="Azure merge strategy"
-                  className={selectClass}
+                <Select
                   value={options.strategy}
-                  onChange={(event) => {
+                  onValueChange={(value) => {
                     const strategy = AzureDevOpsMergeStrategy.literals.find(
-                      (value) => value === event.target.value,
+                      (candidate) => candidate === value,
                     );
                     if (strategy) setCompletion((current) => ({ ...current, strategy }));
                   }}
                 >
-                  {AzureDevOpsMergeStrategy.literals.map((value) => (
-                    <option
-                      key={value}
-                      value={value}
-                      disabled={
-                        !completion.bypassPolicy && allowedStrategies?.includes(value) === false
-                      }
-                    >
-                      {azureMergeStrategyLabels[value]}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger size="xs" aria-label="Azure merge strategy">
+                    {azureMergeStrategyLabels[options.strategy]}
+                  </SelectTrigger>
+                  <SelectPopup>
+                    {AzureDevOpsMergeStrategy.literals.map((value) => (
+                      <SelectItem
+                        key={value}
+                        value={value}
+                        disabled={
+                          !completion.bypassPolicy && allowedStrategies?.includes(value) === false
+                        }
+                      >
+                        {azureMergeStrategyLabels[value]}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
               </label>
               {azureCompletionToggles.map((toggle) => {
                 const reason = toggle.permission ? denied[toggle.permission] : undefined;
                 return (
                   <PullRequestPermissionHint key={toggle.key} reason={reason}>
                     <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         disabled={Boolean(reason) && !completion[toggle.key]}
                         checked={completion[toggle.key]}
-                        onChange={(event) => {
-                          const checked = event.target.checked;
+                        onCheckedChange={(checked) => {
                           setCompletion((current) => ({ ...current, [toggle.key]: checked }));
                         }}
                       />

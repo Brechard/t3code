@@ -1,3 +1,4 @@
+import { Select, SelectItem, SelectPopup, SelectTrigger } from "../ui/select";
 import { PullRequestPermissionHint } from "./PullRequestPermissionButton";
 import type { CodeViewItem, DiffLineAnnotation, SelectedLineRange } from "@pierre/diffs";
 import type { CodeViewDiffItem, CodeViewHandle } from "@pierre/diffs/react";
@@ -1227,47 +1228,51 @@ function PullRequestCodeTab({
         ) : null}
         {latestUpdateId !== undefined ? (
           <div className="flex items-center gap-1">
-            <label className="sr-only" htmlFor="pr-update-from">
-              Compare from update
-            </label>
-            <select
-              id="pr-update-from"
-              className="max-w-28 rounded border bg-background px-1 py-1"
+            <Select
               value={updateComparison.comparison.from}
-              onChange={(event) => pickUpdates({ from: Number(event.target.value) })}
+              onValueChange={(value) => {
+                if (typeof value === "number") pickUpdates({ from: value });
+              }}
             >
-              <option value={0}>Base</option>
-              {detail
-                .updates!.filter((update) => update.id < (iterationRange?.to ?? latestUpdateId))
-                .map((update) => (
-                  <option key={update.id} value={update.id}>
-                    Update {update.id}
-                  </option>
-                ))}
-            </select>
+              <SelectTrigger size="xs" aria-label="Compare from update">
+                {updateComparison.comparison.from === 0
+                  ? "Base"
+                  : `Update ${updateComparison.comparison.from}`}
+              </SelectTrigger>
+              <SelectPopup>
+                <SelectItem value={0}>Base</SelectItem>
+                {detail
+                  .updates!.filter((update) => update.id < (iterationRange?.to ?? latestUpdateId))
+                  .map((update) => (
+                    <SelectItem key={update.id} value={update.id}>
+                      Update {update.id}
+                    </SelectItem>
+                  ))}
+              </SelectPopup>
+            </Select>
             <span>→</span>
-            <label className="sr-only" htmlFor="pr-update-to">
-              Compare to update
-            </label>
-            <select
-              id="pr-update-to"
-              className="max-w-28 rounded border bg-background px-1 py-1"
+            <Select<number | "latest">
               value={updateComparison.comparison.to}
-              onChange={(event) =>
-                pickUpdates({
-                  to: event.target.value === "latest" ? "latest" : Number(event.target.value),
-                })
-              }
+              onValueChange={(value) => {
+                if (value === "latest" || typeof value === "number") pickUpdates({ to: value });
+              }}
             >
-              <option value="latest">Latest</option>
-              {detail
-                .updates!.filter((update) => update.id > updateComparison.comparison.from)
-                .map((update) => (
-                  <option key={update.id} value={update.id}>
-                    Update {update.id}
-                  </option>
-                ))}
-            </select>
+              <SelectTrigger size="xs" aria-label="Compare to update">
+                {updateComparison.comparison.to === "latest"
+                  ? "Latest"
+                  : `Update ${updateComparison.comparison.to}`}
+              </SelectTrigger>
+              <SelectPopup>
+                <SelectItem value="latest">Latest</SelectItem>
+                {detail
+                  .updates!.filter((update) => update.id > updateComparison.comparison.from)
+                  .map((update) => (
+                    <SelectItem key={update.id} value={update.id}>
+                      Update {update.id}
+                    </SelectItem>
+                  ))}
+              </SelectPopup>
+            </Select>
           </div>
         ) : null}
         {/* One count, and the caveats as icons that carry their own words. Spelled out they

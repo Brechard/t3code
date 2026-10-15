@@ -146,10 +146,15 @@ export class AzureDevOpsCommandFailedError extends Schema.TaggedError<AzureDevOp
 
 export class AzureDevOpsNativeRequestError extends Schema.TaggedError<AzureDevOpsNativeRequestError>()(
   "AzureDevOpsNativeRequestError",
-  azureDevOpsCommandErrorFields,
+  {
+    ...azureDevOpsCommandErrorFields,
+    reason: Schema.Literals(["permission-denied", "failed"]),
+  },
 ) {
   get detail(): string {
-    return typeof this.cause === "string" ? this.cause : "Azure refused this operation.";
+    return this.reason === "permission-denied"
+      ? "Your Azure credential lacks the required scope or permission for this action."
+      : "Azure refused this operation.";
   }
   override get message(): string {
     return this.detail;
@@ -487,7 +492,7 @@ export const make = Effect.gen(function* () {
       .run({
         operation: "AzureDevOpsCli.runSdk",
         command: pythonPath,
-        args: ["-c", withAzureSdkErrors(input.script)],
+        args: ["-I", "-c", withAzureSdkErrors(input.script)],
         cwd: input.cwd,
         ...(input.stdin === undefined ? {} : { stdin: input.stdin }),
         timeoutMs: DEFAULT_TIMEOUT_MS,
@@ -502,7 +507,13 @@ export const make = Effect.gen(function* () {
                   operation: "execute",
                   command: "az",
                   cwd: input.cwd,
-                  argumentCount: 2,
+                  argumentCount: 3,
+                  reason:
+                    /access denied|not authorized|requires user authentication|TF401027|required Azure DevOps scope|lacks.*permission/i.test(
+                      failure.value._t3SdkError.message,
+                    )
+                      ? "permission-denied"
+                      : "failed",
                   cause: failure.value._t3SdkError.message,
                 }),
               )
@@ -512,7 +523,7 @@ export const make = Effect.gen(function* () {
           error._tag === "AzureDevOpsNativeRequestError"
             ? error
             : AzureDevOpsCommandFailedError.fromVcsError(
-                { operation: "execute", command: "az", cwd: input.cwd, argumentCount: 2 },
+                { operation: "execute", command: "az", cwd: input.cwd, argumentCount: 3 },
                 error,
               ),
         ),
@@ -556,7 +567,7 @@ export const make = Effect.gen(function* () {
               operation: "execute",
               command: "az",
               cwd: input.cwd,
-              argumentCount: 2,
+              argumentCount: 3,
               cause,
             }),
       ),

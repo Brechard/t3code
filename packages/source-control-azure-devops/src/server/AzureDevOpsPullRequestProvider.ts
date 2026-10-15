@@ -2,9 +2,11 @@ import { SourceControlProviderKind } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import type { PullRequestCapabilities, PullRequestViewerPermissions } from "@t3tools/contracts";
 
+import * as AzureDevOpsCli from "./AzureDevOpsCli.ts";
 import * as AzureDevOpsPullRequestCli from "./AzureDevOpsPullRequestCli.ts";
 import {
   azureDevOpsFilePatch,
@@ -100,6 +102,9 @@ const AZURE_DEVOPS_VIEWER_PERMISSIONS: PullRequestViewerPermissions = {
   requestReviewers: CAPABILITIES.reviewers.request,
   labels: true,
 };
+
+const isNativeRequestError = Schema.is(AzureDevOpsCli.AzureDevOpsNativeRequestError);
+const isReadError = Schema.is(AzureDevOpsPullRequestCli.AzureDevOpsPullRequestReadError);
 
 /** The CLI tags that mean the tool itself is unusable, rather than one request failing. */
 export function azureDevOpsProviderFailure(
@@ -503,9 +508,8 @@ export const make = Effect.gen(function* () {
           Effect.mapError((error) => {
             if (
               error.reason === "unauthenticated" ||
-              /access denied|not authorized|requires user authentication|TF401027|required Azure DevOps scope/i.test(
-                error.detail,
-              )
+              ((isNativeRequestError(error.cause) || isReadError(error.cause)) &&
+                error.cause.reason === "permission-denied")
             ) {
               entry.denied[name] =
                 "Your token does not allow this action. Update its access and refresh the PR.";

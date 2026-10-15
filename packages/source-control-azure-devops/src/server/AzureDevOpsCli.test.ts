@@ -494,8 +494,8 @@ describe("repository-scoped PR updates", () => {
         bodyFile: input.bodyFile,
         routeValues: input.routeValues,
       });
-      expect(request?.args?.[1]).toContain("9946fd70-0d40-406e-b686-b4744cbbcc37");
-      expect(request?.args?.[1]).toContain("get_git_client");
+      expect(request?.args?.[2]).toContain("9946fd70-0d40-406e-b686-b4744cbbcc37");
+      expect(request?.args?.[2]).toContain("get_git_client");
     }).pipe(Effect.provide(layer)),
   );
 
@@ -534,6 +534,30 @@ it.effect("preserves the host's native operation refusal instead of reporting su
     const error = yield* az
       .notificationSubscriptions({ cwd: "/repo", method: "POST", bodyFile: "/tmp/body.json" })
       .pipe(Effect.flip);
-    expect(error.detail).toBe("This credential lacks notification write permission.");
+    expect(error).toMatchObject({ reason: "permission-denied", argumentCount: 3 });
+    expect(error.detail).toBe(
+      "Your Azure credential lacks the required scope or permission for this action.",
+    );
+    expect(error.cause).toBe("This credential lacks notification write permission.");
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("keeps unexpected SDK error text in the cause without displaying it", () =>
+  Effect.gen(function* () {
+    const secret = "remote detail with a private project URL and token";
+    mockRun.mockReturnValueOnce(
+      Effect.succeed(processOutput("Python location '/opt/az/bin/python'")),
+    );
+    mockRun.mockReturnValueOnce(
+      Effect.succeed(processOutput(JSON.stringify({ _t3SdkError: { message: secret } }))),
+    );
+    const az = yield* AzureDevOpsCli.AzureDevOpsCli;
+    const error = yield* az
+      .notificationSubscriptions({ cwd: "/repo", method: "POST" })
+      .pipe(Effect.flip);
+    expect(error).toMatchObject({ reason: "failed", cause: secret });
+    expect(error.detail).toBe("Azure refused this operation.");
+    expect(error.message).not.toContain(secret);
+    expect(mockRun.mock.calls[1]?.[0].args?.slice(0, 2)).toEqual(["-I", "-c"]);
   }).pipe(Effect.provide(layer)),
 );

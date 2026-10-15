@@ -383,8 +383,11 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
   const refresh = async () => {
     if (invalidating) return;
     setInvalidating(true);
-    await invalidate({ environmentId: target.environmentId, input: { reference: target.input } });
-    setInvalidating(false);
+    try {
+      await invalidate({ environmentId: target.environmentId, input: { reference: target.input } });
+    } finally {
+      setInvalidating(false);
+    }
     pullRefresh.onRefresh();
     if (guidesEnabled) refreshGuide();
     stack.refresh();

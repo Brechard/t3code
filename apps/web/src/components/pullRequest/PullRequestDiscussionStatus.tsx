@@ -1,3 +1,4 @@
+import { Select, SelectItem, SelectPopup, SelectTrigger } from "../ui/select";
 import { PullRequestPermissionHint } from "./PullRequestPermissionButton";
 import { usePullRequestDeniedActions } from "./PullRequestReviewContext";
 import { pullRequestThreadStatusLabels as labels } from "@t3tools/client-runtime/pull-request-comment-replies";
@@ -78,22 +79,25 @@ export function PullRequestDiscussionStatus({
       <label className="flex items-center gap-2 text-muted-foreground">
         Status
         <PullRequestPermissionHint reason={reason}>
-          <select
-            aria-label="Discussion status"
-            className="rounded border border-border bg-background px-2 py-1 text-foreground"
+          <Select
             value={shown}
             disabled={!allowed || busy || Boolean(reason)}
-            onChange={(event) => {
-              const next = statuses.find((value) => value === event.target.value);
+            onValueChange={(value) => {
+              const next = statuses.find((candidate) => candidate === value);
               if (next) void change(next);
             }}
           >
-            {statuses.map((value) => (
-              <option key={value} value={value}>
-                {labels[value]}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger size="xs" aria-label="Discussion status">
+              {labels[shown]}
+            </SelectTrigger>
+            <SelectPopup>
+              {statuses.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {labels[value]}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
         </PullRequestPermissionHint>
       </label>
       {error ? (

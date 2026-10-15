@@ -48,6 +48,31 @@ import {
 } from "./azureDevOpsPullRequestJson.ts";
 import type { ProviderListCursor } from "@t3tools/source-control-core/server/PullRequestProvider";
 
+const refusalDetails = {
+  "permission-denied": "Your Azure account does not have permission for this action.",
+  inactive: "This pull request is no longer active.",
+  "root-commit": "A root commit cannot be compared with its parent.",
+  "review-position-unavailable":
+    "The file's current review position is unavailable. Refresh the pull request before commenting.",
+  "stale-suggestion":
+    "The source branch changed. Refresh the pull request before applying this suggestion.",
+  "invalid-suggestion-anchor":
+    "Only a suggestion anchored to the current source file can be applied.",
+  "outdated-suggestion": "The lines this suggestion was written for are no longer in the file.",
+  "binary-suggestion": "A suggestion cannot be applied to a binary file.",
+  "changed-suggestion":
+    "The lines this suggestion targets changed after it was written. Review the current code before applying it.",
+  "invalid-suggestion": "Choose a comment containing exactly one suggestion on a valid line range.",
+  "already-applied-suggestion": "This suggestion is already present in the source file.",
+  "reviewer-ineligible":
+    "Only an optional reviewer with no vote can decline. Authors cannot decline or flag their own review.",
+  "draft-vote": "Publish this draft before voting.",
+  "draft-completion": "Publish this draft before completing it.",
+  "not-completed": "Only a completed pull request can be reverted.",
+  "branch-operation-failed": "Azure could not complete the branch operation.",
+  "branch-operation-id-missing": "Azure omitted the branch operation id.",
+} as const;
+
 /**
  * Names the read that produced unusable output, so a failure reports the call it came from
  * rather than borrowing another operation's message.
@@ -58,12 +83,33 @@ export class AzureDevOpsPullRequestReadError extends Schema.TaggedError<AzureDev
     command: Schema.Literal("az"),
     cwd: Schema.String,
     operation: Schema.String,
+    reason: Schema.optional(
+      Schema.Literals([
+        "permission-denied",
+        "inactive",
+        "root-commit",
+        "review-position-unavailable",
+        "stale-suggestion",
+        "invalid-suggestion-anchor",
+        "outdated-suggestion",
+        "binary-suggestion",
+        "changed-suggestion",
+        "invalid-suggestion",
+        "already-applied-suggestion",
+        "reviewer-ineligible",
+        "draft-vote",
+        "draft-completion",
+        "not-completed",
+        "branch-operation-failed",
+        "branch-operation-id-missing",
+      ]),
+    ),
     cause: Schema.Defect(),
   },
 ) {
   get detail(): string {
-    return typeof this.cause === "string"
-      ? this.cause
+    return this.reason
+      ? refusalDetails[this.reason]
       : `Azure CLI returned an unreadable ${this.operation} response.`;
   }
 
@@ -1048,6 +1094,7 @@ const make = Effect.gen(function* () {
           command: "az",
           cwd: input.cwd,
           operation: "commit parent",
+          reason: "root-commit",
           cause: "A root commit cannot be compared with its parent.",
         });
       const changes = yield* invoke({
@@ -1106,6 +1153,7 @@ const make = Effect.gen(function* () {
             cwd: input.cwd,
             command: "az",
             operation: "anchor review comment",
+            reason: "review-position-unavailable",
             cause:
               "The file's current review position is unavailable. Refresh the pull request before commenting.",
           });

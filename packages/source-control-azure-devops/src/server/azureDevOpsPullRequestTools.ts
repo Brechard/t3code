@@ -16,7 +16,10 @@ import type {
   AzureDevOpsIteration,
   AzureDevOpsRepositoryLocation,
 } from "./azureDevOpsPullRequestJson.ts";
-import type { AzureDevOpsPullRequestCliError } from "./AzureDevOpsPullRequestCli.ts";
+import type {
+  AzureDevOpsPullRequestCliError,
+  AzureDevOpsPullRequestReadError,
+} from "./AzureDevOpsPullRequestCli.ts";
 
 const BranchOperation = Schema.Struct({
   cherryPickId: Schema.optional(Schema.Int),
@@ -248,6 +251,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
     cwd: string;
     command: "az";
     operation: string;
+    reason?: AzureDevOpsPullRequestReadError["reason"];
     cause: unknown;
   }) => AzureDevOpsPullRequestCliError;
 }) {
@@ -603,6 +607,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
               command: "az",
               cwd: input.cwd,
               operation: action.type,
+              reason: "inactive",
               cause: "This pull request is no longer active.",
             }),
           );
@@ -679,9 +684,15 @@ export function makeAzureDevOpsPullRequestTools(deps: {
           ? (pr.forkSource.repository.webUrl ??
             `${pr.repository.webUrl.split("/_git/")[0]!.replace(/\/[^/]+$/, "")}/${encodeURIComponent(sourceProject)}/_git/${encodeURIComponent(sourceRepository)}`)
           : pr.repository.webUrl;
-        const refuse = (cause: string) =>
+        const refuse = (reason: NonNullable<AzureDevOpsPullRequestReadError["reason"]>) =>
           Effect.fail(
-            deps.failure({ cwd: input.cwd, command: "az", operation: action.type, cause }),
+            deps.failure({
+              cwd: input.cwd,
+              command: "az",
+              operation: action.type,
+              reason,
+              cause: reason,
+            }),
           );
         const ids = /^([1-9]\d*):([1-9]\d*)$/.exec(action.commentId);
         const iterations = yield* deps.listIterations(input);
@@ -694,9 +705,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
           pr.lastMergeSourceCommit?.commitId !== action.expectedHead ||
           latest.headCommit !== action.expectedHead
         )
-          return yield* refuse(
-            "The source branch changed. Refresh the pull request before applying this suggestion.",
-          );
+          return yield* refuse("stale-suggestion");
         // Without `$iteration` Azure answers with the lines of the push the comment was left on.
         const thread = yield* read(
           input,
@@ -724,19 +733,14 @@ export function makeAzureDevOpsPullRequestTools(deps: {
         const context = thread.threadContext;
         const startLine = context?.rightFileStart?.line;
         if (!comment || !context || startLine === undefined)
-          return yield* refuse(
-            "Only a suggestion anchored to the current source file can be applied.",
-          );
+          return yield* refuse("invalid-suggestion-anchor");
         const endLine = context.rightFileEnd?.line ?? startLine;
         const tracking = thread.pullRequestThreadContext?.trackingCriteria;
         const originalId =
           thread.pullRequestThreadContext?.iterationContext?.secondComparingIteration ??
           (iterations.length === 1 ? latest.id : undefined);
         const original = iterations.find((iteration) => iteration.id === originalId);
-        if (startLine < 1 || !original)
-          return yield* refuse(
-            "The lines this suggestion was written for are no longer in the file.",
-          );
+        if (startLine < 1 || !original) return yield* refuse("outdated-suggestion");
         const [item, before] = yield* Effect.all(
           [
             deps.readItemContent({
@@ -756,8 +760,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
           ],
           { concurrency: 2 },
         );
-        if (item.isBinary || before?.isBinary)
-          return yield* refuse("A suggestion cannot be applied to a binary file.");
+        if (item.isBinary || before?.isBinary) return yield* refuse("binary-suggestion");
         // Azure omits tracking for both an untouched anchor and a deleted one, and may track a
         // range whose text was since rewritten. Only the text the reviewer saw may be replaced.
         if (before) {
@@ -767,9 +770,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
           const seen = lineRange(before.contents, originalStart, originalEnd);
           const current = lineRange(item.contents, startLine, endLine);
           if (!seen || !current || seen.join("\n") !== current.join("\n"))
-            return yield* refuse(
-              "The lines this suggestion targets changed after it was written. Review the current code before applying it.",
-            );
+            return yield* refuse("changed-suggestion");
         }
         const content = yield* Effect.try({
           try: () =>
@@ -784,7 +785,8 @@ export function makeAzureDevOpsPullRequestTools(deps: {
               cwd: input.cwd,
               command: "az",
               operation: action.type,
-              cause: cause instanceof Error ? cause.message : cause,
+              reason: "invalid-suggestion",
+              cause,
             }),
         });
         if (content === item.contents)
@@ -792,6 +794,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
             cwd: input.cwd,
             command: "az",
             operation: action.type,
+            reason: "already-applied-suggestion",
             cause: "This suggestion is already present in the source file.",
           });
         const output = yield* deps.writeJson({
@@ -900,6 +903,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
             cwd: input.cwd,
             command: "az",
             operation: action.type,
+            reason: "reviewer-ineligible",
             cause:
               "Only an optional reviewer with no vote can decline. Authors cannot decline or flag their own review.",
           });
@@ -930,6 +934,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
             command: "az",
             cwd: input.cwd,
             operation: "vote",
+            reason: "draft-vote",
             cause: "Publish this draft before voting.",
           });
         {
@@ -1013,6 +1018,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
             command: "az",
             cwd: input.cwd,
             operation: "complete",
+            reason: "draft-completion",
             cause: "Publish this draft before completing it.",
           });
         const checks = yield* policies(input);
@@ -1049,6 +1055,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
             command: "az",
             cwd: input.cwd,
             operation: "revert",
+            reason: "not-completed",
             cause: "Only a completed pull request can be reverted.",
           });
         const created = yield* deps.writeJson({
@@ -1081,6 +1088,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
               cwd: input.cwd,
               command: "az",
               operation: action.type,
+              reason: "branch-operation-failed",
               cause:
                 operation.detailedStatus?.errorMessage ?? `Azure reported ${operation.status}.`,
             });
@@ -1089,6 +1097,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
               cwd: input.cwd,
               command: "az",
               operation: action.type,
+              reason: "branch-operation-id-missing",
               cause: "Azure omitted the branch operation id.",
             });
           yield* Effect.sleep("500 millis");
