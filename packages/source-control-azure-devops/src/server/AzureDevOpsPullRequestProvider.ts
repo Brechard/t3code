@@ -61,7 +61,7 @@ export const LOCATION_CACHE_CAPACITY = 128;
  * it again, and each read is a Python process and seven host requests. An explicit refresh drops
  * it at once through `invalidate`.
  */
-export const ACCESS_TTL = "30 seconds";
+const ACCESS_TTL = "30 seconds";
 
 const CAPABILITIES: PullRequestCapabilities = {
   // Azure serves no patch of its own, so the one the Code tab reads is built here out of the

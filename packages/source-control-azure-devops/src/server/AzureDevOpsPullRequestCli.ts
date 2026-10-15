@@ -609,7 +609,7 @@ const decodeViewedState = Schema.decodeEffect(
   ),
 );
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const azure = yield* AzureDevOpsCli.AzureDevOpsCli;
   const fileSystem = yield* FileSystem.FileSystem;
 
