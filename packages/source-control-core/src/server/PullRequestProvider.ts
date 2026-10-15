@@ -1,6 +1,13 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type {
+  PullRequestActivityEvent,
+  PullRequestUpdate,
+  PullRequestIterationRange,
+  PullRequestHostAction,
+  PullRequestHostActionResult,
+  PullRequestHostDetails,
+  PullRequestThreadStatus,
   PullRequestStackMembership,
   PullRequestAction,
   PullRequestStackHead,
@@ -251,6 +258,9 @@ export interface ProviderChangeRequestDetail extends ProviderChangeRequest {
 
 /** The conversation-shaped half of a detail, loaded after the core can already render. */
 export interface ProviderChangeRequestActivity {
+  readonly identities?: Readonly<Record<string, string>>;
+  readonly events?: ReadonlyArray<PullRequestActivityEvent>;
+  readonly updates?: ReadonlyArray<PullRequestUpdate>;
   /** An optional richer actor, e.g. after GitHub's GraphQL read supplies an avatar. */
   readonly author?: PullRequestActor | null;
   /** Optional because most hosts already report their reviewer list in the core detail. */
@@ -285,6 +295,7 @@ export interface ProviderDiffFileContents {
 }
 
 export interface ProviderFilesViewed {
+  readonly disabledReason?: string;
   readonly files: ReadonlyArray<PullRequestFileViewed>;
   /** The host has more files than were read, so the ones missing here are not "unviewed". */
   readonly truncated: boolean;
@@ -328,6 +339,10 @@ export interface ProviderRepositoryRef {
  * failing at call time.
  */
 export interface PullRequestProviderApi {
+  /** Clear provider-held reads and learned denials on an explicit PR refresh. */
+  readonly invalidate?: (
+    input: ProviderRepositoryRef & { readonly number: number },
+  ) => Effect.Effect<void, PullRequestProviderError>;
   readonly withVerifiedCredential?: <A, E, R>(
     input: { readonly cwd: string; readonly host: string },
     use: (identity: {
@@ -484,7 +499,7 @@ export interface PullRequestProviderApi {
 
   /** Comments, line threads, and commits, kept off the critical path for the core detail. */
   readonly getChangeRequestActivity: (
-    input: ProviderRepositoryRef & { readonly number: number },
+    input: ProviderRepositoryRef & { readonly number: number; readonly viewer?: string },
   ) => Effect.Effect<ProviderChangeRequestActivity, PullRequestProviderError>;
 
   /** One explicit page after a reader asks to continue an unfinished review thread. */
@@ -523,6 +538,7 @@ export interface PullRequestProviderApi {
       readonly number: number;
       readonly cursor?: string | undefined;
       /** One commit's own changes, rather than everything the change request carries. */
+      readonly iterationRange?: PullRequestIterationRange;
       readonly commit?: string | undefined;
     },
   ) => Effect.Effect<ProviderDiffSlice, PullRequestProviderError>;
@@ -534,6 +550,7 @@ export interface PullRequestProviderApi {
   readonly getDiffFileContents?: (
     input: ProviderRepositoryRef & {
       readonly number: number;
+      readonly iterationRange?: PullRequestIterationRange;
       readonly commit?: string | undefined;
       readonly changeType: "change" | "rename-pure" | "rename-changed" | "new" | "deleted";
       readonly oldPath: string;
@@ -605,6 +622,24 @@ export interface PullRequestProviderApi {
 
   readonly comment: (
     input: ProviderRepositoryRef & { readonly number: number; readonly body: string },
+  ) => Effect.Effect<void, PullRequestProviderError>;
+
+  readonly getHostDetails?: (
+    input: ProviderRepositoryRef & { readonly number: number },
+  ) => Effect.Effect<PullRequestHostDetails, PullRequestProviderError>;
+  readonly runHostAction?: (
+    input: ProviderRepositoryRef & {
+      readonly number: number;
+      readonly action: PullRequestHostAction;
+    },
+  ) => Effect.Effect<PullRequestHostActionResult, PullRequestProviderError>;
+
+  readonly deleteComment?: (
+    input: ProviderRepositoryRef & {
+      readonly number: number;
+      readonly commentId: string;
+      readonly kind: "issue-comment" | "review-comment";
+    },
   ) => Effect.Effect<void, PullRequestProviderError>;
 
   /**
@@ -717,6 +752,7 @@ export interface PullRequestProviderApi {
       readonly number: number;
       readonly threadId: string;
       readonly resolved: boolean;
+      readonly status?: PullRequestThreadStatus;
     },
   ) => Effect.Effect<void, PullRequestProviderError>;
 }

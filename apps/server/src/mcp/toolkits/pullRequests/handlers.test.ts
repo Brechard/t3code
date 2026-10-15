@@ -25,6 +25,7 @@ import {
   v2PullRequestThread,
 } from "../../../orchestration-v2/testkit/pullRequestFixtures.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
+import * as PullRequestService from "../../../pullRequest/PullRequestService.ts";
 import * as PullRequestReviewGuideService from "../../../pullRequest/PullRequestReviewGuideService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
@@ -175,6 +176,14 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
     Layer.mock(ProjectService.ProjectService)({
       getShell: () => Effect.succeed(Option.fromNullishOr(project)),
       listShells: () => Effect.succeed(options.projects ?? (project ? [project] : [])),
+    }),
+    Layer.mock(PullRequestService.PullRequestService)({
+      hostDetails: (input) =>
+        Ref.update(guideRequests, (values) => [...values, input]).pipe(Effect.as(null)),
+      runHostAction: (input) =>
+        Ref.update(guideRequests, (values) => [...values, input]).pipe(
+          Effect.as({ message: "Pull request updated.", url: null }),
+        ),
     }),
     Layer.mock(PullRequestReviewGuideService.PullRequestReviewGuideService)({
       get: () => Effect.succeed(NO_GUIDE),
@@ -740,3 +749,39 @@ it("keeps failure diagnostics as the cause rather than exposing them in the tool
   expect(failure.message).toBe("Could not link the pull request.");
   expect(failure.cause).toBe(cause);
 });
+
+it.effect(
+  "routes native PR reads and writes through the matching project and requires its capability",
+  () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* harness.call("read_pull_request_host_details", {
+        url: "https://github.com/t3tools/t3code/pull/7",
+      });
+      yield* harness.call("run_pull_request_host_action", {
+        url: "https://github.com/t3tools/t3code/pull/7",
+        action: { type: "vote", vote: "reset" },
+      });
+      expect(yield* Ref.get(harness.guideRequests)).toEqual([
+        { projectId: PROJECT_ID, host: "github.com", repository: "t3tools/t3code", number: 7 },
+        {
+          projectId: PROJECT_ID,
+          host: "github.com",
+          repository: "t3tools/t3code",
+          number: 7,
+          action: { type: "vote", vote: "reset" },
+        },
+      ]);
+      yield* harness
+        .call(
+          "run_pull_request_host_action",
+          {
+            url: "https://github.com/t3tools/t3code/pull/7",
+            action: { type: "vote", vote: "reset" },
+          },
+          [],
+        )
+        .pipe(Effect.flip);
+      expect(yield* Ref.get(harness.guideRequests)).toHaveLength(2);
+    }),
+);

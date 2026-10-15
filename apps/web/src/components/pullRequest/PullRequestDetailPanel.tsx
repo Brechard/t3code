@@ -1,3 +1,10 @@
+import { AzureDevOpsPullRequestActions } from "./AzureDevOpsPullRequestActions";
+import { reusePullRequestIdentities } from "@t3tools/client-runtime/pull-request-markdown";
+import { PullRequestReviewContext, usePullRequestPreviousVisit } from "./PullRequestReviewContext";
+import {
+  PullRequestPermissionMenuItem,
+  PullRequestPermissionButton,
+} from "./PullRequestPermissionButton";
 import { parseChangeRequestUrl } from "@t3tools/shared/changeRequestUrl";
 import { useAtomValue } from "@effect/atom-react";
 import { usePullRequestStack } from "~/state/usePullRequestStack";
@@ -768,6 +775,8 @@ export function PullRequestDetailPanel({
             commentsTruncated: activity?.commentsTruncated ?? false,
             reviewThreads: activity?.reviewThreads ?? [],
             commits: activity?.commits ?? [],
+            updates: activity?.updates ?? [],
+            events: activity?.events ?? [],
             reactions: activity?.reactions ?? [],
           },
     [activity, canWriteSourceControl, coreDetail],
@@ -802,15 +811,39 @@ export function PullRequestDetailPanel({
   useEffect(() => {
     if (detail?.autoMergeMethod !== undefined) setMergeMethod(detail.autoMergeMethod);
   }, [detail?.autoMergeMethod, pullRequestKey]);
+  const previousVisit = usePullRequestPreviousVisit(
+    `${environmentId}:${reference.projectId}:${reference.host}:${reference.repository}:${reference.number}`,
+    activityQuery.isSuccess,
+  );
+  const reviewContext = useMemo(
+    () => ({
+      environmentId,
+      reference,
+      deniedActions: detail?.viewerPermissions.deniedActions ?? {},
+      azure: detail?.capabilities.hostActions === true,
+      previousVisit,
+    }),
+    [
+      environmentId,
+      reference,
+      detail?.viewerPermissions.deniedActions,
+      detail?.capabilities.hostActions,
+      previousVisit,
+    ],
+  );
   const repositoryUrl = detail === null ? null : changeRequestRepositoryUrl(detail.url);
   const hostClient = sourceControlClients.get(detail?.provider);
+  const [identities, setIdentities] = useState<Readonly<Record<string, string>>>({});
+  const nextIdentities = reusePullRequestIdentities(identities, activity?.identities ?? {});
+  if (nextIdentities !== identities) setIdentities(nextIdentities);
   const markdownContext = useMemo(
     () => ({
+      identities,
       repositoryUrl:
         repositoryUrl === null ? null : hostClient.referenceAutolinkRepositoryUrl(repositoryUrl),
       threadRef,
     }),
-    [hostClient, repositoryUrl, threadRef],
+    [hostClient, repositoryUrl, threadRef, identities],
   );
   const authorProfileUrl =
     detail?.author && repositoryUrl !== null
@@ -1599,6 +1632,7 @@ export function PullRequestDetailPanel({
   const checksStale = checksState !== detailChecksState;
   // The merge state remains in one stable slot from waiting through completion. Conflicts take
   // the slot while they need a person; the armed badge remains beside them so that state is not lost.
+  const denied = detail?.viewerPermissions.deniedActions ?? {};
   const primaryAction = detail
     ? resolvePullRequestPrimaryControl({
         state: detail.state,
@@ -2040,11 +2074,14 @@ export function PullRequestDetailPanel({
                 <Tooltip>
                   <TooltipTrigger
                     render={
-                      <span className="inline-flex shrink-0">
+                      <span
+                        tabIndex={denied["ready"] ? 0 : undefined}
+                        className="inline-flex shrink-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      >
                         <Button
                           size="xs"
                           variant="default"
-                          disabled={actionPending}
+                          disabled={actionPending || Boolean(denied["ready"])}
                           onClick={() => void perform("ready")}
                           aria-label="Ready for review"
                         >
@@ -2054,17 +2091,20 @@ export function PullRequestDetailPanel({
                       </span>
                     }
                   />
-                  <TooltipPopup side="top">Ready for review</TooltipPopup>
+                  <TooltipPopup side="top">{denied.ready ?? "Ready for review"}</TooltipPopup>
                 </Tooltip>
               ) : primaryAction === "enable-auto-merge" ? (
                 <Tooltip>
                   <TooltipTrigger
                     render={
-                      <span className="inline-flex shrink-0">
+                      <span
+                        tabIndex={denied["enable-auto-merge"] ? 0 : undefined}
+                        className="inline-flex shrink-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      >
                         <Button
                           size="xs"
                           variant="default"
-                          disabled={actionPending}
+                          disabled={actionPending || Boolean(denied["enable-auto-merge"])}
                           {...inlineConfirm.props(
                             "enable-auto-merge",
                             () => void perform("enable-auto-merge", selectedMergeMethod),
@@ -2101,11 +2141,12 @@ export function PullRequestDetailPanel({
                     }
                   />
                   <TooltipPopup side="top">
-                    {pendingAction === "enable-auto-merge"
-                      ? "Enabling..."
-                      : inlineConfirm.isArmed("enable-auto-merge")
-                        ? "Confirm auto-merge?"
-                        : pendingAutoMergeLabel}
+                    {denied["enable-auto-merge"] ??
+                      (pendingAction === "enable-auto-merge"
+                        ? "Enabling..."
+                        : inlineConfirm.isArmed("enable-auto-merge")
+                          ? "Confirm auto-merge?"
+                          : pendingAutoMergeLabel)}
                   </TooltipPopup>
                 </Tooltip>
               ) : primaryAction === "auto-merge-armed" ? (
@@ -2132,11 +2173,14 @@ export function PullRequestDetailPanel({
                 <Tooltip>
                   <TooltipTrigger
                     render={
-                      <span className="inline-flex shrink-0">
+                      <span
+                        tabIndex={denied["merge"] ? 0 : undefined}
+                        className="inline-flex shrink-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      >
                         <Button
                           size="xs"
                           variant="default"
-                          disabled={actionPending}
+                          disabled={actionPending || Boolean(denied["merge"])}
                           {...inlineConfirm.props(
                             "merge",
                             () => void perform("merge", selectedMergeMethod),
@@ -2173,11 +2217,12 @@ export function PullRequestDetailPanel({
                     }
                   />
                   <TooltipPopup side="top">
-                    {pendingAction === "merge"
-                      ? "Merging..."
-                      : inlineConfirm.isArmed("merge")
-                        ? "Confirm merge?"
-                        : selectedMergeMethodLabel}
+                    {denied["merge"] ??
+                      (pendingAction === "merge"
+                        ? "Merging..."
+                        : inlineConfirm.isArmed("merge")
+                          ? "Confirm merge?"
+                          : selectedMergeMethodLabel)}
                   </TooltipPopup>
                 </Tooltip>
               ) : (primaryAction === "merged" || primaryAction === "closed") &&
@@ -2192,296 +2237,325 @@ export function PullRequestDetailPanel({
               {/* Keep checkout beside the menu so host actions arriving on its left cannot
                   move a different action under the reader's pointer. */}
               {checkoutControl}
-              <Menu>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <MenuTrigger
+              <AzureDevOpsPullRequestActions
+                environmentId={environmentId}
+                reference={reference}
+                detail={detail}
+              >
+                {(azureMenu) => (
+                  <Menu>
+                    <Tooltip>
+                      <TooltipTrigger
                         render={
-                          <Button
-                            aria-label={
-                              refreshing ? "Refreshing pull request" : "More pull request actions"
+                          <MenuTrigger
+                            render={
+                              <Button
+                                aria-label={
+                                  refreshing
+                                    ? "Refreshing pull request"
+                                    : "More pull request actions"
+                                }
+                                size="icon-xs"
+                                variant="ghost-muted"
+                              />
                             }
-                            size="icon-xs"
-                            variant="ghost-muted"
-                          />
-                        }
-                      >
-                        {/* The refresh lives in this menu, so while one runs the trigger wears
+                          >
+                            {/* The refresh lives in this menu, so while one runs the trigger wears
                             the spinning glyph in place of the dots: the reader sees the panel
                             is fetching without a control appearing or the row shifting. */}
-                        {refreshing ? (
-                          <RefreshIcon refreshing size="md" />
-                        ) : (
-                          <MoreHorizontalIcon className="size-4" />
-                        )}
-                      </MenuTrigger>
-                    }
-                  />
-                  <TooltipPopup>
-                    {refreshing ? "Refreshing pull request" : "More pull request actions"}
-                  </TooltipPopup>
-                </Tooltip>
-                <MenuPopup align="end" side="bottom">
-                  <PullRequestThreadLinks
-                    display="menu-item"
-                    environmentId={environmentId}
-                    reference={reference}
-                    url={detail.url}
-                    threadRef={
-                      threadRef ??
-                      (typeof composerDraftTarget === "object" ? composerDraftTarget : null)
-                    }
-                    onPickerOpenChange={setThreadPickerOpen}
-                  />
-                  <MenuItem disabled={refreshing} onClick={() => void refreshFromHost()}>
-                    <RefreshIcon size="sm" refreshing={refreshing} />
-                    Refresh
-                  </MenuItem>
-                  <MenuItem disabled={handoff !== null} onClick={askAboutPullRequest}>
-                    <MessageCircleQuestionIcon className="mt-1 size-3.5 shrink-0 self-start" />
-                    <span className="flex min-w-0 flex-col">
-                      <span>{handoff === "ask" ? "Opening..." : "Ask a question"}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {attachTarget !== null
-                          ? "Adds the pull request to this thread's composer."
-                          : "Opens a thread that knows which pull request you mean."}
-                      </span>
-                    </span>
-                  </MenuItem>
-                  <MenuItem disabled={handoff !== null} onClick={explainPullRequest}>
-                    <BookOpenIcon className="mt-1 size-3.5 shrink-0 self-start" />
-                    <span className="flex min-w-0 flex-col">
-                      <span>{handoff === "explain" ? "Opening..." : "Explain this PR"}</span>
-                      <span className="text-xs text-muted-foreground">
-                        A walk through the diff and what to read closely.
-                      </span>
-                    </span>
-                  </MenuItem>
-                  <MenuItem
-                    disabled={handoff !== null || !canFixFindings}
-                    onClick={startFixFindings}
-                  >
-                    <HammerIcon className="size-3.5" />
-                    {handoff === "findings" ? "Preparing..." : handoffLabels.fixFindings}
-                  </MenuItem>
-                  {reviewGuidesEnabled && guideWriter.canWrite ? (
-                    <MenuItem disabled={guideWriter.running} onClick={writeGuide}>
-                      <SparklesIcon className="size-3.5" />
-                      {guideWriter.running
-                        ? "Writing guide..."
-                        : guideWriter.data?.guide == null
-                          ? "Write guide"
-                          : "Rewrite guide"}
-                    </MenuItem>
-                  ) : null}
-                  {pickableEnvironments.length > 0 ? (
-                    <ActOnEnvironmentPicker
-                      environments={pickableEnvironments}
-                      value={actingEnvironmentId}
-                      onChange={(next) => setActingScope({ pullRequestKey, environmentId: next })}
-                      disabled={handoff !== null}
-                    />
-                  ) : null}
-                  <MenuSeparator />
-                  {detail.state === "open" ? (
-                    <>
-                      {/* Only where the button row could not take it: "Ready for review" on a
-                          draft is the primary header button, so offering it here as well would
-                          show the same action twice. */}
-                      {showsDraftToggle ? (
-                        <MenuItem
-                          disabled={actionPending}
-                          onClick={() => void perform(detail.isDraft ? "ready" : "draft")}
-                        >
-                          {detail.isDraft ? (
-                            <PullRequestGlyph.pullRequest className="size-3.5" />
-                          ) : (
-                            <PullRequestGlyph.draft className="size-3.5" />
-                          )}
-                          {detail.isDraft ? "Ready for review" : "Convert to draft"}
-                        </MenuItem>
-                      ) : null}
-                      {showsMergeNow ? (
-                        <MenuItem
-                          closeOnClick={inlineConfirm.isArmed("merge")}
-                          aria-label={
-                            inlineConfirm.isArmed("merge") ? "Confirm merge?" : "Merge now"
-                          }
-                          disabled={actionPending}
-                          {...inlineConfirm.props(
-                            "merge",
-                            () => void perform("merge", selectedMergeMethod),
-                          )}
-                        >
-                          <PullRequestGlyph.merged className="size-3.5" />
-                          {inlineConfirm.isArmed("merge") ? "Confirm merge?" : "Merge now"}
-                        </MenuItem>
-                      ) : null}
-                      {/* The same merge, left with the host to carry out once its requirements
-                          pass. A conflicting branch cannot be armed because nothing the host
-                          waits for will clear the conflict. */}
-                      {autoMergeArmed && can("disable-auto-merge") ? (
-                        <MenuItem
-                          disabled={actionPending}
-                          onClick={() => void perform("disable-auto-merge")}
-                        >
-                          <PullRequestGlyph.merged className="size-3.5" />
-                          Disable auto-merge
-                        </MenuItem>
-                      ) : showsAutoMerge ? (
-                        <MenuItem
-                          closeOnClick={inlineConfirm.isArmed("enable-auto-merge")}
-                          aria-label={
-                            inlineConfirm.isArmed("enable-auto-merge")
-                              ? "Confirm auto-merge?"
-                              : "Enable auto-merge"
-                          }
-                          disabled={actionPending}
-                          {...inlineConfirm.props(
-                            "enable-auto-merge",
-                            () => void perform("enable-auto-merge", selectedMergeMethod),
-                          )}
-                        >
-                          <PullRequestGlyph.merged className="size-3.5" />
-                          {inlineConfirm.isArmed("enable-auto-merge")
-                            ? "Confirm auto-merge?"
-                            : "Enable auto-merge"}
-                        </MenuItem>
-                      ) : null}
-                      {/* A preference for the merge action rather than a second action, so it
-                          is a radio group here instead of a chevron welded to the Merge pill.
-                          Hidden while conflicting: every method would fail. */}
-                      {/* Only where merging is on offer at all: a strategy to merge with is not
-                          a choice for someone who may not merge. */}
-                      {showsMergeMethods ? (
-                        <>
-                          {/* Only below the draft control. A host with no draft of its own, or
-                              a draft whose control is already the header button, would leave
-                              this against the separator that opened the group. */}
-                          {showsDraftToggle || showsMergeNow || showsAutoMerge ? (
-                            <MenuSeparator />
-                          ) : null}
-                          <MenuRadioGroup
-                            value={selectedMergeMethod}
-                            onValueChange={(method) => {
-                              const selectedMethod = method as PullRequestMergeMethod;
-                              setMergeMethod(selectedMethod);
-                              setLastSelectedMergeMethod(selectedMethod);
-                            }}
-                          >
-                            {allowedMergeMethods.map((method) => (
-                              <MenuRadioItem
-                                key={method}
-                                value={method}
-                                disabled={actionPending}
-                                closeOnClick
-                              >
-                                {/* The radio item lays its children out as one block, so the
-                                    icon and the label need their own row to share a line. */}
-                                <span className="flex min-w-0 items-center gap-2">
-                                  <PullRequestGlyph.merged className="size-3.5" />
-                                  <span>{PULL_REQUEST_MERGE_METHOD_LABELS[method]}</span>
-                                </span>
-                              </MenuRadioItem>
-                            ))}
-                          </MenuRadioGroup>
-                        </>
-                      ) : null}
-                      {pullRequestActionMenuHasGroup(
-                        showsDraftToggle,
-                        showsAutoMerge || showsMergeNow,
-                        showsMergeMethods,
-                      ) ? (
-                        <MenuSeparator />
-                      ) : null}
-                    </>
-                  ) : null}
-                  <MenuItem onClick={() => void readLocalApi()?.shell.openExternal(detail.url)}>
-                    <ArrowUpRightIcon className="size-3.5" />
-                    {openOnHostLabel(hostClient)}
-                  </MenuItem>
-                  <MenuItem onClick={() => copyReference(detail.url, "PR link")}>
-                    <LinkIcon className="size-3.5" />
-                    Copy link
-                    <MenuShortcut>
-                      {shortcutLabelForCommand(keybindings, "thread.copyReference")}
-                    </MenuShortcut>
-                  </MenuItem>
-                  <MenuItem onClick={() => copyReference(`#${reference.number}`, "PR number")}>
-                    <CopyIcon className="size-3.5" />
-                    Copy PR number
-                    <MenuShortcut>
-                      {shortcutLabelForCommand(keybindings, "pullRequest.copyNumber")}
-                    </MenuShortcut>
-                  </MenuItem>
-                  {detail.state === "open" && can("close") ? (
-                    <>
-                      <MenuSeparator />
-                      <MenuItem
-                        closeOnClick={inlineConfirm.isArmed("close")}
-                        aria-label={
-                          inlineConfirm.isArmed("close") ? "Confirm close?" : "Close pull request"
+                            {refreshing ? (
+                              <RefreshIcon refreshing size="md" />
+                            ) : (
+                              <MoreHorizontalIcon className="size-4" />
+                            )}
+                          </MenuTrigger>
                         }
-                        variant="destructive"
-                        disabled={actionPending}
-                        {...inlineConfirm.props("close", () => void perform("close"))}
-                      >
-                        <PullRequestGlyph.closed className="size-3.5" />
-                        {inlineConfirm.isArmed("close") ? "Confirm close?" : "Close pull request"}
-                      </MenuItem>
-                    </>
-                  ) : detail.state === "closed" && can("reopen") ? (
-                    <>
-                      <MenuSeparator />
-                      <MenuItem disabled={actionPending} onClick={() => void perform("reopen")}>
-                        <PullRequestGlyph.reopen className="size-3.5" />
-                        Reopen pull request
-                      </MenuItem>
-                    </>
-                  ) : detail.state === "merged" && can("revert") ? (
-                    <>
-                      <MenuSeparator />
-                      <MenuItem
-                        closeOnClick={inlineConfirm.isArmed("revert")}
-                        aria-label={
-                          inlineConfirm.isArmed("revert") ? "Confirm revert?" : "Revert changes"
+                      />
+                      <TooltipPopup>
+                        {refreshing ? "Refreshing pull request" : "More pull request actions"}
+                      </TooltipPopup>
+                    </Tooltip>
+                    <MenuPopup align="end" side="bottom">
+                      <PullRequestThreadLinks
+                        display="menu-item"
+                        environmentId={environmentId}
+                        reference={reference}
+                        url={detail.url}
+                        threadRef={
+                          threadRef ??
+                          (typeof composerDraftTarget === "object" ? composerDraftTarget : null)
                         }
-                        variant={inlineConfirm.isArmed("revert") ? "destructive" : "default"}
-                        disabled={actionPending}
-                        {...inlineConfirm.props("revert", () => void perform("revert"))}
-                      >
-                        <RotateCcwIcon className="size-3.5" />
-                        {inlineConfirm.isArmed("revert") ? "Confirm revert?" : "Revert changes"}
+                        onPickerOpenChange={setThreadPickerOpen}
+                      />
+                      <MenuItem disabled={refreshing} onClick={() => void refreshFromHost()}>
+                        <RefreshIcon size="sm" refreshing={refreshing} />
+                        Refresh
                       </MenuItem>
-                    </>
-                  ) : null}
-                  {showsDeleteBranch ? (
-                    <>
-                      <MenuSeparator />
-                      <MenuItem
-                        variant="destructive"
-                        disabled={actionPending || !environmentConnected}
-                        onClick={() => void confirmDeleteBranch()}
-                      >
-                        <Trash2Icon className="mt-1 size-3.5 shrink-0 self-start" />
+                      <MenuItem disabled={handoff !== null} onClick={askAboutPullRequest}>
+                        <MessageCircleQuestionIcon className="mt-1 size-3.5 shrink-0 self-start" />
                         <span className="flex min-w-0 flex-col">
-                          <span>
-                            {pendingAction === "delete-branch"
-                              ? "Deleting branch..."
-                              : "Delete branch"}
-                          </span>
-                          <span className="truncate text-xs text-muted-foreground">
-                            {environmentConnected
-                              ? detail.headBranch
-                              : "Reconnect to delete this branch"}
+                          <span>{handoff === "ask" ? "Opening..." : "Ask a question"}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {attachTarget !== null
+                              ? "Adds the pull request to this thread's composer."
+                              : "Opens a thread that knows which pull request you mean."}
                           </span>
                         </span>
                       </MenuItem>
-                    </>
-                  ) : null}
-                </MenuPopup>
-              </Menu>
+                      <MenuItem disabled={handoff !== null} onClick={explainPullRequest}>
+                        <BookOpenIcon className="mt-1 size-3.5 shrink-0 self-start" />
+                        <span className="flex min-w-0 flex-col">
+                          <span>{handoff === "explain" ? "Opening..." : "Explain this PR"}</span>
+                          <span className="text-xs text-muted-foreground">
+                            A walk through the diff and what to read closely.
+                          </span>
+                        </span>
+                      </MenuItem>
+                      <MenuItem
+                        disabled={handoff !== null || !canFixFindings}
+                        onClick={startFixFindings}
+                      >
+                        <HammerIcon className="size-3.5" />
+                        {handoff === "findings" ? "Preparing..." : handoffLabels.fixFindings}
+                      </MenuItem>
+                      {reviewGuidesEnabled && guideWriter.canWrite ? (
+                        <MenuItem disabled={guideWriter.running} onClick={writeGuide}>
+                          <SparklesIcon className="size-3.5" />
+                          {guideWriter.running
+                            ? "Writing guide..."
+                            : guideWriter.data?.guide == null
+                              ? "Write guide"
+                              : "Rewrite guide"}
+                        </MenuItem>
+                      ) : null}
+                      {pickableEnvironments.length > 0 ? (
+                        <ActOnEnvironmentPicker
+                          environments={pickableEnvironments}
+                          value={actingEnvironmentId}
+                          onChange={(next) =>
+                            setActingScope({ pullRequestKey, environmentId: next })
+                          }
+                          disabled={handoff !== null}
+                        />
+                      ) : null}
+                      <MenuSeparator />
+                      {detail.state === "open" ? (
+                        <>
+                          {/* Only where the button row could not take it: "Ready for review" on a
+                          draft is the primary header button, so offering it here as well would
+                          show the same action twice. */}
+                          {showsDraftToggle ? (
+                            <PullRequestPermissionMenuItem
+                              disabled={
+                                actionPending || Boolean(denied[detail.isDraft ? "ready" : "draft"])
+                              }
+                              reason={denied[detail.isDraft ? "ready" : "draft"]}
+                              onClick={() => void perform(detail.isDraft ? "ready" : "draft")}
+                            >
+                              {detail.isDraft ? (
+                                <PullRequestGlyph.pullRequest className="size-3.5" />
+                              ) : (
+                                <PullRequestGlyph.draft className="size-3.5" />
+                              )}
+                              {detail.isDraft ? "Ready for review" : "Convert to draft"}
+                            </PullRequestPermissionMenuItem>
+                          ) : null}
+                          {showsMergeNow ? (
+                            <PullRequestPermissionMenuItem
+                              closeOnClick={inlineConfirm.isArmed("merge")}
+                              aria-label={
+                                inlineConfirm.isArmed("merge") ? "Confirm merge?" : "Merge now"
+                              }
+                              disabled={actionPending || Boolean(denied["merge"])}
+                              reason={denied["merge"]}
+                              {...inlineConfirm.props(
+                                "merge",
+                                () => void perform("merge", selectedMergeMethod),
+                              )}
+                            >
+                              <PullRequestGlyph.merged className="size-3.5" />
+                              {inlineConfirm.isArmed("merge") ? "Confirm merge?" : "Merge now"}
+                            </PullRequestPermissionMenuItem>
+                          ) : null}
+                          {/* The same merge, left with the host to carry out once its requirements
+                          pass. A conflicting branch cannot be armed because nothing the host
+                          waits for will clear the conflict. */}
+                          {autoMergeArmed && can("disable-auto-merge") ? (
+                            <PullRequestPermissionMenuItem
+                              disabled={actionPending || Boolean(denied["disable-auto-merge"])}
+                              reason={denied["disable-auto-merge"]}
+                              onClick={() => void perform("disable-auto-merge")}
+                            >
+                              <PullRequestGlyph.merged className="size-3.5" />
+                              Disable auto-merge
+                            </PullRequestPermissionMenuItem>
+                          ) : showsAutoMerge ? (
+                            <PullRequestPermissionMenuItem
+                              closeOnClick={inlineConfirm.isArmed("enable-auto-merge")}
+                              aria-label={
+                                inlineConfirm.isArmed("enable-auto-merge")
+                                  ? "Confirm auto-merge?"
+                                  : "Enable auto-merge"
+                              }
+                              disabled={actionPending || Boolean(denied["enable-auto-merge"])}
+                              reason={denied["enable-auto-merge"]}
+                              {...inlineConfirm.props(
+                                "enable-auto-merge",
+                                () => void perform("enable-auto-merge", selectedMergeMethod),
+                              )}
+                            >
+                              <PullRequestGlyph.merged className="size-3.5" />
+                              {inlineConfirm.isArmed("enable-auto-merge")
+                                ? "Confirm auto-merge?"
+                                : "Enable auto-merge"}
+                            </PullRequestPermissionMenuItem>
+                          ) : null}
+                          {/* A preference for the merge action rather than a second action, so it
+                          is a radio group here instead of a chevron welded to the Merge pill.
+                          Hidden while conflicting: every method would fail. */}
+                          {/* Only where merging is on offer at all: a strategy to merge with is not
+                          a choice for someone who may not merge. */}
+                          {showsMergeMethods ? (
+                            <>
+                              {/* Only below the draft control. A host with no draft of its own, or
+                              a draft whose control is already the header button, would leave
+                              this against the separator that opened the group. */}
+                              {showsDraftToggle || showsMergeNow || showsAutoMerge ? (
+                                <MenuSeparator />
+                              ) : null}
+                              <MenuRadioGroup
+                                value={selectedMergeMethod}
+                                onValueChange={(method) => {
+                                  const selectedMethod = method as PullRequestMergeMethod;
+                                  setMergeMethod(selectedMethod);
+                                  setLastSelectedMergeMethod(selectedMethod);
+                                }}
+                              >
+                                {allowedMergeMethods.map((method) => (
+                                  <MenuRadioItem
+                                    key={method}
+                                    value={method}
+                                    disabled={actionPending}
+                                    closeOnClick
+                                  >
+                                    {/* The radio item lays its children out as one block, so the
+                                    icon and the label need their own row to share a line. */}
+                                    <span className="flex min-w-0 items-center gap-2">
+                                      <PullRequestGlyph.merged className="size-3.5" />
+                                      <span>{PULL_REQUEST_MERGE_METHOD_LABELS[method]}</span>
+                                    </span>
+                                  </MenuRadioItem>
+                                ))}
+                              </MenuRadioGroup>
+                            </>
+                          ) : null}
+                          {pullRequestActionMenuHasGroup(
+                            showsDraftToggle,
+                            showsAutoMerge || showsMergeNow,
+                            showsMergeMethods,
+                          ) ? (
+                            <MenuSeparator />
+                          ) : null}
+                        </>
+                      ) : null}
+                      {azureMenu}
+                      <MenuItem onClick={() => void readLocalApi()?.shell.openExternal(detail.url)}>
+                        <ArrowUpRightIcon className="size-3.5" />
+                        {openOnHostLabel(hostClient)}
+                      </MenuItem>
+                      <MenuItem onClick={() => copyReference(detail.url, "PR link")}>
+                        <LinkIcon className="size-3.5" />
+                        Copy link
+                        <MenuShortcut>
+                          {shortcutLabelForCommand(keybindings, "thread.copyReference")}
+                        </MenuShortcut>
+                      </MenuItem>
+                      <MenuItem onClick={() => copyReference(`#${reference.number}`, "PR number")}>
+                        <CopyIcon className="size-3.5" />
+                        Copy PR number
+                        <MenuShortcut>
+                          {shortcutLabelForCommand(keybindings, "pullRequest.copyNumber")}
+                        </MenuShortcut>
+                      </MenuItem>
+                      {detail.state === "open" && can("close") ? (
+                        <>
+                          <MenuSeparator />
+                          <PullRequestPermissionMenuItem
+                            closeOnClick={inlineConfirm.isArmed("close")}
+                            aria-label={
+                              inlineConfirm.isArmed("close")
+                                ? "Confirm close?"
+                                : "Close pull request"
+                            }
+                            variant="destructive"
+                            disabled={actionPending || Boolean(denied["close"])}
+                            reason={denied["close"]}
+                            {...inlineConfirm.props("close", () => void perform("close"))}
+                          >
+                            <PullRequestGlyph.closed className="size-3.5" />
+                            {inlineConfirm.isArmed("close")
+                              ? "Confirm close?"
+                              : "Close pull request"}
+                          </PullRequestPermissionMenuItem>
+                        </>
+                      ) : detail.state === "closed" && can("reopen") ? (
+                        <>
+                          <MenuSeparator />
+                          <PullRequestPermissionMenuItem
+                            disabled={actionPending || Boolean(denied["reopen"])}
+                            reason={denied["reopen"]}
+                            onClick={() => void perform("reopen")}
+                          >
+                            <PullRequestGlyph.reopen className="size-3.5" />
+                            Reopen pull request
+                          </PullRequestPermissionMenuItem>
+                        </>
+                      ) : detail.state === "merged" && can("revert") ? (
+                        <>
+                          <MenuSeparator />
+                          <PullRequestPermissionMenuItem
+                            closeOnClick={inlineConfirm.isArmed("revert")}
+                            aria-label={
+                              inlineConfirm.isArmed("revert") ? "Confirm revert?" : "Revert changes"
+                            }
+                            variant={inlineConfirm.isArmed("revert") ? "destructive" : "default"}
+                            disabled={actionPending || Boolean(denied["revert"])}
+                            reason={denied["revert"]}
+                            {...inlineConfirm.props("revert", () => void perform("revert"))}
+                          >
+                            <RotateCcwIcon className="size-3.5" />
+                            {inlineConfirm.isArmed("revert") ? "Confirm revert?" : "Revert changes"}
+                          </PullRequestPermissionMenuItem>
+                        </>
+                      ) : null}
+                      {showsDeleteBranch ? (
+                        <>
+                          <MenuSeparator />
+                          <MenuItem
+                            variant="destructive"
+                            disabled={actionPending || !environmentConnected}
+                            onClick={() => void confirmDeleteBranch()}
+                          >
+                            <Trash2Icon className="mt-1 size-3.5 shrink-0 self-start" />
+                            <span className="flex min-w-0 flex-col">
+                              <span>
+                                {pendingAction === "delete-branch"
+                                  ? "Deleting branch..."
+                                  : "Delete branch"}
+                              </span>
+                              <span className="truncate text-xs text-muted-foreground">
+                                {environmentConnected
+                                  ? detail.headBranch
+                                  : "Reconnect to delete this branch"}
+                              </span>
+                            </span>
+                          </MenuItem>
+                        </>
+                      ) : null}
+                    </MenuPopup>
+                  </Menu>
+                )}
+              </AzureDevOpsPullRequestActions>
             </TooltipProvider>
           ) : null}
           {onClose ? (
@@ -2648,6 +2722,7 @@ export function PullRequestDetailPanel({
                       </Tooltip>
                       {canEditPullRequestChangeRequest(detail) ? (
                         <PullRequestEditButton
+                          reason={denied.edit}
                           aria-label="Edit title"
                           onClick={() => setTitleScope({ pullRequestKey, text: detail.title })}
                         />
@@ -2801,7 +2876,8 @@ export function PullRequestDetailPanel({
                   <TooltipTrigger
                     render={
                       <span className="ml-auto inline-flex shrink-0">
-                        <Button
+                        <PullRequestPermissionButton
+                          reason={denied["approve-workflows"]}
                           size="xs"
                           variant="warning-outline"
                           disabled={actionPending}
@@ -2833,7 +2909,7 @@ export function PullRequestDetailPanel({
                                   : "Approve workflows to run"}
                             </span>
                           </span>
-                        </Button>
+                        </PullRequestPermissionButton>
                       </span>
                     }
                   />
@@ -2983,122 +3059,128 @@ export function PullRequestDetailPanel({
             {...(unavailableGitHubUrl ? { gitHubUrl: unavailableGitHubUrl } : {})}
           />
         ) : detail ? (
-          <PullRequestMarkdownContext value={markdownContext}>
-            {mountedTabs.has("summary") ? (
-              <div className={cn("absolute inset-0", tab !== "summary" && "invisible")}>
-                <PullRequestSummaryTab
-                  scrollerRef={scrollerRefs.summary}
-                  environmentId={environmentId}
-                  threadRef={threadRef}
-                  reference={reference}
-                  detail={detail}
-                  activityPending={activityPending}
-                  checksStale={checksStale}
-                  activityError={activityError}
-                  pendingFinding={handoff}
-                  fixFindingLabel={handoffLabels.fixFinding}
-                  fixCheckLabel={handoffLabels.fixCheck}
-                  {...(canFixFindings ? { onFixFinding: startFixFinding } : {})}
-                  onRefresh={refreshDetail}
-                  onRefreshChecks={refreshFromHost}
-                />
-              </div>
-            ) : null}
-            {mountedTabs.has("guide") ? (
-              <div className={cn("absolute inset-0", tab !== "guide" && "invisible")}>
-                <PullRequestGuideTab
-                  environmentId={environmentId}
-                  reference={reference}
-                  active={tab === "guide"}
-                  title={detail.title}
-                  workspaceRoot={detail.workspaceRoot}
-                  canComment={
-                    detail.capabilities.review.inlineComment && detail.viewerPermissions.comment
-                  }
-                  onAskAboutLines={(comment, request) =>
-                    addSelectionToAgent({ comment, request }, { keepGuide: true })
-                  }
-                  onAskAboutStop={askAboutGuideStop}
-                  onFinishReview={
-                    detail.capabilities.review.verdicts.some((verdict) =>
-                      detail.viewerPermissions.verdicts.includes(verdict),
-                    )
-                      ? () => setOpenReviewRequest((count) => count + 1)
-                      : null
-                  }
-                  onOpenFile={openFileInCode}
-                  onTourShown={onGuideShown}
-                />
-              </div>
-            ) : null}
-            {mountedTabs.has("timeline") ? (
-              <div className={cn("absolute inset-0", tab !== "timeline" && "invisible")}>
-                {activityPending ? (
-                  <PullRequestTimelineGhost />
-                ) : activityError ? (
-                  <PullRequestActivityUnavailableState
-                    error={activityError}
-                    onRetry={activityQuery.refresh}
-                  />
-                ) : (
-                  <PullRequestTimelineTab
-                    scrollerRef={scrollerRefs.timeline}
-                    detail={detail}
+          <PullRequestReviewContext value={reviewContext}>
+            <PullRequestMarkdownContext value={markdownContext}>
+              {mountedTabs.has("summary") ? (
+                <div className={cn("absolute inset-0", tab !== "summary" && "invisible")}>
+                  <PullRequestSummaryTab
+                    scrollerRef={scrollerRefs.summary}
                     environmentId={environmentId}
                     threadRef={threadRef}
                     reference={reference}
-                    order={timelineOrder}
-                    onOpenCommit={openCommit}
-                    onRefresh={refreshDetail}
-                  />
-                )}
-              </div>
-            ) : null}
-            {mountedTabs.has("code") ? (
-              <div className={cn("absolute inset-0", tab !== "code" && "invisible")}>
-                <Suspense fallback={<DiffPanelLoadingState label="Loading pull request diff..." />}>
-                  <PullRequestCodeTab
-                    scrollerRef={scrollerRefs.code}
-                    onAddToAgentSelection={addSelectionToAgent}
-                    environmentId={environmentId}
-                    reference={reference}
                     detail={detail}
-                    selectedCommitOid={selectedCodeCommitOid}
-                    onSelectedCommitChange={selectCodeCommit}
+                    activityPending={activityPending}
+                    checksStale={checksStale}
+                    activityError={activityError}
                     pendingFinding={handoff}
                     fixFindingLabel={handoffLabels.fixFinding}
+                    fixCheckLabel={handoffLabels.fixCheck}
                     {...(canFixFindings ? { onFixFinding: startFixFinding } : {})}
                     onRefresh={refreshDetail}
-                    refreshToken={codeRefreshToken}
-                    revealRequest={codeRevealRequest}
+                    onRefreshChecks={refreshFromHost}
                   />
-                </Suspense>
-              </div>
-            ) : null}
-          </PullRequestMarkdownContext>
+                </div>
+              ) : null}
+              {mountedTabs.has("guide") ? (
+                <div className={cn("absolute inset-0", tab !== "guide" && "invisible")}>
+                  <PullRequestGuideTab
+                    environmentId={environmentId}
+                    reference={reference}
+                    active={tab === "guide"}
+                    title={detail.title}
+                    workspaceRoot={detail.workspaceRoot}
+                    canComment={
+                      detail.capabilities.review.inlineComment && detail.viewerPermissions.comment
+                    }
+                    onAskAboutLines={(comment, request) =>
+                      addSelectionToAgent({ comment, request }, { keepGuide: true })
+                    }
+                    onAskAboutStop={askAboutGuideStop}
+                    onFinishReview={
+                      detail.capabilities.review.verdicts.some((verdict) =>
+                        detail.viewerPermissions.verdicts.includes(verdict),
+                      )
+                        ? () => setOpenReviewRequest((count) => count + 1)
+                        : null
+                    }
+                    onOpenFile={openFileInCode}
+                    onTourShown={onGuideShown}
+                  />
+                </div>
+              ) : null}
+              {mountedTabs.has("timeline") ? (
+                <div className={cn("absolute inset-0", tab !== "timeline" && "invisible")}>
+                  {activityPending ? (
+                    <PullRequestTimelineGhost />
+                  ) : activityError ? (
+                    <PullRequestActivityUnavailableState
+                      error={activityError}
+                      onRetry={activityQuery.refresh}
+                    />
+                  ) : (
+                    <PullRequestTimelineTab
+                      scrollerRef={scrollerRefs.timeline}
+                      detail={detail}
+                      environmentId={environmentId}
+                      threadRef={threadRef}
+                      reference={reference}
+                      order={timelineOrder}
+                      onOpenCommit={openCommit}
+                      onRefresh={refreshDetail}
+                    />
+                  )}
+                </div>
+              ) : null}
+              {mountedTabs.has("code") ? (
+                <div className={cn("absolute inset-0", tab !== "code" && "invisible")}>
+                  <Suspense
+                    fallback={<DiffPanelLoadingState label="Loading pull request diff..." />}
+                  >
+                    <PullRequestCodeTab
+                      scrollerRef={scrollerRefs.code}
+                      onAddToAgentSelection={addSelectionToAgent}
+                      environmentId={environmentId}
+                      reference={reference}
+                      detail={detail}
+                      selectedCommitOid={selectedCodeCommitOid}
+                      onSelectedCommitChange={selectCodeCommit}
+                      pendingFinding={handoff}
+                      fixFindingLabel={handoffLabels.fixFinding}
+                      {...(canFixFindings ? { onFixFinding: startFixFinding } : {})}
+                      onRefresh={refreshDetail}
+                      refreshToken={codeRefreshToken}
+                      revealRequest={codeRevealRequest}
+                    />
+                  </Suspense>
+                </div>
+              ) : null}
+            </PullRequestMarkdownContext>
+          </PullRequestReviewContext>
         ) : null}
       </div>
 
       {/* Float over the content; do not reserve a footer or padding in the PR tabs. */}
       {detail ? (
         <div className="absolute right-4 bottom-3 z-20">
-          <PullRequestComposer
-            key={JSON.stringify([
-              environmentId,
-              reference.projectId,
-              reference.host,
-              reference.repository,
-              reference.number,
-            ])}
-            environmentId={environmentId}
-            reference={reference}
-            detail={detail}
-            actionPending={actionPending}
-            onCommentAction={performCommentAction}
-            onCommented={refreshDetail}
-            onReviewSubmitted={refreshDetail}
-            openReviewRequest={openReviewRequest}
-          />
+          <PullRequestReviewContext value={reviewContext}>
+            <PullRequestComposer
+              key={JSON.stringify([
+                environmentId,
+                reference.projectId,
+                reference.host,
+                reference.repository,
+                reference.number,
+              ])}
+              environmentId={environmentId}
+              reference={reference}
+              detail={detail}
+              actionPending={actionPending}
+              onCommentAction={performCommentAction}
+              onCommented={refreshDetail}
+              onReviewSubmitted={refreshDetail}
+              openReviewRequest={openReviewRequest}
+            />
+          </PullRequestReviewContext>
         </div>
       ) : null}
     </div>

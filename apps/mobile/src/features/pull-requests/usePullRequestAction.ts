@@ -1,4 +1,3 @@
-import { useAtomRefresh } from "@effect/atom-react";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type {
   PullRequestAction,
@@ -18,14 +17,18 @@ export function usePullRequestAction(params: PullRequestParams, pr: PullRequestD
   const target = pullRequestTarget(params);
   const permissions = usePullRequestPermissions(params, pr);
   const run = useAtomCommand(composerPullRequests.runAction, { reportFailure: false });
-  const refreshDetail = useAtomRefresh(composerPullRequests.detail(target));
-  const refreshActivity = useAtomRefresh(composerPullRequests.activity(target));
   const pending = useRef(false);
   const [busy, setBusy] = useState(false);
   const available = (action: PullRequestAction) =>
     pr !== null && !busy && permissions.canWrite && canPerformPullRequestAction(pr, action);
   const perform = async (action: PullRequestAction, updateMethod?: PullRequestUpdateMethod) => {
-    if (pending.current || !available(action)) return;
+    if (
+      pending.current ||
+      !pr ||
+      pr.viewerPermissions.deniedActions?.[action] ||
+      !available(action)
+    )
+      return;
     pending.current = true;
     setBusy(true);
     try {
@@ -34,8 +37,6 @@ export function usePullRequestAction(params: PullRequestParams, pr: PullRequestD
         input: { ...target.input, action, ...(updateMethod ? { updateMethod } : {}) },
       });
       if (response._tag === "Failure") throw squashAtomCommandFailure(response);
-      refreshDetail();
-      refreshActivity();
     } catch (cause) {
       Alert.alert(
         "Couldn't update this pull request",

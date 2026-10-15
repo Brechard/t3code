@@ -43,6 +43,11 @@ export function PullRequestActivityFilters({
         <ControlPillMenu
           title="Show in activity"
           actions={[
+            {
+              id: "newOnly",
+              title: "What’s new since your last visit",
+              state: value.newOnly ? "on" : "off",
+            },
             { id: "bots", title: "Bot comments", state: value.bots ? "on" : "off" },
             {
               id: "resolved",
@@ -51,7 +56,7 @@ export function PullRequestActivityFilters({
             },
           ]}
           onPressAction={({ nativeEvent: { event } }) => {
-            if (event === "bots" || event === "resolved")
+            if (event === "bots" || event === "resolved" || event === "newOnly")
               onChange({ ...value, [event]: !value[event] });
           }}
         >

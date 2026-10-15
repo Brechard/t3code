@@ -179,7 +179,11 @@ export function PullRequestGuideStopScreen({ route }: StaticScreenProps<GuideSto
       </NativeHeaderToolbar>
       <PullRequestMarkdownRepository
         params={route.params}
-        value={`https://${route.params.host ?? "github.com"}/${route.params.repository}`}
+        value={
+          detail.data?.provider === "github" || detail.data?.provider === "azure-devops"
+            ? detail.data.url
+            : null
+        }
       >
         <ScreenScrollView
           contentInsetAdjustmentBehavior="automatic"

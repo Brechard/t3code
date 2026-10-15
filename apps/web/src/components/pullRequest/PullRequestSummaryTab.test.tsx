@@ -6,9 +6,11 @@ import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 
 vi.mock("~/state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
 vi.mock("~/state/pullRequests", () => ({ pullRequestEnvironment: {} }));
+vi.mock("./PullRequestCommentActions", () => ({ PullRequestCommentActions: () => null }));
 vi.mock("~/browser/useOpenLink", () => ({ useOpenLink: () => vi.fn() }));
-vi.mock("./PullRequestMarkdown", () => ({
+vi.mock("./PullRequestMarkdown", async () => ({
   PullRequestMarkdown: ({ text }: { text: string }) => <p>{text}</p>,
+  PullRequestMarkdownContext: (await import("react")).createContext(null),
 }));
 vi.mock("../ui/menu", () => ({
   Menu: "div",
@@ -180,6 +182,61 @@ function filterItem(label: string) {
     (node) => typeof node.props.onCheckedChange === "function" && node.children.includes(label),
   );
 }
+
+it("keeps an Azure discussion in one card with the original before its replies", () => {
+  const original = {
+    id: "17:1",
+    kind: "issue-comment" as const,
+    author: { login: "reviewer", name: "Reviewer", avatarUrl: null },
+    body: "Could you cover the empty state?",
+    createdAt: "2026-09-01T00:00:00Z",
+    url: null,
+    path: null,
+    reviewState: null,
+  };
+  const value: PullRequestDetailView = {
+    ...detail,
+    provider: SourceControlProviderKind.make("azure-devops"),
+    comments: [
+      original,
+      {
+        ...original,
+        id: "17:2",
+        replyToCommentId: "17:1",
+        author: detail.author,
+        body: "Added coverage.",
+        createdAt: "2026-09-01T00:01:00Z",
+      },
+    ],
+    commentCount: 2,
+  };
+  act(() => {
+    renderer = create(render(value));
+  });
+  expect(renderer.root.findAllByType("article")).toHaveLength(1);
+  expect(texts()).not.toContain("Reply to Reviewer");
+  expect(texts()).toContain("Could you cover the empty state?");
+  expect(texts()).toContain("Added coverage.");
+  expect(texts().indexOf("Could you cover the empty state?")).toBeLessThan(
+    texts().indexOf("Added coverage."),
+  );
+
+  act(() =>
+    renderer.root.findByProps({ "aria-label": "Show oldest comments first" }).props.onClick(),
+  );
+  expect(renderer.root.findAllByType("article")).toHaveLength(1);
+  expect(texts().indexOf("Could you cover the empty state?")).toBeLessThan(
+    texts().indexOf("Added coverage."),
+  );
+
+  act(() =>
+    renderer.update(
+      render({ ...value, comments: value.comments.slice(1), commentsTruncated: true }),
+    ),
+  );
+  expect(texts()).toContain("Reply to earlier comment");
+  expect(texts()).toContain("Original comment isn’t loaded.");
+});
 
 it("hides bot and resolved comments until the filter shows them, and remembers the choice", () => {
   const comment = (index: number, login: string, body: string, isBot = false) => ({

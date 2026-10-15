@@ -59,6 +59,7 @@ export function PullRequestMergeControls(props: {
   const checkingStack =
     permissions.connected && stack.supportsStackActions && !stack.isFresh && !stack.error;
   const reason =
+    pr.viewerPermissions.deniedActions?.merge ??
     (!permissions.connected
       ? "Reconnect to merge."
       : mergeUnavailableReason(pr, permissions.canWrite)) ??
@@ -81,6 +82,7 @@ export function PullRequestMergeControls(props: {
     : "Merge unavailable";
   const autoAction = pr.autoMergeEnabled ? "disable-auto-merge" : "enable-auto-merge";
   const canAutoMerge =
+    !pr.viewerPermissions.deniedActions?.[autoAction] &&
     !busy &&
     (autoAction === "disable-auto-merge" || (!stack.stack && canMergeSingle)) &&
     permissions.canWrite &&

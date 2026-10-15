@@ -31,6 +31,7 @@ const NO_OVERLAY: FileViewedOverlay = new Map();
 export interface PullRequestFilesViewedView {
   /** Whether anything remembers this at all, which is what hides the whole control. */
   readonly enabled: boolean;
+  readonly disabledReason?: string;
   readonly isViewed: (path: string) => boolean;
   /** This file has been pushed to since it was cleared. */
   readonly isStale: (path: string) => boolean;
@@ -59,6 +60,7 @@ export function usePullRequestFilesViewed(options: {
   readonly environmentId: EnvironmentId;
   readonly reference: PullRequestRef;
   readonly enabled: boolean;
+  readonly disabledReason?: string;
   /** The paths on screen, which is what the counter counts. */
   readonly paths: ReadonlyArray<string>;
 }): PullRequestFilesViewedView {
@@ -73,6 +75,7 @@ export function usePullRequestFilesViewed(options: {
   const states = useMemo(() => toFileViewedStates(query.data), [query.data]);
   const truncated = query.data?.truncated === true;
   const error = query.error;
+  const disabledReason = query.data?.disabledReason;
   const [overlay, setOverlay] = useState<FileViewedOverlay>(NO_OVERLAY);
   const setFilesViewed = useAtomCommand(pullRequestEnvironment.setFilesViewed, {
     reportFailure: false,
@@ -174,12 +177,16 @@ export function usePullRequestFilesViewed(options: {
   refreshRef.current = refresh;
   const refreshFromHost = useCallback(() => refreshRef.current(), []);
 
-  const setViewed = useCallback((path: string, viewed: boolean) => {
-    setOverlay((current) => new Map(current).set(path, viewed));
-    queued.current.set(path, viewed);
-    if (flushTimer.current !== null) clearTimeout(flushTimer.current);
-    flushTimer.current = setTimeout(() => flushRef.current(), FLUSH_DELAY_MS);
-  }, []);
+  const setViewed = useCallback(
+    (path: string, viewed: boolean) => {
+      if (disabledReason) return;
+      setOverlay((current) => new Map(current).set(path, viewed));
+      queued.current.set(path, viewed);
+      if (flushTimer.current !== null) clearTimeout(flushTimer.current);
+      flushTimer.current = setTimeout(() => flushRef.current(), FLUSH_DELAY_MS);
+    },
+    [disabledReason],
+  );
 
   const isViewed = useCallback(
     (path: string) => isFileViewed(path, states, overlay),
@@ -198,6 +205,7 @@ export function usePullRequestFilesViewed(options: {
   return useMemo(
     () => ({
       enabled,
+      ...(disabledReason ? { disabledReason } : {}),
       isViewed,
       isStale,
       setViewed,
@@ -206,6 +214,16 @@ export function usePullRequestFilesViewed(options: {
       error,
       refresh: refreshFromHost,
     }),
-    [enabled, error, isStale, isViewed, refreshFromHost, setViewed, truncated, viewedCount],
+    [
+      enabled,
+      disabledReason,
+      error,
+      isStale,
+      isViewed,
+      refreshFromHost,
+      setViewed,
+      truncated,
+      viewedCount,
+    ],
   );
 }

@@ -470,3 +470,70 @@ describe("AzureDevOpsCli.layer", () => {
     }).pipe(Effect.provide(layer)),
   );
 });
+
+describe("repository-scoped PR updates", () => {
+  it.effect("uses Azure CLI's Python runtime and preserves the body and repository route", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(processOutput("Python location '/opt/az/bin/python'")),
+      );
+      mockRun.mockReturnValue(Effect.succeed(processOutput("{}")));
+      const az = yield* AzureDevOpsCli.AzureDevOpsCli;
+      const input = {
+        cwd: "/repo",
+        bodyFile: "/tmp/pr-body.json",
+        routeValues: { project: "project", repositoryId: "repo", pullRequestId: "42" },
+      };
+      yield* az.patchPullRequest(input);
+      yield* az.patchPullRequest(input);
+      expect(mockRun.mock.calls).toHaveLength(3);
+      const request = mockRun.mock.calls[1]?.[0];
+      expect(request?.command).toBe("/opt/az/bin/python");
+      expect(request?.cwd).toBe("/repo");
+      expect(JSON.parse(request?.stdin ?? "{}")).toEqual({
+        bodyFile: input.bodyFile,
+        routeValues: input.routeValues,
+      });
+      expect(request?.args?.[1]).toContain("9946fd70-0d40-406e-b686-b4744cbbcc37");
+      expect(request?.args?.[1]).toContain("get_git_client");
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("does not execute an unknown runtime when Azure CLI omits its Python location", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValue(Effect.succeed(processOutput("azure-cli version")));
+      const az = yield* AzureDevOpsCli.AzureDevOpsCli;
+      const result = yield* az
+        .patchPullRequest({
+          cwd: "/repo",
+          bodyFile: "/tmp/body.json",
+          routeValues: { project: "project", repositoryId: "repo", pullRequestId: "42" },
+        })
+        .pipe(Effect.result);
+      expect(result._tag).toBe("Failure");
+      expect(mockRun.mock.calls).toHaveLength(1);
+    }).pipe(Effect.provide(layer)),
+  );
+});
+
+it.effect("preserves the host's native operation refusal instead of reporting success", () =>
+  Effect.gen(function* () {
+    mockRun.mockReturnValueOnce(
+      Effect.succeed(processOutput("Python location '/opt/az/bin/python'")),
+    );
+    mockRun.mockReturnValueOnce(
+      Effect.succeed(
+        processOutput(
+          JSON.stringify({
+            _t3SdkError: { message: "This credential lacks notification write permission." },
+          }),
+        ),
+      ),
+    );
+    const az = yield* AzureDevOpsCli.AzureDevOpsCli;
+    const error = yield* az
+      .notificationSubscriptions({ cwd: "/repo", method: "POST", bodyFile: "/tmp/body.json" })
+      .pipe(Effect.flip);
+    expect(error.detail).toBe("This credential lacks notification write permission.");
+  }).pipe(Effect.provide(layer)),
+);

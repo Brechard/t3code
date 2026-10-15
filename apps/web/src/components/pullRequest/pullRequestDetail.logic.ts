@@ -414,14 +414,6 @@ export function resolveThreadPanelPullRequestAction(
     : null;
 }
 
-/** Chronological ascending, oldest to newest — reversed for the "newest" reading order. */
-export function orderPullRequestComments<T extends { readonly createdAt: string }>(
-  comments: ReadonlyArray<T>,
-  order: "newest" | "oldest",
-): ReadonlyArray<T> {
-  return order === "newest" ? comments.toReversed() : comments;
-}
-
 /** A review that says something about the change itself, rather than only carrying remarks. */
 export type PullRequestReviewOutcome = "approved" | "changes-requested" | "dismissed";
 
@@ -542,7 +534,7 @@ export function latestPullRequestReviewOutcomes(
 export interface PullRequestTimelineEvent {
   readonly id: string;
   readonly at: string;
-  readonly kind: "opened" | "commit" | "comment" | "review" | "merged" | "closed";
+  readonly kind: "opened" | "commit" | "comment" | "review" | "merged" | "closed" | "activity";
   readonly title: string;
   readonly body: string | null;
   /** Whether `body` is markdown. A commit headline is plain text and must not be parsed as one. */
@@ -572,24 +564,50 @@ export type PullRequestTimelineRow =
  * A verdict is a first-class row too. Whether the change was approved is the question a reader
  * opens the timeline with, and folding the answer into a collapsed "9 comments" section hides it
  * behind a press — the one thing on the page that must be readable without one.
+ *
+ * A threaded discussion — one the host gives a thread, or a comment with replies — is a section
+ * of its own instead, placed at its latest comment and read oldest first, so a reply posted after
+ * later commits still sits with the question it answers.
  */
 export function groupPullRequestTimelineConversations(
   events: ReadonlyArray<PullRequestTimelineEvent>,
+  discussions: ReadonlyArray<{
+    readonly threadId: string | undefined;
+    readonly comments: ReadonlyArray<{ readonly id: string }>;
+  }> = [],
 ): ReadonlyArray<PullRequestTimelineRow> {
-  const rows: PullRequestTimelineRow[] = [];
+  const threadByCommentId = new Map<string, PullRequestTimelineEvent[]>();
+  for (const discussion of discussions) {
+    if (discussion.threadId === undefined && discussion.comments.length < 2) continue;
+    const thread: PullRequestTimelineEvent[] = [];
+    for (const comment of discussion.comments) threadByCommentId.set(comment.id, thread);
+  }
+  const isConversation = (event: PullRequestTimelineEvent) =>
+    (event.kind === "comment" || event.kind === "review") &&
+    pullRequestReviewOutcome(event.reviewState) === null;
   for (const event of events) {
-    if (
-      (event.kind === "comment" || event.kind === "review") &&
-      pullRequestReviewOutcome(event.reviewState) === null
-    ) {
-      const last = rows.at(-1);
-      if (last?.kind === "comments") {
-        rows[rows.length - 1] = { kind: "comments", events: [...last.events, event] };
-      } else {
-        rows.push({ kind: "comments", events: [event] });
+    if (isConversation(event)) threadByCommentId.get(event.id)?.push(event);
+  }
+  for (const thread of new Set(threadByCommentId.values())) {
+    thread.sort((a, b) => instant(a.at) - instant(b.at));
+  }
+  const rows: PullRequestTimelineRow[] = [];
+  let section: PullRequestTimelineEvent[] | null = null;
+  for (const event of events) {
+    const thread = isConversation(event) ? threadByCommentId.get(event.id) : undefined;
+    if (thread !== undefined) {
+      if (thread.at(-1) !== event) continue;
+      rows.push({ kind: "comments", events: thread });
+      section = null;
+    } else if (isConversation(event)) {
+      if (section === null) {
+        section = [];
+        rows.push({ kind: "comments", events: section });
       }
+      section.push(event);
     } else {
       rows.push({ kind: "event", event });
+      section = null;
     }
   }
   return rows;
@@ -617,7 +635,7 @@ export function visibleBody(body: string): string | null {
 export function buildPullRequestTimeline(
   detail: Pick<
     PullRequestDetailView,
-    "createdAt" | "author" | "commits" | "comments" | "mergedAt" | "closedAt"
+    "createdAt" | "author" | "commits" | "comments" | "mergedAt" | "closedAt" | "events"
   >,
 ): ReadonlyArray<PullRequestTimelineEvent> {
   return [
@@ -637,6 +655,22 @@ export function buildPullRequestTimeline(
       reviewState: null,
       reactions: [],
     },
+    ...(detail.events ?? []).map((event) => ({
+      id: event.id,
+      at: event.createdAt,
+      kind: "activity" as const,
+      title: event.body,
+      body: null,
+      markdown: false,
+      url: null,
+      actor: event.actor,
+      commitAuthors: [],
+      additions: null,
+      deletions: null,
+      path: null,
+      reviewState: null,
+      reactions: [],
+    })),
     ...detail.commits.map((commit) => ({
       id: commit.oid,
       at: commit.committedDate,

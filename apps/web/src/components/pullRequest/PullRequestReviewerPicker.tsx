@@ -20,6 +20,7 @@ import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime"
 
 import { toastManager } from "../ui/toast";
 import { PullRequestCandidatePicker } from "./PullRequestCandidatePicker";
+import { usePullRequestDeniedActions } from "./PullRequestReviewContext";
 import { PullRequestActorLabel } from "./pullRequestPresentation";
 import { readableFailure } from "./pullRequestDetail.logic";
 
@@ -45,6 +46,7 @@ export function PullRequestReviewerPicker({
    * hiding: the control disabled with a reason answers the question its absence would raise. */
   allowed: boolean;
 }) {
+  const denial = usePullRequestDeniedActions()["reviewers"];
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [pending, setPending] = useState<string | null>(null);
@@ -99,8 +101,8 @@ export function PullRequestReviewerPicker({
     <PullRequestCandidatePicker
       icon={<UserPlusIcon className="size-3.5" />}
       label="Request a review"
-      allowed={allowed}
-      disabledReason="Asking someone to review needs write access on this repository"
+      allowed={allowed && !denial}
+      disabledReason={denial ?? "Asking someone to review needs write access on this repository"}
       open={open}
       onOpenChange={setOpen}
       query={query}

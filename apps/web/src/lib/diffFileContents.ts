@@ -29,6 +29,7 @@ interface PullRequestDiffFileContentsSource {
   readonly environmentId: EnvironmentId;
   readonly reference: PullRequestRef;
   readonly commit: string | null;
+  readonly iterationRange?: PullRequestDiffFileContentsInput["iterationRange"];
   readonly cacheKey: string;
 }
 
@@ -111,6 +112,7 @@ export function createPullRequestDiffFileContentsLoader<E>(
       input: {
         ...source.reference,
         ...(source.commit === null ? {} : { commit: source.commit }),
+        ...(source.iterationRange === undefined ? {} : { iterationRange: source.iterationRange }),
         changeType,
         oldPath,
         newPath,
