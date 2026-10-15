@@ -1316,7 +1316,7 @@ function renderFeedEntry(
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={intentBadge.accessibilityLabel}
-                accessibilityHint="Explains how this message was sent"
+                accessibilityHint="Explains this message's badge"
                 hitSlop={8}
                 onPress={() => Alert.alert(intentBadge.accessibilityLabel, intentBadge.explanation)}
                 className={cn(

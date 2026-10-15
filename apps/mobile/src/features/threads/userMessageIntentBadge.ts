@@ -14,16 +14,17 @@ export function resolveUserMessageIntentBadge(
     case "queued_turn":
       return {
         label: "queued",
-        accessibilityLabel: "Sent from queue",
+        accessibilityLabel: "Originally queued",
         explanation:
-          "This message was originally queued and has since been sent to the agent. It is no longer waiting in the queue.",
+          "This badge records that the message was queued. It stays visible after the message leaves the queue.",
         tone: "queued",
       };
     case "steer":
       return {
         label: "steer",
-        accessibilityLabel: "Steered the active turn",
-        explanation: "This message was sent to the agent while its turn was still running.",
+        accessibilityLabel: "Message intended to steer the active turn",
+        explanation:
+          "This message was intended to steer the agent while its turn was still running.",
         tone: "steer",
       };
     case "promoted_queued_to_steer":
@@ -31,7 +32,7 @@ export function resolveUserMessageIntentBadge(
         label: "queued → steer",
         accessibilityLabel: "Originally queued, then promoted to steer the active turn",
         explanation:
-          "This message was originally queued, then sent to the agent while its turn was still running. It is no longer waiting in the queue.",
+          "This message was originally queued, then promoted to steer the agent while its turn was still running.",
         tone: "steer",
       };
     case "turn_start":

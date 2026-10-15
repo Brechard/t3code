@@ -2682,7 +2682,7 @@ function UserMessageIntentMarker({
       </TooltipTrigger>
       <TooltipPopup side="top">
         {intent === "queued_turn"
-          ? "This message was originally queued and has since been sent to the agent. It is no longer waiting in the queue."
+          ? "This badge records that the message was queued. It stays visible after the message leaves the queue."
           : intent === "promoted_queued_to_steer"
             ? "Originally queued, then promoted to steer the active turn"
             : "Steered the active turn"}
