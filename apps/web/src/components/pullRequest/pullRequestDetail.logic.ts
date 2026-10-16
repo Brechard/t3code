@@ -332,6 +332,8 @@ export function classifyPullRequestChecks(
 
 export function describePullRequestChecks(checks: ReadonlyArray<PullRequestCheck>): string {
   if (checks.length === 0) return "No checks reported";
+  const total = checks.filter((check) => check.status !== "skipped").length;
+  if (total === 0) return "All checks skipped";
   const failed = checks.filter(
     (check) => check.status === "failure" || check.status === "cancelled",
   ).length;
@@ -339,13 +341,13 @@ export function describePullRequestChecks(checks: ReadonlyArray<PullRequestCheck
   const actionRequired = checks.filter((check) => check.status === "action-required").length;
   const passed = checks.filter((check) => check.status === "success").length;
   const parts: string[] = [];
-  if (pending > 0) parts.push(`${pending} of ${checks.length} pending`);
-  if (actionRequired > 0) parts.push(`${actionRequired} of ${checks.length} awaiting action`);
+  if (pending > 0) parts.push(`${pending} of ${total} pending`);
+  if (actionRequired > 0) parts.push(`${actionRequired} of ${total} awaiting action`);
   if (failed > 0) {
-    parts.push(parts.length > 0 ? `${failed} failed` : `${failed} of ${checks.length} failing`);
+    parts.push(parts.length > 0 ? `${failed} failed` : `${failed} of ${total} failing`);
   }
   if (parts.length === 0) {
-    return passed === checks.length ? "All checks passed" : `${passed} of ${checks.length} passing`;
+    return passed === checks.length ? "All checks passed" : `${passed} of ${total} passing`;
   }
   return parts.join(" · ");
 }

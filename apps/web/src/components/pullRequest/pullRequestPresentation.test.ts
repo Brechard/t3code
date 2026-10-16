@@ -19,6 +19,19 @@ it("does not call a pending check running when it may still be queued", () => {
   expect(summarizePullRequestChecks([check])).toBe("1 of 1 pending");
 });
 
+it.each([
+  [["success", "skipped"], "1 of 1 passing"],
+  [["pending", "skipped"], "1 of 1 pending"],
+  [["failure", "skipped"], "1 of 1 failing"],
+  [["skipped", "skipped"], "All checks skipped"],
+] as const)("excludes skipped checks from the summary for %j", (statuses, expected) => {
+  expect(
+    summarizePullRequestChecks(
+      statuses.map((status) => ({ name: status, status, description: null, url: null })),
+    ),
+  ).toBe(expected);
+});
+
 describe("resolvePullRequestState", () => {
   it.each([
     [

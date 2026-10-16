@@ -97,13 +97,28 @@ describe("mobile overview check status", () => {
       count: "1 pending",
     });
   });
-  it("only says all passed when every check succeeded", () => {
+  it("excludes skipped checks from passing totals", () => {
     expect(pullRequestChecksSummary({ checks: [check("success"), check("success")] }).title).toBe(
       "All checks passed",
     );
-    expect(pullRequestChecksSummary({ checks: [check("success"), check("skipped")] }).title).toBe(
-      "Checks completed",
-    );
+    expect(
+      pullRequestChecksSummary({ checks: [check("success"), check("skipped")] }),
+    ).toMatchObject({
+      label: "1 of 1 passed",
+      title: "All checks passed",
+      count: "1 of 1",
+    });
+    expect(
+      pullRequestChecksSummary({ checks: [check("failure"), check("skipped")] }),
+    ).toMatchObject({
+      title: "1 check failing",
+      count: "0 of 1",
+    });
+    expect(pullRequestChecksSummary({ checks: [check("skipped")] })).toMatchObject({
+      label: "All checks skipped",
+      title: "All checks skipped",
+      count: undefined,
+    });
     expect(pullRequestChecksSummary({ checks: [] }).title).toBe("No checks reported");
   });
 

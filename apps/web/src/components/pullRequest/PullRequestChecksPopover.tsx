@@ -127,6 +127,7 @@ export function PullRequestChecksPopover({
   render?: React.ReactElement;
 }) {
   const presentation = pullRequestChecksStatePresentation(checksState);
+  const checkCount = checks?.filter((check) => check.status !== "skipped").length ?? 0;
   const runningCount = checks?.filter((check) => check.status === "pending").length ?? 0;
   const failedCount =
     checks?.filter((check) => check.status === "failure" || check.status === "cancelled").length ??
@@ -162,7 +163,7 @@ export function PullRequestChecksPopover({
           <>
             {checks !== undefined && runningCount > 0 ? (
               <span className="tabular-nums">
-                {runningCount}/{checks.length}
+                {runningCount}/{checkCount}
               </span>
             ) : failedCount > 0 ? (
               <span className="tabular-nums">{failedCount} failed</span>
