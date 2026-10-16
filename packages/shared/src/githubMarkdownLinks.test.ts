@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { azureDevOpsMarkdownLinks, githubMarkdownLinks } from "./githubMarkdownLinks.ts";
+import { unified } from "unified";
+import remarkParse from "remark-parse";
 
 const url = "https://github.com/team/repo/pull/8";
 describe("githubMarkdownLinks", () => {
@@ -36,18 +38,27 @@ describe("githubMarkdownLinks", () => {
 
 describe("Azure DevOps references", () => {
   const repo = "https://dev.azure.com/acme/project/_git/repo";
+  it("keeps unmatched parentheses in Azure link destinations", () => {
+    const repository = "https://dev.azure.com/acme/project)/_git/repo(";
+    const markdown = azureDevOpsMarkdownLinks("!34", repository);
+    expect(unified().use(remarkParse).parse(markdown).children[0]).toMatchObject({
+      children: [{ type: "link", url: `${repository}/pullrequest/34` }],
+    });
+  });
   it("distinguishes work items, pull requests, and native mentions", () => {
     const identity = "abcdef01-1234-5678-1234-abcdef012345";
     const result = azureDevOpsMarkdownLinks(`See #12, !34 and @<${identity}>.`, repo, {
       [identity]: "A [reviewer]",
     });
-    expect(result).toContain("[#12](https://dev.azure.com/acme/project/_workitems/edit/12)");
-    expect(result).toContain("[!34](https://dev.azure.com/acme/project/_git/repo/pullrequest/34)");
+    expect(result).toContain("[#12](<https://dev.azure.com/acme/project/_workitems/edit/12>)");
+    expect(result).toContain(
+      "[!34](<https://dev.azure.com/acme/project/_git/repo/pullrequest/34>)",
+    );
     expect(result).toContain("@A \\[reviewer\\]");
     expect(result).not.toContain("@<");
     const commit = "0123456789abcdef0123456789abcdef01234567";
     expect(azureDevOpsMarkdownLinks(`Fixed in ${commit}`, repo)).toBe(
-      `Fixed in [0123456](${repo}/commit/${commit})`,
+      `Fixed in [0123456](<${repo}/commit/${commit}>)`,
     );
   });
   it("leaves code, authored links, escaped references and HTML code unchanged", () => {

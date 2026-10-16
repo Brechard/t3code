@@ -4,7 +4,6 @@ import {
 } from "@t3tools/shared/threadPullRequests";
 import {
   CommandId,
-  PullRequestOperationError,
   pullRequestHostOf,
   type OrchestrationProjectShell,
   type OrchestrationV2ThreadShell,
@@ -316,7 +315,7 @@ const make = Effect.gen(function* () {
           failure: null,
         })),
         Effect.catch((error) =>
-          Effect.succeed({ input, target: null, project: undefined, failure: error.message }),
+          Effect.succeed({ input, target: null, project: undefined, failure: error }),
         ),
       ),
     );
@@ -343,11 +342,7 @@ const make = Effect.gen(function* () {
     input: Omit<PullRequestTargetInput, "threadId">,
   ) {
     const [entry] = yield* locateAll([input]);
-    if (entry?.target === null)
-      return yield* new PullRequestOperationError({
-        operation: "hostDetails",
-        detail: entry.failure ?? "Could not resolve the pull request.",
-      });
+    if (entry?.target === null) return yield* entry.failure;
     if (!entry || !entry.project)
       return yield* new PullRequestProjectNotFoundError({
         repository: entry?.target?.repository ?? input.repository ?? "",
@@ -450,7 +445,7 @@ const make = Effect.gen(function* () {
                   number: entry.input.number ?? 0,
                   url: entry.input.url ?? "",
                   outcome: "failed" as const,
-                  detail: entry.failure,
+                  detail: entry.failure.message,
                 };
               }
               const identity = {
@@ -492,7 +487,7 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const [entry] = yield* locateAll([input]);
         if (entry !== undefined && entry.target === null) {
-          return yield* new PullRequestGuideFailedError({ detail: entry.failure ?? "" });
+          return yield* entry.failure;
         }
         if (entry === undefined || entry.target === null || entry.project === undefined) {
           return yield* new PullRequestProjectNotFoundError({

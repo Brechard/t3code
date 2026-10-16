@@ -179,7 +179,7 @@ export function azureDevOpsMarkdownLinks(
           : `${project}/_workitems/edit/${reference}`;
     markdown =
       markdown.slice(0, match.index) +
-      `[${label}](${target})` +
+      `[${label}](<${target}>)` +
       markdown.slice(match.index + original.length);
   }
   return markdown;

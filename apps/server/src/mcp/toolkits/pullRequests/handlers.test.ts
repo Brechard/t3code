@@ -761,6 +761,29 @@ it("keeps failure diagnostics as the cause rather than exposing them in the tool
   expect(failure.cause).toBe(cause);
 });
 
+it.effect("preserves typed resolution failures for host reads and actions", () =>
+  Effect.gen(function* () {
+    const harness = yield* makeHarness();
+    const input = { url: "https://example.com/private?token=secret" };
+    const readFailure = yield* harness
+      .call("read_pull_request_host_details", input)
+      .pipe(Effect.flip);
+    const actionFailure = yield* harness
+      .call("run_pull_request_host_action", {
+        ...input,
+        action: { type: "vote", vote: "reset" },
+      })
+      .pipe(Effect.flip);
+    const guideFailure = yield* harness.call("read_pull_request_guide", input).pipe(Effect.flip);
+    for (const failure of [readFailure, actionFailure, guideFailure]) {
+      expect(failure).toMatchObject({ _tag: "PullRequestUrlInvalidError" });
+      expect(failure.message).not.toContain(input.url);
+      expect(failure).not.toHaveProperty("operation");
+    }
+    expect(yield* Ref.get(harness.guideRequests)).toEqual([]);
+  }),
+);
+
 it.effect(
   "routes native PR reads and writes through the matching project and requires its capability",
   () =>

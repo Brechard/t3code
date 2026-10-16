@@ -493,9 +493,8 @@ export const make = Effect.gen(function* () {
         return yield* operation(input).pipe(
           Effect.mapError((error) => {
             if (
-              error.reason === "unauthenticated" ||
-              ((isNativeRequestError(error.cause) || isReadError(error.cause)) &&
-                error.cause.reason === "permission-denied")
+              (isNativeRequestError(error.cause) || isReadError(error.cause)) &&
+              error.cause.reason === "permission-denied"
             ) {
               entry.denied[name] =
                 "Your token does not allow this action. Update its access and refresh the PR.";

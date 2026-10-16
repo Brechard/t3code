@@ -7827,6 +7827,46 @@ it.effect(
     }),
 );
 
+it.effect("pauses host detail reads after a rate limit while allowing host actions", () =>
+  Effect.gen(function* () {
+    let reads = 0;
+    let actions = 0;
+    const kind = SourceControlProviderKind.make("github");
+    const service = yield* makeService({
+      projects: [project({ id: "p1", title: "web", workspaceRoot: "/w", repository: "acme/web" })],
+      providers: [
+        fakeProvider(kind, {
+          capabilities: { ...fakeProvider(kind).capabilities, hostActions: true },
+          getHostDetails: () =>
+            Effect.suspend(() => {
+              reads++;
+              return Effect.fail(
+                new PullRequestProviderError({
+                  provider: kind,
+                  operation: "getHostDetails",
+                  reason: "rate-limited",
+                  detail: "API rate limit exceeded.",
+                }),
+              );
+            }),
+          runHostAction: () =>
+            Effect.sync(() => {
+              actions++;
+              return { message: "Updated.", url: null };
+            }),
+        }),
+      ],
+    });
+    const ref = { projectId: "p1" as ProjectId, repository: "acme/web", number: 1 };
+    yield* service.hostDetails(ref).pipe(Effect.flip);
+    const paused = yield* service.hostDetails({ ...ref, number: 2 }).pipe(Effect.flip);
+    expect(paused.message).toContain("paused");
+    expect(reads).toBe(1);
+    yield* service.runHostAction({ ...ref, action: { type: "follow", enabled: true } });
+    expect(actions).toBe(1);
+  }),
+);
+
 it.effect("shares host detail reads and refreshes only the affected PR or project", () =>
   Effect.gen(function* () {
     let reads = 0;

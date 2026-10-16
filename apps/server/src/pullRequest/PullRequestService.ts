@@ -577,7 +577,7 @@ function withRateLimitBackoff(
       : { runHostAction: interactive("runHostAction", api.runHostAction) }),
     ...(api.getHostDetails === undefined
       ? {}
-      : { getHostDetails: interactive("getHostDetails", api.getHostDetails) }),
+      : { getHostDetails: wrap("getHostDetails", api.getHostDetails) }),
     ...(api.deleteComment === undefined
       ? {}
       : { deleteComment: interactive("deleteComment", api.deleteComment) }),

@@ -701,6 +701,49 @@ it.effect(
     }),
 );
 
+it.effect("does not remember an authentication failure as a permission denial", () =>
+  Effect.gen(function* () {
+    let signedIn = false;
+    let attempts = 0;
+    const authentication = new AzureDevOpsCli.AzureDevOpsCliAuthenticationError({
+      cwd: "/w",
+      command: "az",
+      operation: "execute",
+      argumentCount: 3,
+      cause: "private credential diagnostics",
+    });
+    const provider = yield* make.pipe(
+      Effect.provide(
+        Layer.mock(AzureDevOpsPullRequestCli.AzureDevOpsPullRequestCli)({
+          getPullRequest: () => Effect.succeed(PULL_REQUEST),
+          readAccess: () => Effect.succeed({ credentialKey: "same-account", permissions: {} }),
+          replyToThread: () =>
+            Effect.suspend(() => {
+              attempts++;
+              return signedIn ? Effect.void : Effect.fail(authentication);
+            }),
+        }),
+      ),
+    );
+    const input = {
+      cwd: "/w",
+      repository: "web",
+      host: "dev.azure.com",
+      number: 7,
+      threadId: "2",
+      body: "Test",
+    };
+    const failure = yield* provider.replyToThread(input).pipe(Effect.flip);
+    expect(failure.reason).toBe("unauthenticated");
+    expect(failure.cause).toBe(authentication);
+    expect(failure.message).not.toContain("private credential diagnostics");
+    expect((yield* provider.getViewerPermissions(input)).deniedActions).toEqual({});
+    signedIn = true;
+    yield* provider.replyToThread(input);
+    expect(attempts).toBe(2);
+  }),
+);
+
 it.effect("reads permissions once for the service's check and the write behind it", () =>
   Effect.gen(function* () {
     let reads = 0;
