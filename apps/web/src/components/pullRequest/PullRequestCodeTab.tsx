@@ -1168,8 +1168,18 @@ function PullRequestCodeTab({
     setSelectedLines(null);
   };
   const toolbar = (
-    <div className="@container flex h-10 min-h-10 shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-background px-4 text-xs text-muted-foreground">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
+    <div
+      className={cn(
+        "@container flex min-h-10 shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-background px-4 text-xs text-muted-foreground",
+        latestUpdateId !== undefined ? "flex-wrap py-1.5" : "h-10",
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-center gap-3",
+          latestUpdateId !== undefined ? "flex-wrap" : "min-w-0 flex-1",
+        )}
+      >
         {/* A host that reports no commits has nothing to scope by, and a dropdown whose only
             entry is the scope already showing is a control that does nothing. */}
         {orderedCommits.length > 0 ? (
@@ -1367,7 +1377,12 @@ function PullRequestCodeTab({
           ) : null}
         </PullRequestMetaLine>
       </div>
-      <div className="flex shrink-0 items-center gap-1">
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-1",
+          latestUpdateId !== undefined && "ml-auto",
+        )}
+      >
         <DropdownMenu>
           <Tooltip>
             <TooltipTrigger
