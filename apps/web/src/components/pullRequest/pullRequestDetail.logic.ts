@@ -350,7 +350,7 @@ export function describePullRequestChecks(checks: ReadonlyArray<PullRequestCheck
     parts.push(parts.length > 0 ? `${failed} failed` : `${failed} of ${total} failing`);
   }
   if (parts.length === 0) {
-    return passed === checks.length ? "All checks passed" : `${passed} of ${total} passing`;
+    return passed === total ? "All checks passed" : `${passed} of ${total} passing`;
   }
   return parts.join(" · ");
 }

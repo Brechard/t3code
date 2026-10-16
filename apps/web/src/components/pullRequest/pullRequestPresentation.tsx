@@ -532,5 +532,5 @@ export function summarizePullRequestChecks(checks: ReadonlyArray<PullRequestChec
     return `${otherActionRequired} ${otherActionRequired === 1 ? "check" : "checks"} awaiting action`;
   }
   if (pending > 0) return `${pending} of ${total} pending`;
-  return passed === checks.length ? "All checks passed" : `${passed} of ${total} passing`;
+  return passed === total ? "All checks passed" : `${passed} of ${total} passing`;
 }

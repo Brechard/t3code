@@ -20,7 +20,8 @@ it("does not call a pending check running when it may still be queued", () => {
 });
 
 it.each([
-  [["success", "skipped"], "1 of 1 passing"],
+  [["success", "skipped"], "All checks passed"],
+  [["success", "neutral", "skipped"], "1 of 2 passing"],
   [["pending", "skipped"], "1 of 1 pending"],
   [["failure", "skipped"], "1 of 1 failing"],
   [["skipped", "skipped"], "All checks skipped"],

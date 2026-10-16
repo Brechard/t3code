@@ -1856,7 +1856,12 @@ describe("the compact row's single action slot", () => {
     expect(describePullRequestChecks([check("success"), check("success")])).toBe(
       "All checks passed",
     );
-    expect(describePullRequestChecks([check("success"), check("skipped")])).toBe("1 of 1 passing");
+    expect(describePullRequestChecks([check("success"), check("skipped")])).toBe(
+      "All checks passed",
+    );
+    expect(describePullRequestChecks([check("success"), check("neutral"), check("skipped")])).toBe(
+      "1 of 2 passing",
+    );
     expect(describePullRequestChecks([check("pending"), check("skipped")])).toBe("1 of 1 pending");
     expect(describePullRequestChecks([check("failure"), check("skipped")])).toBe("1 of 1 failing");
     expect(describePullRequestChecks([check("action-required"), check("skipped")])).toBe(
