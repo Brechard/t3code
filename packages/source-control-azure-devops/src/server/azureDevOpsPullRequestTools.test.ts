@@ -30,6 +30,7 @@ const fixture = (
   overrides = {},
   branchOperation = { cherryPickId: 1, status: "completed" },
   policySettings?: Record<string, boolean>,
+  statuses: ReadonlyArray<Record<string, unknown>> = [],
 ) => {
   const commands: ReadonlyArray<string>[] = [];
   const writes: Parameters<Parameters<typeof makeAzureDevOpsPullRequestTools>[0]["write"]>[0][] =
@@ -55,34 +56,35 @@ const fixture = (
           stdout: JSON.stringify(
             input.args.includes("Subscriptions") ||
               input.args.includes("refsFavorites") ||
-              input.args.includes("pullRequestStatuses") ||
               input.args.includes("pullRequestAttachments")
               ? { value: [] }
-              : input.args.includes("pullRequestLabels")
-                ? { value: pr.labels }
-                : input.args.includes("pullRequestReviewers")
-                  ? { value: pr.reviewers }
-                  : input.args.includes("show")
-                    ? { ...pr, ...overrides }
-                    : input.args.includes("policy")
-                      ? [
-                          {
-                            evaluationId: "evaluation",
-                            status: "approved",
-                            configuration: {
-                              id: 7,
-                              isBlocking: policySettings !== undefined,
-                              type: {
-                                displayName: "Validation",
-                                ...(policySettings
-                                  ? { id: "fa4e907d-c16b-4a4c-9dfa-4916e5d171ab" }
-                                  : {}),
+              : input.args.includes("pullRequestStatuses")
+                ? { value: statuses }
+                : input.args.includes("pullRequestLabels")
+                  ? { value: pr.labels }
+                  : input.args.includes("pullRequestReviewers")
+                    ? { value: pr.reviewers }
+                    : input.args.includes("show")
+                      ? { ...pr, ...overrides }
+                      : input.args.includes("policy")
+                        ? [
+                            {
+                              evaluationId: "evaluation",
+                              status: "approved",
+                              configuration: {
+                                id: 7,
+                                isBlocking: policySettings !== undefined,
+                                type: {
+                                  displayName: "Validation",
+                                  ...(policySettings
+                                    ? { id: "fa4e907d-c16b-4a4c-9dfa-4916e5d171ab" }
+                                    : {}),
+                                },
+                                ...(policySettings ? { settings: policySettings } : {}),
                               },
-                              ...(policySettings ? { settings: policySettings } : {}),
                             },
-                          },
-                        ]
-                      : [],
+                          ]
+                        : [],
           ),
         };
       }),
@@ -99,6 +101,48 @@ const fixture = (
   });
   return { ...tools, commands, writes };
 };
+it.effect("reads queued checks without a state and preserves other check results", () =>
+  Effect.gen(function* () {
+    const states = [
+      undefined,
+      null,
+      "notSet",
+      "pending",
+      "succeeded",
+      "failed",
+      "error",
+      "notApplicable",
+    ];
+    const tools = fixture(
+      {},
+      undefined,
+      undefined,
+      states.map((state, index) => ({
+        context: { name: `check-${index}`, genre: index === 0 ? undefined : null },
+        state,
+      })),
+    );
+    const result = yield* tools.checks(target);
+    expect(result.checks).toEqual([
+      expect.objectContaining({ name: "Validation", status: "success" }),
+      ...[
+        "pending",
+        "pending",
+        "pending",
+        "pending",
+        "success",
+        "failure",
+        "failure",
+        "skipped",
+      ].map((status, index) => ({
+        name: `check-${index}`,
+        description: null,
+        url: null,
+        status,
+      })),
+    ]);
+  }),
+);
 it.effect("retains all native completion options and completes the source commit it read", () =>
   Effect.gen(function* () {
     for (const strategy of ["noFastForward", "squash", "rebase", "rebaseMerge"] as const) {

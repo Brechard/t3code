@@ -92,10 +92,13 @@ const PullRequest = Schema.Struct({
   lastMergeCommit: Schema.optional(Schema.NullOr(Schema.Struct({ commitId: Schema.String }))),
 });
 const Status = Schema.Struct({
-  state: Schema.String,
+  state: Schema.optional(Schema.NullOr(Schema.String)),
   description: Schema.optional(Schema.NullOr(Schema.String)),
   targetUrl: Schema.optional(Schema.NullOr(Schema.String)),
-  context: Schema.Struct({ name: Schema.String, genre: Schema.optional(Schema.String) }),
+  context: Schema.Struct({
+    name: Schema.String,
+    genre: Schema.optional(Schema.NullOr(Schema.String)),
+  }),
 });
 const Policy = Schema.Struct({
   evaluationId: Schema.String,
