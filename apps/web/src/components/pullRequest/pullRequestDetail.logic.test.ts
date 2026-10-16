@@ -325,6 +325,9 @@ describe("pull request primary control", () => {
       "resolve",
     );
     expect(resolvePullRequestPrimaryControl({ ...open, isDraft: true })).toBe("ready");
+    expect(
+      resolvePullRequestPrimaryControl({ ...open, isDraft: true, mergeability: "conflicting" }),
+    ).toBe("ready");
   });
 });
 

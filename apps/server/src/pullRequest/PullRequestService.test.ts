@@ -2652,6 +2652,45 @@ it.effect("routes a hosted reference to another repository through a project on 
   }),
 );
 
+it.effect.each(["web", "org/project/_git/web"])(
+  "refreshes Azure draft state after actions through the %s reference",
+  (repository) =>
+    Effect.gen(function* () {
+      let isDraft = true;
+      const kind = SourceControlProviderKind.make("azure-devops");
+      const service = yield* makeService({
+        projects: [
+          project({
+            id: "azure",
+            title: "web",
+            workspaceRoot: "/azure",
+            provider: kind,
+            host: "dev.azure.com",
+            repository: "org/project/_git/web",
+          }),
+        ],
+        providers: [
+          fakeProvider(kind, {
+            getChangeRequest: () => Effect.succeed({ ...hostedChangeRequest("body"), isDraft }),
+            runAction: ({ action }) =>
+              Effect.sync(() => {
+                isDraft = action === "draft";
+              }),
+          }),
+        ],
+      });
+      const ref = { projectId: "azure" as ProjectId, host: "dev.azure.com", repository, number: 1 };
+      expect((yield* service.detail(ref)).isDraft).toBe(true);
+      expect((yield* service.summary(ref)).isDraft).toBe(true);
+      yield* service.runAction({ ...ref, action: "ready" });
+      expect((yield* service.detail(ref)).isDraft).toBe(false);
+      expect((yield* service.summary(ref)).isDraft).toBe(false);
+      yield* service.runAction({ ...ref, action: "draft" });
+      expect((yield* service.detail(ref)).isDraft).toBe(true);
+      expect((yield* service.summary(ref)).isDraft).toBe(true);
+    }),
+);
+
 it.effect("routes Azure reads and writes through the requested organization's checkout", () =>
   Effect.gen(function* () {
     const seen: string[] = [];

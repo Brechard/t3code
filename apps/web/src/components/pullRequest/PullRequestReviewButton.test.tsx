@@ -226,7 +226,6 @@ it("reports Azure refusal and unlocks the vote for retry", async () => {
 
 it.each([
   { allowed: false, draft: false, denial: undefined, reason: "This connection does not allow" },
-  { allowed: true, draft: true, denial: undefined, reason: "Mark this pull request ready" },
   { allowed: true, draft: false, denial: "Branch policy forbids voting.", reason: "Branch policy" },
 ])("refuses denied Azure votes with an explanation: $reason", async (scenario) => {
   state.allowed = scenario.allowed;
@@ -287,6 +286,30 @@ const githubDetail: PullRequestDetailView = {
   provider: SourceControlProviderKind.make("github"),
   capabilities: { ...detail.capabilities, hostActions: false },
 };
+
+it("removes Azure voting in draft mode and restores it after publication", async () => {
+  act(() => {
+    renderer = create(renderButton({ ...detail, isDraft: true }));
+  });
+  expect(renderer.toJSON()).toBeNull();
+  act(() => renderer.update(renderButton()));
+  await act(async () => approve().props.onClick());
+  expect(state.run).toHaveBeenCalledExactlyOnceWith({
+    environmentId,
+    input: { ...reference, action: { type: "vote", vote: "approve" } },
+  });
+  act(() => renderer.update(renderButton({ ...detail, isDraft: true })));
+  expect(renderer.toJSON()).toBeNull();
+});
+
+it("continues to offer reviews on GitHub drafts", async () => {
+  act(() => {
+    renderer = create(renderButton({ ...githubDetail, isDraft: true }));
+  });
+  await act(async () => approve().props.onClick());
+  expect(onReview).toHaveBeenCalledExactlyOnceWith("approve");
+  expect(state.run).not.toHaveBeenCalled();
+});
 
 it("uses the requested GitHub verdict on the form's first mount", async () => {
   function Form() {

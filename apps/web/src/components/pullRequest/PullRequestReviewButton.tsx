@@ -55,6 +55,7 @@ export function PullRequestReviewButton({
   const [busy, setBusy] = useState(false);
   if (
     detail.state !== "open" ||
+    (azure && detail.isDraft) ||
     (!azure &&
       (detail.provider !== "github" || !detail.capabilities.review.verdicts.includes("approve")))
   )
@@ -62,11 +63,7 @@ export function PullRequestReviewButton({
 
   const reason =
     detail.viewerPermissions.deniedActions?.vote ??
-    (!allowed
-      ? "This connection does not allow pull request reviews."
-      : azure && detail.isDraft
-        ? "Mark this pull request ready for review before voting."
-        : undefined);
+    (!allowed ? "This connection does not allow pull request reviews." : undefined);
   const disabled = actionPending || busy;
   const verdictReason = (verdict: PullRequestReviewVerdict) =>
     reason ??

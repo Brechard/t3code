@@ -219,6 +219,40 @@ describe("getChangeRequestSummary", () => {
 });
 
 describe("getChangeRequest", () => {
+  it.effect("keeps draft discussions available and enables voting only after publication", () =>
+    Effect.gen(function* () {
+      let isDraft = true;
+      const provider = yield* make.pipe(
+        Effect.provide(
+          Layer.mock(AzureDevOpsPullRequestCli.AzureDevOpsPullRequestCli)({
+            readAccess: () => Effect.succeed({ credentialKey: "test-pat", permissions: {} }),
+            getPullRequest: () => Effect.succeed({ ...PULL_REQUEST, isDraft }),
+            listChecks: () => Effect.succeed({ checks: [], allowedMergeStrategies: [] }),
+            listLabelCandidates: () => Effect.succeed({ candidates: [], truncated: false }),
+            listIterations: () => Effect.succeed([]),
+          }),
+        ),
+      );
+      const ref = { cwd: "/w", repository: "web", host: "dev.azure.com", number: 7 };
+      const draft = yield* provider.getChangeRequest(ref);
+      expect(draft.isDraft).toBe(true);
+      expect(draft.viewerPermissions.verdicts).toEqual(["comment"]);
+      expect(draft.viewerPermissions.comment).toBe(true);
+      expect(draft.viewerPermissions.actions).toContain("ready");
+      isDraft = false;
+      const published = yield* provider.getChangeRequest(ref);
+      expect(published.isDraft).toBe(false);
+      expect(published.viewerPermissions.verdicts).toEqual([
+        "comment",
+        "approve",
+        "request-changes",
+      ]);
+      isDraft = true;
+      expect((yield* provider.getChangeRequest(ref)).viewerPermissions.verdicts).toEqual([
+        "comment",
+      ]);
+    }),
+  );
   it.effect(
     "shares the iteration read and verifies it belongs to the PR head before selecting checks",
     () =>

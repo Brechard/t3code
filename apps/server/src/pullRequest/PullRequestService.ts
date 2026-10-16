@@ -3392,7 +3392,7 @@ export const make = Effect.gen(function* () {
         ),
       ),
     );
-    bumpRefEpoch({ ...ref, repository });
+    bumpRefEpoch(ref);
     listingsEpoch = ++epochCounter;
     yield* SubscriptionRef.set(pullRequestRefreshes, listingsEpoch);
     if (input.action === "merge") {

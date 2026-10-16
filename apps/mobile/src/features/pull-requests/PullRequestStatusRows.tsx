@@ -66,17 +66,17 @@ export function PullRequestStatusMenu(props: RowProps) {
   return (
     <Menu
       title="Pull request status"
-      actions={actions.map((id) => ({
-        id,
-        title: props.pr.viewerPermissions.deniedActions?.[id]
-          ? `${PR_ACTION_LABELS[id]} — ${props.pr.viewerPermissions.deniedActions[id]}`
-          : PR_ACTION_LABELS[id],
-        image: PR_ACTION_ICONS[id],
-        attributes: {
-          destructive: id === "close",
-          disabled: Boolean(props.pr.viewerPermissions.deniedActions?.[id]),
-        },
-      }))}
+      actions={actions.map((id) => {
+        const label =
+          id === "ready" && props.pr.provider === "azure-devops" ? "Publish" : PR_ACTION_LABELS[id];
+        const reason = props.pr.viewerPermissions.deniedActions?.[id];
+        return {
+          id,
+          title: reason ? `${label} — ${reason}` : label,
+          image: PR_ACTION_ICONS[id],
+          attributes: { destructive: id === "close", disabled: Boolean(reason) },
+        };
+      })}
       onPressAction={({ nativeEvent }) => {
         const selected = actions.find((id) => id === nativeEvent.event);
         if (!selected) return;

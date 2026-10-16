@@ -1459,6 +1459,14 @@ export function PullRequestDetailPanel({
   // The merge state remains in one stable slot from waiting through completion. Conflicts take
   // the slot while they need a person; the armed badge remains beside them so that state is not lost.
   const denied = detail?.viewerPermissions.deniedActions ?? {};
+  const readyLabel = detail?.provider === "azure-devops" ? "Publish" : "Ready for review";
+  const readyReason =
+    denied.ready ??
+    (!canWriteSourceControl
+      ? "This connection does not allow pull request changes."
+      : !can("ready")
+        ? "You do not have permission to publish this pull request."
+        : undefined);
   const primaryAction = detail
     ? resolvePullRequestPrimaryControl({
         state: detail.state,
@@ -1468,7 +1476,10 @@ export function PullRequestDetailPanel({
         autoMergeEnabled: detail.autoMergeEnabled,
         hasMergeMethod: allowedMergeMethods.length > 0,
         canMerge: canMergeSinglePullRequest && can("merge"),
-        canMarkReady: can("ready"),
+        canMarkReady:
+          detail.provider === "azure-devops"
+            ? detail.capabilities.actions.includes("ready")
+            : can("ready"),
         canEnableAutoMerge: canMergeSinglePullRequest && can("enable-auto-merge"),
       })
     : null;
@@ -1879,6 +1890,12 @@ export function PullRequestDetailPanel({
                   </TooltipPopup>
                 </Tooltip>
               ) : null}
+              {detail.state === "open" && detail.isDraft ? (
+                <Badge size="control" variant="outline">
+                  <PullRequestGlyph.draft aria-hidden className="size-3.5" />
+                  Draft
+                </Badge>
+              ) : null}
               <PullRequestReviewButton
                 key={`${environmentId}:${pullRequestKey}`}
                 environmentId={environmentId}
@@ -1895,23 +1912,27 @@ export function PullRequestDetailPanel({
                   <TooltipTrigger
                     render={
                       <span
-                        tabIndex={denied["ready"] ? 0 : undefined}
+                        tabIndex={readyReason ? 0 : undefined}
                         className="inline-flex shrink-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                       >
                         <Button
                           size="xs"
                           variant="default"
-                          disabled={actionPending || Boolean(denied["ready"])}
-                          onClick={() => void perform("ready")}
-                          aria-label="Ready for review"
+                          disabled={actionPending || Boolean(readyReason)}
+                          onClick={() => {
+                            if (!readyReason) void perform("ready");
+                          }}
+                          aria-label={pendingAction === "ready" ? "Publishing…" : readyLabel}
                         >
                           <PullRequestGlyph.pullRequest aria-hidden className="size-3.5" />
-                          <span className="@max-[30rem]/pr-header:hidden">Ready for review</span>
+                          <span className="@max-[30rem]/pr-header:hidden">
+                            {pendingAction === "ready" ? "Publishing…" : readyLabel}
+                          </span>
                         </Button>
                       </span>
                     }
                   />
-                  <TooltipPopup side="top">{denied.ready ?? "Ready for review"}</TooltipPopup>
+                  <TooltipPopup side="top">{readyReason ?? readyLabel}</TooltipPopup>
                 </Tooltip>
               ) : primaryAction === "enable-auto-merge" ? (
                 <Tooltip>
@@ -2175,7 +2196,7 @@ export function PullRequestDetailPanel({
                               ) : (
                                 <PullRequestGlyph.draft className="size-3.5" />
                               )}
-                              {detail.isDraft ? "Ready for review" : "Convert to draft"}
+                              {detail.isDraft ? readyLabel : "Convert to draft"}
                             </PullRequestPermissionMenuItem>
                           ) : null}
                           {showsMergeNow ? (

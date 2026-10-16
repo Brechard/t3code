@@ -148,7 +148,7 @@ function Actions({ pr, params, children }: ActionsProps) {
   const voteEntries = AzureDevOpsReviewVote.literals.map((vote) => ({
     id: `vote:${vote}`,
     title: azureVoteLabels[vote],
-    reason: denied.vote,
+    reason: denied.vote ?? (pr.isDraft ? "Publish this draft before voting." : undefined),
     disabled: disabled || pr.isDraft || pr.state !== "open",
     onPress: () => void execute({ type: "vote", vote }),
   }));

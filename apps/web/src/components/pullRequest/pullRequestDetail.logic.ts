@@ -91,8 +91,9 @@ export function resolvePullRequestPrimaryControl(input: {
 }): PullRequestPrimaryControl {
   if (input.state === "merged") return "merged";
   if (input.state === "closed") return "closed";
+  if (input.isDraft && input.canMarkReady) return "ready";
   if (input.mergeability === "conflicting") return "resolve";
-  if (input.isDraft) return input.canMarkReady ? "ready" : null;
+  if (input.isDraft) return null;
   if (input.autoMergeEnabled) return "auto-merge-armed";
   if (!input.hasMergeMethod) return null;
   if (

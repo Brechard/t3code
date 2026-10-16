@@ -629,7 +629,11 @@ export const make = Effect.gen(function* () {
             squash: allowed?.includes("squash") ?? true,
             rebase: false,
           },
-          viewerPermissions: { ...AZURE_DEVOPS_VIEWER_PERMISSIONS, deniedActions },
+          viewerPermissions: {
+            ...AZURE_DEVOPS_VIEWER_PERMISSIONS,
+            verdicts: pullRequest.isDraft ? ["comment"] : AZURE_DEVOPS_VIEWER_PERMISSIONS.verdicts,
+            deniedActions,
+          },
           autoMergeEnabled: pullRequest.autoMergeEnabled,
           ...(pullRequest.autoMergeMethod === undefined
             ? {}
