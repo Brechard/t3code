@@ -22,7 +22,12 @@ vi.mock("../ui/menu", () => ({
 }));
 vi.mock("../ui/tooltip", () => ({
   Tooltip: ({ children }: { children: ReactNode }) => children,
-  TooltipTrigger: ({ children }: { children: ReactNode }) => children,
+  TooltipTrigger: ({ render, children }: { render?: ReactNode; children?: ReactNode }) => (
+    <>
+      {render}
+      {children}
+    </>
+  ),
   TooltipPopup: () => null,
 }));
 
