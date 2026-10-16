@@ -298,7 +298,6 @@ function PullRequestOverview(props: {
 
 function usePullRequestToolbarHeight(bottomInset: number) {
   const { buttonSize } = useAndroidControlSizing();
-  // Reserve the controls, native toolbar padding, and outer gaps before onLayout measures them.
   return useState(() => (Platform.OS === "android" ? bottomInset + buttonSize + 40 : 0));
 }
 
@@ -312,7 +311,6 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
   usePullRequestEnvironmentFallback(params);
   const connected = usePullRequestConnected(params.environmentId);
   const [section, setSection] = useState<"overview" | "activity" | "guide">("overview");
-  // Keep each tab's native list and measured rows alive when it is hidden.
   const requestedSection = useRef(section);
   const [listAnimationsReady, setListAnimationsReady] = useState(false);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
@@ -330,7 +328,6 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
     if (next === section) return;
     scrollOffsets.current[section] = currentScrollOffset.current;
     const headerEnd = Math.max(-insets.top, bodyY.current - insets.top);
-    // The shared header stays in place. Once collapsed, retain each tab's own reading position.
     const offset = pullRequestTabOffset(
       currentScrollOffset.current,
       scrollOffsets.current[next],
@@ -921,7 +918,6 @@ export function PullRequestFileRouteScreen({
   const nativeView = useRef<NativeReviewDiffViewHandle>(null);
   const jumpStarted = useRef(false);
   const lastSelection = useRef({ path: route.params.path, id: route.params.fileSelectionId });
-  // Each sheet selection jumps in this reader, including reselecting its original file.
   useEffect(() => {
     if (
       lastSelection.current.path === route.params.path &&
@@ -965,7 +961,6 @@ export function PullRequestFileRouteScreen({
     canHighlight: true,
   });
   const [NativeDiffView] = useState(() => resolveNativeReviewDiffView());
-  // A file picked from a later page must be fetched before we can jump to its header.
   useEffect(() => {
     if (!targetFile) loadMore();
   }, [targetFile, loadMore]);
