@@ -56,6 +56,8 @@ vi.mock("~/state/pullRequests", async (importOriginal) => ({
 
     reviewGuide: () => "review-guide",
     generateReviewGuide: { permissionAtom: () => "generate-review-guide" },
+    submitReview: { permissionAtom: () => "submit-review" },
+    runHostAction: { permissionAtom: () => "run-host-action" },
   },
   usePullRequestTurnRefresh: () => 0,
   useSharedPullRequestSummary: () => null,

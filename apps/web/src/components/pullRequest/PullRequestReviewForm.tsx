@@ -51,6 +51,7 @@ export function PullRequestReviewForm({
   pending,
   onPendingChange,
   onSubmitted,
+  verdictRequest,
 }: {
   environmentId: EnvironmentId;
   reference: PullRequestRef;
@@ -60,8 +61,16 @@ export function PullRequestReviewForm({
   pending: boolean;
   onPendingChange: (pending: boolean) => void;
   onSubmitted: () => void;
+  verdictRequest?: { verdict?: PullRequestReviewVerdict } | null;
 }) {
-  const [requestedVerdict, setRequestedVerdict] = useState<PullRequestReviewVerdict>("comment");
+  const [requestedVerdict, setRequestedVerdict] = useState<PullRequestReviewVerdict>(
+    verdictRequest?.verdict ?? "comment",
+  );
+  const [answeredVerdictRequest, setAnsweredVerdictRequest] = useState(verdictRequest);
+  if (verdictRequest !== answeredVerdictRequest) {
+    setAnsweredVerdictRequest(verdictRequest);
+    if (verdictRequest?.verdict) setRequestedVerdict(verdictRequest.verdict);
+  }
   const denied = usePullRequestDeniedActions();
   const comments = usePendingReviewComments(reference);
   const reviewKey = pullRequestReviewKey(reference);

@@ -15,7 +15,7 @@ import type {
   PullRequestRef,
   PullRequestReviewerRequestInput,
 } from "@t3tools/contracts";
-import { AzureDevOpsReviewVote, AzureDevOpsMergeStrategy } from "@t3tools/contracts";
+import { AzureDevOpsMergeStrategy } from "@t3tools/contracts";
 import {
   azureActionSections,
   azureBranchActions,
@@ -24,7 +24,6 @@ import {
   azureCompletionToggles,
   azureMergeStrategyLabels,
   azureReviewerStatus,
-  azureVoteLabels,
   emptyAzureCompletionDraft,
   parseAzureWorkItemIds,
   splitAzureList,
@@ -136,7 +135,6 @@ function AzureActions({
     if (openSection.current === null) toastManager.add({ type: "info", title: value.message });
   };
   const execute = (action: PullRequestHostAction) => operate(() => hostAction(action));
-  const active = detail.state === "open";
   const disabled = busy || !allowed;
   const details = query.data ?? undefined;
   const denied = { ...detail.viewerPermissions.deniedActions, ...details?.deniedActions };
@@ -177,21 +175,6 @@ function AzureActions({
         <MenuSub onOpenChange={setMenuOpen}>
           <MenuSubTrigger>Azure DevOps</MenuSubTrigger>
           <MenuSubPopup>
-            <MenuSub>
-              <MenuSubTrigger>Your review</MenuSubTrigger>
-              <MenuSubPopup>
-                {AzureDevOpsReviewVote.literals.map((vote) => (
-                  <PullRequestPermissionMenuItem
-                    key={vote}
-                    reason={denied.vote}
-                    disabled={disabled || !active || detail.isDraft}
-                    onClick={() => void execute({ type: "vote", vote })}
-                  >
-                    {azureVoteLabels[vote]}
-                  </PullRequestPermissionMenuItem>
-                ))}
-              </MenuSubPopup>
-            </MenuSub>
             <PullRequestPermissionMenuItem
               reason={denied["follow"]}
               disabled={disabled || details?.following == null}

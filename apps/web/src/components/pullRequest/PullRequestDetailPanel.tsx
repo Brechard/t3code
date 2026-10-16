@@ -1,4 +1,5 @@
 import { AzureDevOpsPullRequestActions } from "./AzureDevOpsPullRequestActions";
+import { PullRequestReviewButton } from "./PullRequestReviewButton";
 import { reusePullRequestIdentities } from "@t3tools/client-runtime/pull-request-markdown";
 import { PullRequestReviewContext, usePullRequestPreviousVisit } from "./PullRequestReviewContext";
 import {
@@ -26,6 +27,7 @@ import {
   type PullRequestUpdateMethod,
   type PullRequestRef,
   type PullRequestReviewGuideStop,
+  type PullRequestReviewVerdict,
   resolveEnvironmentMachineKind,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
@@ -445,7 +447,9 @@ export function PullRequestDetailPanel({
       ? listEntry
       : null;
   const [threadPickerOpen, setThreadPickerOpen] = useState(false);
-  const [openReviewRequest, setOpenReviewRequest] = useState(0);
+  const [openReviewRequest, setOpenReviewRequest] = useState<{
+    verdict?: PullRequestReviewVerdict;
+  } | null>(null);
   const [tab, setTab] = useState<DetailTab>("summary");
   const [timelineOrder, setTimelineOrder] = useState<"newest" | "oldest">("newest");
   const [codeCommitScope, setCodeCommitScope] = useState<{
@@ -1875,6 +1879,15 @@ export function PullRequestDetailPanel({
                   </TooltipPopup>
                 </Tooltip>
               ) : null}
+              <PullRequestReviewButton
+                key={`${environmentId}:${pullRequestKey}`}
+                environmentId={environmentId}
+                reference={reference}
+                detail={detail}
+                actionPending={actionPending}
+                onReview={(verdict) => setOpenReviewRequest({ verdict })}
+                onActed={refreshDetail}
+              />
               {primaryAction === "resolve" ? (
                 resolveConflictsControl
               ) : primaryAction === "ready" ? (
@@ -2891,7 +2904,7 @@ export function PullRequestDetailPanel({
                       detail.capabilities.review.verdicts.some((verdict) =>
                         detail.viewerPermissions.verdicts.includes(verdict),
                       )
-                        ? () => setOpenReviewRequest((count) => count + 1)
+                        ? () => setOpenReviewRequest({})
                         : null
                     }
                     onOpenFile={openFileInCode}
