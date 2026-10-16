@@ -1124,8 +1124,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
                     question: "Which extras?",
                     multiSelect: true,
                     options: [
-                      { label: "Logging", description: "Record events" },
-                      { label: "Metrics", description: "Measure activity" },
+                      { label: "Logging", value: "  Logging  ", description: "Record events" },
+                      { label: "Metrics", value: " Metrics ", description: "Measure activity" },
                     ],
                   },
                 ],
@@ -1190,7 +1190,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
           commandId: CommandId.make(`runtime-async-question-answer-${scenario}`),
           threadId,
           requestId,
-          answers: { color: "  Blue  ", extras: ["Logging", "Metrics"] },
+          answers: { color: "  Blue  ", extras: ["  Logging  ", " Metrics "] },
         };
         const accepted = yield* orchestrator.dispatch(command);
         const repeated = yield* orchestrator.dispatch(command);

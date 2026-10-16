@@ -7409,7 +7409,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               : question.multiSelect &&
                   Array.isArray(answer) &&
                   answer.every((value) => typeof value === "string" && value.trim().length > 0)
-                ? answer.join(", ")
+                ? answer.map((value) => value.trim()).join(", ")
                 : "";
           if (text.length === 0) {
             if (question.required === false) continue;
