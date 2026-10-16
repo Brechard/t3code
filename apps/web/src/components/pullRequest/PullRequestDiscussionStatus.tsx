@@ -76,7 +76,7 @@ export function PullRequestDiscussionStatus({
   };
   return (
     <div className="flex items-center gap-2 text-xs">
-      <label className="flex items-center gap-2 text-muted-foreground">
+      <label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-muted-foreground">
         Status
         <PullRequestPermissionHint reason={reason}>
           <Select
