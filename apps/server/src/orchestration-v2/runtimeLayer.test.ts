@@ -1117,16 +1117,31 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
                 requestId,
                 ...(trigger === "async" ? { responseMode: "message" as const } : {}),
                 questions: [
-                  { id: "color", header: "Color", question: "Which color?", options: [] },
+                  {
+                    id: "color",
+                    header: "Color",
+                    question: "Which color?",
+                    allowCustomAnswer: true,
+                    options: [],
+                  },
                   {
                     id: "extras",
                     header: "Extras",
                     question: "Which extras?",
                     multiSelect: true,
+                    allowCustomAnswer: false,
                     options: [
                       { label: "Logging", value: "  Logging  ", description: "Record events" },
                       { label: "Metrics", value: " Metrics ", description: "Measure activity" },
+                      { label: "Tracing", description: "Trace requests" },
                     ],
+                  },
+                  {
+                    id: "delivery",
+                    header: "Delivery",
+                    question: "How should we send it?",
+                    allowCustomAnswer: false,
+                    options: [{ label: "Email", description: "Send by email" }],
                   },
                 ],
               },
@@ -1152,45 +1167,46 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
           if (originalRun) assert.equal(recovered.runs[0]?.status, "cancelled");
         }
         const originalMessageCount = originalRun ? 1 : 0;
-        const invalid = yield* orchestrator
-          .dispatch({
-            type: "runtime-request.respond",
-            commandId: CommandId.make(`runtime-async-question-blank-${scenario}`),
-            threadId,
-            requestId,
-            answers: { color: " ", extras: ["Logging", "Metrics"] },
-          })
-          .pipe(Effect.result);
-        assert.equal(invalid._tag, "Failure");
-        const unanswered = yield* orchestrator.getThreadProjection(threadId);
-        assert.equal(unanswered.runtimeRequests[0]?.status, "pending");
-        assert.equal(unanswered.messages.length, originalMessageCount);
-
-        for (const extras of [[], [" "], ["Logging", 1]]) {
+        const answers = {
+          color: "  Blue  ",
+          extras: ["  Logging  ", " Metrics ", "Tracing"],
+          delivery: "Email",
+        };
+        for (const [index, invalidAnswers] of [
+          { ...answers, color: " " },
+          { ...answers, extras: [] },
+          { ...answers, extras: [" "] },
+          { ...answers, extras: ["  Logging  ", 1] },
+          { ...answers, extras: "Unknown" },
+          { ...answers, extras: ["Unknown"] },
+          { ...answers, extras: ["  Logging  ", "Unknown"] },
+          { ...answers, extras: ["Logging"] },
+          { ...answers, delivery: "Unknown" },
+        ].entries()) {
           const invalidSelection = yield* orchestrator
             .dispatch({
               type: "runtime-request.respond",
-              commandId: CommandId.make(
-                `runtime-question-invalid-${scenario}-${JSON.stringify(extras)}`,
-              ),
+              commandId: CommandId.make(`runtime-question-invalid-${scenario}-${index}`),
               threadId,
               requestId,
-              answers: { color: "Blue", extras },
+              answers: invalidAnswers,
             })
             .pipe(Effect.result);
           assert.equal(invalidSelection._tag, "Failure");
         }
-        assert.equal(
-          (yield* orchestrator.getThreadProjection(threadId)).runtimeRequests[0]?.status,
-          "pending",
-        );
+        const unanswered = yield* orchestrator.getThreadProjection(threadId);
+        assert.equal(unanswered.runtimeRequests[0]?.status, "pending");
+        assert.equal(unanswered.nodes.find((node) => node.id === nodeId)?.status, "waiting");
+        assert.equal(unanswered.turnItems.find((item) => item.id === itemId)?.status, "waiting");
+        assert.equal(unanswered.messages.length, originalMessageCount);
+        assert.equal(unanswered.runs.length, originalMessageCount);
 
         const command = {
           type: "runtime-request.respond" as const,
           commandId: CommandId.make(`runtime-async-question-answer-${scenario}`),
           threadId,
           requestId,
-          answers: { color: "  Blue  ", extras: ["  Logging  ", " Metrics "] },
+          answers,
         };
         const accepted = yield* orchestrator.dispatch(command);
         const repeated = yield* orchestrator.dispatch(command);
@@ -1207,13 +1223,17 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
             requestId,
             answers: command.answers,
             attachmentsByQuestionId: {},
-            questionTextById: { color: "Which color?", extras: "Which extras?" },
+            questionTextById: {
+              color: "Which color?",
+              extras: "Which extras?",
+              delivery: "How should we send it?",
+            },
           });
         }
         assert.equal(answered.messages.length, originalMessageCount + 1);
         assert.equal(
           answered.messages.at(-1)?.text,
-          "Which color?\nBlue\n\nWhich extras?\nLogging, Metrics",
+          "Which color?\nBlue\n\nWhich extras?\nLogging, Metrics, Tracing\n\nHow should we send it?\nEmail",
         );
         assert.equal(answered.messages.at(-1)?.role, "user");
         assert.equal(answered.runs.length, originalMessageCount + 1);
