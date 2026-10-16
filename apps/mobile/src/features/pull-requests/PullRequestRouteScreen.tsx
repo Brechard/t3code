@@ -148,9 +148,13 @@ function usePullRequestActivityRows(params: PullRequestParams, filter: ActivityF
   const filtered = useMemo(
     () =>
       result.data
-        ? filterPullRequestActivity(result.data, { ...filter, since: previousVisit })
+        ? filterPullRequestActivity(
+            result.data,
+            { ...filter, since: previousVisit },
+            detail.data ?? undefined,
+          )
         : null,
-    [result.data, filter, previousVisit],
+    [result.data, filter, previousVisit, detail.data],
   );
   const rows = useMemo(() => {
     if (!filtered || !result.data) return [];
@@ -181,6 +185,8 @@ function usePullRequestActivityRows(params: PullRequestParams, filter: ActivityF
   return {
     rows,
     hiddenCount: filtered?.hiddenCount ?? 0,
+    azureCounts: filtered && "counts" in filtered ? filtered.counts : undefined,
+    countsTruncated: result.data?.commentsTruncated || result.data?.reviewThreadsTruncated,
     pending: result.isPending,
     error: result.error,
   };
@@ -687,6 +693,8 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
                               value={activityFilter}
                               onChange={setActivityFilter}
                               hiddenCount={tabContent.hiddenCount}
+                              azureCounts={tabContent.azureCounts}
+                              countsTruncated={tabContent.countsTruncated}
                             />
                           ) : null}
                           {tab === "activity" ? (

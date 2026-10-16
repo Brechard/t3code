@@ -88,6 +88,21 @@ export const PullRequestActor = Schema.Struct({
 });
 export type PullRequestActor = typeof PullRequestActor.Type;
 
+export const PullRequestReviewer = Schema.Struct({
+  ...PullRequestActor.fields,
+  // A host's current vote overrides historical reviews, including after a reset.
+  reviewState: Schema.optional(
+    Schema.Literals([
+      "none",
+      "approved",
+      "approved-with-suggestions",
+      "waiting-for-author",
+      "rejected",
+    ]),
+  ),
+});
+export type PullRequestReviewer = typeof PullRequestReviewer.Type;
+
 export const PullRequestLabel = Schema.Struct({
   name: TrimmedNonEmptyString,
   color: Schema.NullOr(Schema.String),
@@ -603,7 +618,7 @@ export const PullRequestDetail = Schema.Struct({
   observedAt: Schema.optional(Schema.Finite),
   mergedAt: Schema.NullOr(IsoDateTime),
   closedAt: Schema.NullOr(IsoDateTime),
-  reviewers: Schema.Array(PullRequestActor),
+  reviewers: Schema.Array(PullRequestReviewer),
   labels: Schema.Array(PullRequestLabel),
   checks: Schema.Array(PullRequestCheck),
   mergeCapabilities: PullRequestMergeCapabilities,
@@ -653,7 +668,7 @@ export const PullRequestActivity = Schema.Struct({
   events: Schema.optional(Schema.Array(PullRequestActivityEvent)),
   updates: Schema.optional(Schema.Array(PullRequestUpdate)),
   author: Schema.optional(Schema.NullOr(PullRequestActor)),
-  reviewers: Schema.optional(Schema.Array(PullRequestActor)),
+  reviewers: Schema.optional(Schema.Array(PullRequestReviewer)),
   comments: Schema.Array(PullRequestComment),
   commentCount: NonNegativeInt,
   commentsTruncated: Schema.Boolean,
@@ -668,7 +683,7 @@ export const PullRequestDetailView = Schema.Struct({
   ...PullRequestDetail.fields,
   ...PullRequestActivity.fields,
   author: Schema.NullOr(PullRequestActor),
-  reviewers: Schema.Array(PullRequestActor),
+  reviewers: Schema.Array(PullRequestReviewer),
 });
 export type PullRequestDetailView = typeof PullRequestDetailView.Type;
 

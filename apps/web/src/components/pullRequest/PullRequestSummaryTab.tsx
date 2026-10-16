@@ -1,3 +1,9 @@
+import { pullRequestReviewerState } from "@t3tools/client-runtime/pull-request-reviewer-state";
+import {
+  azureDevOpsDiscussionFilters,
+  filterAzureDevOpsDiscussions,
+  type AzureDevOpsDiscussionFilter,
+} from "@t3tools/client-runtime/azure-devops-discussion-filter";
 import { PullRequestReviewContext } from "./PullRequestReviewContext";
 import { pullRequestThreadStatusLabels } from "@t3tools/client-runtime/pull-request-comment-replies";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
@@ -39,6 +45,8 @@ import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collaps
 import {
   Menu,
   MenuCheckboxItem,
+  MenuRadioGroup,
+  MenuRadioItem,
   MenuGroup,
   MenuGroupLabel,
   MenuPopup,
@@ -52,6 +60,7 @@ import {
   pullRequestCheckStatusLabel,
   PullRequestLabelChip,
   PullRequestReviewOutcomeBadge,
+  PullRequestReviewOutcomeIcon,
   pullRequestReviewOutcomeLabel,
   pullRequestReviewOutcomeRingClassName,
   pullRequestReviewOutcomeStaleLabel,
@@ -368,7 +377,7 @@ function Section({
     >
       <div
         ref={headingRef}
-        className="sticky top-0 z-10 flex w-full items-center bg-background pr-4"
+        className="sticky top-0 z-10 flex w-full flex-wrap items-center bg-background pr-4"
       >
         <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-1.5 px-4 py-3 text-left text-xs font-medium text-muted-foreground hover:text-foreground">
           <span>{title}</span>
@@ -463,26 +472,55 @@ export function PullRequestSummaryTab({
     comment.author?.isBot === true || comment.author?.login.endsWith("[bot]") === true;
   const previousVisit = useContext(PullRequestReviewContext)?.previousVisit;
   const [newOnly, setNewOnly] = useState(false);
-  const filteredDiscussions = discussions.filter(
-    (discussion) =>
-      (!newOnly ||
-        !previousVisit ||
-        discussion.comments.some(
-          (comment) =>
-            Date.parse(comment.editedAt ?? comment.createdAt) > Date.parse(previousVisit),
-        )) &&
-      (commentFilter.bots || discussion.comments.some((comment) => !isBot(comment))) &&
-      (commentFilter.resolved || !discussion.comments.every(isFinished)),
+  const [azureFilter, setAzureFilter] = useState<{
+    url: string;
+    value: AzureDevOpsDiscussionFilter;
+  }>({ url: detail.url, value: "all" });
+  const selectedAzureFilter = azureFilter.url === detail.url ? azureFilter.value : "all";
+  const azureDiscussions = useMemo(
+    () =>
+      detail.provider === "azure-devops"
+        ? filterAzureDevOpsDiscussions(detail, selectedAzureFilter, {
+            viewer: detail.viewer,
+            since: previousVisit,
+          })
+        : null,
+    [detail, selectedAzureFilter, previousVisit],
   );
+  const filteredDiscussions =
+    azureDiscussions?.discussions ??
+    discussions.filter(
+      (discussion) =>
+        (!newOnly ||
+          !previousVisit ||
+          discussion.comments.some(
+            (comment) =>
+              Date.parse(comment.editedAt ?? comment.createdAt) > Date.parse(previousVisit),
+          )) &&
+        (commentFilter.bots || discussion.comments.some((comment) => !isBot(comment))) &&
+        (commentFilter.resolved || !discussion.comments.every(isFinished)),
+    );
   const filteredComments = filteredDiscussions.flatMap((discussion) => discussion.comments);
   // The one count the filter shows. Per-kind counts would overlap, since a resolved bot comment
   // is both kinds and needs both shown.
   const filteredOutCount = detail.comments.length - filteredComments.length;
   // Page whole discussions so a reply never loses its original to a filter or page boundary.
-  const recentDiscussions = filteredDiscussions.slice(
-    Math.max(0, filteredDiscussions.length - shownDiscussions),
-  );
-  const hiddenDiscussionCount = filteredDiscussions.length - recentDiscussions.length;
+  const items = [
+    ...filteredDiscussions.map((discussion) => ({
+      kind: "discussion" as const,
+      id: discussion.id,
+      at: discussion.comments.at(-1)!.createdAt,
+      discussion,
+    })),
+    ...(azureDiscussions?.activity.events ?? []).map((event) => ({
+      kind: "event" as const,
+      id: event.id,
+      at: event.createdAt,
+      event,
+    })),
+  ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  const recentDiscussions = items.slice(Math.max(0, items.length - shownDiscussions));
+  const hiddenDiscussionCount = items.length - recentDiscussions.length;
   const [commentOrder, setCommentOrder] = useState<"newest" | "oldest">("newest");
   const visibleDiscussions =
     commentOrder === "newest" ? recentDiscussions.toReversed() : recentDiscussions;
@@ -494,13 +532,18 @@ export function PullRequestSummaryTab({
         className="w-full"
         onClick={() => setShown({ url: detail.url, count: shownDiscussions + COMMENT_PAGE })}
       >
-        Show {Math.min(hiddenDiscussionCount, COMMENT_PAGE)} older discussion
+        Show {Math.min(hiddenDiscussionCount, COMMENT_PAGE)} older{" "}
+        {azureDiscussions ? "item" : "discussion"}
         {hiddenDiscussionCount === 1 ? "" : "s"} ({hiddenDiscussionCount} hidden)
       </Button>
     ) : null;
   // Read from the whole conversation, not the window shown below it: a verdict older than the
   // visible comments still stands.
-  const reviewOutcomes = latestPullRequestReviewOutcomes(detail.comments, detail.commits);
+  const reviewOutcomes = latestPullRequestReviewOutcomes(
+    detail.comments,
+    detail.commits,
+    detail.reviewers,
+  );
   // Hosts do not promise one casing for a login across two fields of the same response, and
   // none of them lets `Octocat` and `octocat` be two people — so matching on the literal string
   // would show one reviewer twice and drop the verdict off both.
@@ -516,6 +559,7 @@ export function PullRequestSummaryTab({
     ...detail.reviewers.map((actor) => ({
       key: actor.login,
       actor,
+      label: pullRequestReviewerState(actor.reviewState)?.label,
       outcome: outcomeByLogin.get(reviewerKey(actor.login))?.outcome ?? null,
       stale: outcomeByLogin.get(reviewerKey(actor.login))?.stale ?? false,
     })),
@@ -530,6 +574,7 @@ export function PullRequestSummaryTab({
       .map((entry) => ({
         key: entry.key,
         actor: entry.actor,
+        label: undefined,
         outcome: entry.outcome,
         stale: entry.stale,
       })),
@@ -765,19 +810,36 @@ export function PullRequestSummaryTab({
                           ) : null}
                         </TooltipTrigger>
                         <TooltipPopup side="bottom">
-                          {entry.outcome
-                            ? `${named} — ${
-                                entry.stale
-                                  ? pullRequestReviewOutcomeStaleLabel(entry.outcome)
-                                  : pullRequestReviewOutcomeLabel(entry.outcome)
-                              }`
-                            : named}
+                          {entry.label
+                            ? `${named} — ${entry.label}`
+                            : entry.outcome
+                              ? `${named} — ${
+                                  entry.stale
+                                    ? pullRequestReviewOutcomeStaleLabel(entry.outcome)
+                                    : pullRequestReviewOutcomeLabel(entry.outcome)
+                                }`
+                              : named}
                         </TooltipPopup>
                       </Tooltip>
                     );
                   })}
                 </span>
               )}
+              {detail.provider === "azure-devops" && reviewOutcomes.length > 0 ? (
+                <span className="flex flex-wrap gap-2 text-xs">
+                  {(["approved", "changes-requested"] as const).map((outcome) => {
+                    const count = reviewOutcomes.filter(
+                      (entry) => entry.outcome === outcome && !entry.stale,
+                    ).length;
+                    return count > 0 ? (
+                      <span key={outcome} className="inline-flex items-center gap-1">
+                        <PullRequestReviewOutcomeIcon outcome={outcome} /> {count}{" "}
+                        {outcome === "approved" ? "approved" : "requested changes"}
+                      </span>
+                    ) : null;
+                  })}
+                </span>
+              ) : null}
               {detail.capabilities.reviewers.request &&
               detail.capabilities.reviewers.listCandidates ? (
                 <PullRequestReviewerPicker
@@ -914,42 +976,68 @@ export function PullRequestSummaryTab({
       <Section
         title={`Comments (${detail.commentCount})`}
         actions={
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="ml-auto flex flex-wrap items-center gap-1">
             <Menu>
               <MenuTrigger
                 render={<Button size="xs" variant="ghost-muted" />}
                 aria-label="Filter comments"
               >
                 <ListFilterIcon aria-hidden className="size-3" />
-                {filteredOutCount > 0 ? `${filteredOutCount} hidden` : "Filter"}
+                {azureDiscussions
+                  ? `${azureDevOpsDiscussionFilters.find((item) => item.id === selectedAzureFilter)?.label} (${azureDiscussions.counts[selectedAzureFilter]}${detail.commentsTruncated || detail.reviewThreadsTruncated ? "+" : ""})`
+                  : filteredOutCount > 0
+                    ? `${filteredOutCount} hidden`
+                    : "Filter"}
               </MenuTrigger>
               <MenuPopup align="end">
-                <MenuGroup>
-                  <MenuGroupLabel>Show</MenuGroupLabel>
-                  <MenuCheckboxItem
-                    checked={newOnly}
-                    closeOnClick={false}
-                    onCheckedChange={setNewOnly}
+                {azureDiscussions ? (
+                  <MenuRadioGroup
+                    value={selectedAzureFilter}
+                    onValueChange={(value) => {
+                      const selected = azureDevOpsDiscussionFilters.find(
+                        (item) => item.id === value,
+                      );
+                      if (selected) {
+                        setAzureFilter({ url: detail.url, value: selected.id });
+                        setShown({ url: detail.url, count: COMMENT_PAGE });
+                      }
+                    }}
                   >
-                    What's new since your last visit
-                  </MenuCheckboxItem>
-                  <MenuCheckboxItem
-                    checked={commentFilter.bots}
-                    closeOnClick={false}
-                    onCheckedChange={(bots) => setCommentFilter((value) => ({ ...value, bots }))}
-                  >
-                    Bot comments
-                  </MenuCheckboxItem>
-                  <MenuCheckboxItem
-                    checked={commentFilter.resolved}
-                    closeOnClick={false}
-                    onCheckedChange={(resolved) =>
-                      setCommentFilter((value) => ({ ...value, resolved }))
-                    }
-                  >
-                    Resolved or dismissed
-                  </MenuCheckboxItem>
-                </MenuGroup>
+                    {azureDevOpsDiscussionFilters.map((item) => (
+                      <MenuRadioItem key={item.id} value={item.id} closeOnClick>
+                        {item.label} ({azureDiscussions.counts[item.id]}
+                        {detail.commentsTruncated || detail.reviewThreadsTruncated ? "+" : ""})
+                      </MenuRadioItem>
+                    ))}
+                  </MenuRadioGroup>
+                ) : (
+                  <MenuGroup>
+                    <MenuGroupLabel>Show</MenuGroupLabel>
+                    <MenuCheckboxItem
+                      checked={newOnly}
+                      closeOnClick={false}
+                      onCheckedChange={setNewOnly}
+                    >
+                      What's new since your last visit
+                    </MenuCheckboxItem>
+                    <MenuCheckboxItem
+                      checked={commentFilter.bots}
+                      closeOnClick={false}
+                      onCheckedChange={(bots) => setCommentFilter((value) => ({ ...value, bots }))}
+                    >
+                      Bot comments
+                    </MenuCheckboxItem>
+                    <MenuCheckboxItem
+                      checked={commentFilter.resolved}
+                      closeOnClick={false}
+                      onCheckedChange={(resolved) =>
+                        setCommentFilter((value) => ({ ...value, resolved }))
+                      }
+                    >
+                      Resolved or dismissed
+                    </MenuCheckboxItem>
+                  </MenuGroup>
+                )}
               </MenuPopup>
             </Menu>
             <Button
@@ -980,18 +1068,39 @@ export function PullRequestSummaryTab({
                 {detail.comments.length} are here; open it on the host to read the rest.
               </p>
             ) : null}
-            {detail.comments.length === 0 ? (
+            {detail.comments.length === 0 && !azureDiscussions?.counts.all ? (
               <p className="py-2 text-xs text-muted-foreground">No comments yet.</p>
-            ) : filteredComments.length === 0 ? (
+            ) : items.length === 0 ? (
               <p className="py-2 text-xs text-muted-foreground">
-                {filteredOutCount === 1
-                  ? "The only comment is hidden by the filter."
-                  : `All ${filteredOutCount} comments are hidden by the filter.`}
+                {azureDiscussions
+                  ? "No activity matches this filter."
+                  : filteredOutCount === 1
+                    ? "The only comment is hidden by the filter."
+                    : `All ${filteredOutCount} comments are hidden by the filter.`}
               </p>
             ) : (
               <div className="space-y-3">
                 {commentOrder === "oldest" ? showOlderDiscussionsButton : null}
-                {visibleDiscussions.map((discussion) => {
+                {visibleDiscussions.map((item) => {
+                  if (item.kind === "event")
+                    return (
+                      <div
+                        key={item.id}
+                        className="rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground"
+                      >
+                        <div className="mb-1 flex items-center gap-2">
+                          <PullRequestActorLabel actor={item.event.actor} />
+                          <time dateTime={item.at}>{formatRelativeTimeLabel(item.at)}</time>
+                        </div>
+                        <PullRequestMarkdown
+                          text={item.event.body}
+                          cwd={detail.workspaceRoot}
+                          environmentId={environmentId}
+                          threadRef={threadRef}
+                        />
+                      </div>
+                    );
+                  const discussion = item.discussion;
                   const [original, ...answers] = discussion.comments;
                   if (original === undefined) return null;
                   return renderComment(

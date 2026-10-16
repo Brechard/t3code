@@ -6,6 +6,7 @@ import type {
   PullRequestActivityEvent,
   PullRequestUpdate,
   PullRequestActor,
+  PullRequestReviewer,
   PullRequestCommit,
   PullRequestReviewThread,
   PullRequestComment,
@@ -54,7 +55,16 @@ const RawPullRequestSchema = Schema.Struct({
   lastMergeSourceCommit: Schema.optional(Schema.NullOr(Schema.Struct({ commitId: Schema.String }))),
   mergeStatus: Schema.optional(Schema.NullOr(Schema.String)),
   createdBy: Schema.optional(Schema.NullOr(RawIdentitySchema)),
-  reviewers: Schema.optional(Schema.NullOr(Schema.Array(RawIdentitySchema))),
+  reviewers: Schema.optional(
+    Schema.NullOr(
+      Schema.Array(
+        Schema.Struct({
+          ...RawIdentitySchema.fields,
+          vote: Schema.optional(Schema.NullOr(Schema.Int)),
+        }),
+      ),
+    ),
+  ),
   labels: Schema.optional(Schema.NullOr(Schema.Array(Schema.Struct({ name: Schema.String })))),
   // Required, and required to be non-empty: the wire contract will not carry a change request
   // without a branch or a created time, so a row missing one is skipped rather than breaking the
@@ -183,7 +193,7 @@ export interface AzureDevOpsPullRequest {
   readonly closedAt: string | null;
   readonly body: string;
   readonly reviewRequestLogins: ReadonlyArray<string>;
-  readonly reviewers: ReadonlyArray<PullRequestActor>;
+  readonly reviewers: ReadonlyArray<PullRequestReviewer>;
   readonly location: AzureDevOpsRepositoryLocation | null;
   readonly autoMergeEnabled: boolean;
   readonly autoMergeMethod?: PullRequestMergeMethod;
@@ -260,9 +270,23 @@ function toPullRequest(
   raw: Schema.Schema.Type<typeof RawPullRequestSchema>,
 ): AzureDevOpsPullRequest | null {
   const autoMergeMethod = toAutoMergeMethod(raw);
-  const reviewers = (raw.reviewers ?? []).flatMap((reviewer) => {
+  const reviewers = (raw.reviewers ?? []).flatMap((reviewer): PullRequestReviewer[] => {
     const actor = toActor(reviewer);
-    return actor === null ? [] : [actor];
+    const reviewState =
+      reviewer.vote === 10
+        ? "approved"
+        : reviewer.vote === 5
+          ? "approved-with-suggestions"
+          : reviewer.vote === 0
+            ? "none"
+            : reviewer.vote === -5
+              ? "waiting-for-author"
+              : reviewer.vote === -10
+                ? "rejected"
+                : undefined;
+    return actor === null
+      ? []
+      : [{ ...actor, ...(reviewState === undefined ? {} : { reviewState }) }];
   });
   const closedAt = trimmed(raw.closedDate);
   const url = trimmed(

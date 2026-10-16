@@ -271,7 +271,7 @@ export function PullRequestReviewersRow(props: RowProps) {
           {summary.reviews.map((review) => (
             <View
               key={review.id}
-              accessibilityLabel={`${review.author?.login ?? "Unknown reviewer"}, ${review.reviewState === "APPROVED" ? "Approved" : review.reviewState === "CHANGES_REQUESTED" ? "Changes requested" : "Commented"}`}
+              accessibilityLabel={`${review.author?.login ?? "Unknown reviewer"}, ${"label" in review ? review.label : review.reviewState === "APPROVED" ? "Approved" : review.reviewState === "CHANGES_REQUESTED" ? "Changes requested" : "Commented"}`}
               className="min-h-14 flex-row items-center gap-3 px-4 py-2"
             >
               <SymbolView
@@ -293,14 +293,25 @@ export function PullRequestReviewersRow(props: RowProps) {
               />
               <PullRequestAvatar actor={review.author} size={32} />
               <Text className="min-w-0 flex-1 text-sm font-t3-medium" numberOfLines={1}>
-                {review.author?.login ?? "Unknown reviewer"}
+                {review.author?.name ?? review.author?.login ?? "Unknown reviewer"}
+              </Text>
+              <Text className="text-xs text-foreground-muted">
+                {"label" in review
+                  ? review.label
+                  : review.reviewState === "APPROVED"
+                    ? "Approved"
+                    : review.reviewState === "CHANGES_REQUESTED"
+                      ? "Changes requested"
+                      : "Commented"}
               </Text>
             </View>
           ))}
           {props.pr.reviewers
             .filter(
               (reviewer) =>
-                !summary.reviews.some((review) => review.author?.login === reviewer.login),
+                !summary.reviews.some(
+                  (review) => review.author?.login.toLowerCase() === reviewer.login.toLowerCase(),
+                ),
             )
             .map((reviewer) => (
               <View

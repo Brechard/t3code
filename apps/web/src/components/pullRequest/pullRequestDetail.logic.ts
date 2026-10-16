@@ -1,3 +1,4 @@
+import { pullRequestReviewerState } from "@t3tools/client-runtime/pull-request-reviewer-state";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import * as Schema from "effect/Schema";
 
@@ -7,6 +8,7 @@ import {
   pullRequestHostOf,
   type PullRequestAction,
   type PullRequestActor,
+  type PullRequestReviewer,
   type PullRequestBaseComparison,
   type PullRequestCheck,
   type PullRequestChecksState as ContractPullRequestChecksState,
@@ -437,23 +439,24 @@ export interface PullRequestReviewOutcomeEntry {
   readonly key: string;
   readonly actor: PullRequestActor | null;
   readonly outcome: PullRequestReviewOutcome;
-  readonly at: string;
+  readonly at: string | null;
   readonly stale: boolean;
 }
 
 export function latestPullRequestReviewOutcomes(
   comments: ReadonlyArray<PullRequestComment>,
   commits: ReadonlyArray<PullRequestCommit> = [],
+  reviewers: ReadonlyArray<PullRequestReviewer> = [],
 ): ReadonlyArray<PullRequestReviewOutcomeEntry> {
   const newestCommitAt = newestPullRequestCommitAt(commits);
   const latest = new Map<string, PullRequestReviewOutcomeEntry>();
   for (const comment of comments) {
     const outcome = pullRequestReviewOutcome(comment.reviewState);
     if (outcome === null) continue;
-    const login = comment.author?.login ?? `ghost:${comment.id}`;
+    const login = comment.author?.login.toLowerCase() ?? `ghost:${comment.id}`;
     const current = latest.get(login);
     // Not every host returns its reviews in order, so the newest wins rather than the last read.
-    if (current !== undefined && instant(current.at) > instant(comment.createdAt)) continue;
+    if (current?.at && instant(current.at) > instant(comment.createdAt)) continue;
     latest.set(login, {
       key: login,
       actor: comment.author,
@@ -461,6 +464,14 @@ export function latestPullRequestReviewOutcomes(
       at: comment.createdAt,
       stale: isPullRequestVerdictStale(comment.createdAt, newestCommitAt),
     });
+  }
+  for (const reviewer of reviewers) {
+    const state = pullRequestReviewerState(reviewer.reviewState);
+    if (state === undefined) continue;
+    const key = reviewer.login.toLowerCase();
+    latest.delete(key);
+    if (state.outcome !== null)
+      latest.set(key, { key, actor: reviewer, outcome: state.outcome, at: null, stale: false });
   }
   return [...latest.values()].filter((entry) => entry.outcome !== "dismissed");
 }

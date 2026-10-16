@@ -373,6 +373,32 @@ describe("stacked pull request classification", () => {
 });
 
 describe("review verdicts", () => {
+  it("uses current votes without inventing review timestamps and honors resets", () => {
+    const reviewer = { login: "Reviewer", name: "Reviewer", avatarUrl: null };
+    const old: PullRequestComment = {
+      id: "old",
+      kind: "review",
+      author: { ...reviewer, login: "reviewer" },
+      body: "",
+      createdAt: "2026-07-01T00:00:00Z",
+      path: null,
+      url: null,
+      reviewState: "APPROVED",
+    };
+    const commits = [
+      { oid: "new", messageHeadline: "New push", committedDate: "2026-07-02T00:00:00Z" },
+    ];
+    expect(
+      latestPullRequestReviewOutcomes([], commits, [{ ...reviewer, reviewState: "approved" }]),
+    ).toMatchObject([{ actor: reviewer, outcome: "approved", at: null, stale: false }]);
+    expect(
+      latestPullRequestReviewOutcomes([old], commits, [{ ...reviewer, reviewState: "none" }]),
+    ).toEqual([]);
+    expect(
+      latestPullRequestReviewOutcomes([old], commits, [{ ...reviewer, reviewState: "rejected" }]),
+    ).toMatchObject([{ outcome: "changes-requested", stale: false }]);
+  });
+
   it("reads the same three verdicts however a host spells them", () => {
     expect(pullRequestReviewOutcome("APPROVED")).toBe("approved");
     expect(pullRequestReviewOutcome("approved")).toBe("approved");

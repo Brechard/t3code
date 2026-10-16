@@ -12,6 +12,7 @@ import type {
   PullRequestAction,
   PullRequestStackHead,
   PullRequestActor,
+  PullRequestReviewer,
   PullRequestBaseComparison,
   PullRequestCapabilities,
   PullRequestChecksState,
@@ -186,7 +187,7 @@ export interface ProviderChangeRequestDetail extends ProviderChangeRequest {
   readonly changedFiles: number;
   readonly mergedAt: string | null;
   readonly closedAt: string | null;
-  readonly reviewers: ReadonlyArray<PullRequestActor>;
+  readonly reviewers: ReadonlyArray<PullRequestReviewer>;
   readonly checks: ReadonlyArray<PullRequestCheck>;
   readonly mergeCapabilities: PullRequestMergeCapabilities;
   readonly viewerPermissions: PullRequestViewerPermissions;
@@ -203,7 +204,7 @@ export interface ProviderChangeRequestActivity {
   readonly updates?: ReadonlyArray<PullRequestUpdate>;
   /** An optional richer actor, e.g. after GitHub's GraphQL read supplies an avatar. */
   readonly author?: PullRequestActor | null;
-  readonly reviewers?: ReadonlyArray<PullRequestActor>;
+  readonly reviewers?: ReadonlyArray<PullRequestReviewer>;
   readonly comments: ReadonlyArray<PullRequestComment>;
   readonly commentCount: number;
   readonly commentsTruncated: boolean;

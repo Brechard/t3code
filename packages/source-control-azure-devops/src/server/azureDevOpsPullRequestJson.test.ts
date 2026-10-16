@@ -44,6 +44,33 @@ function expectSuccess<A>(result: Result.Result<A, unknown>): A {
 const asJson = (value: unknown) => JSON.stringify(value);
 
 describe("decodePullRequestListJson", () => {
+  it.each([
+    [10, "approved"],
+    [5, "approved-with-suggestions"],
+    [0, "none"],
+    [-5, "waiting-for-author"],
+    [-10, "rejected"],
+    [99, undefined],
+  ])("preserves the current reviewer vote %s independently of comments", (vote, reviewState) => {
+    const result = expectSuccess(
+      decodePullRequestJson(
+        asJson(
+          pullRequest({
+            reviewers: [{ displayName: "Reviewer", uniqueName: "reviewer@acme.dev", vote }],
+          }),
+        ),
+      ),
+    );
+    expect(result?.reviewers).toEqual([
+      {
+        login: "reviewer@acme.dev",
+        name: "Reviewer",
+        avatarUrl: null,
+        ...(reviewState === undefined ? {} : { reviewState }),
+      },
+    ]);
+  });
+
   it("reads a pull request as a change request", () => {
     const batch = expectSuccess(decodePullRequestListJson(asJson([pullRequest()])));
 
@@ -143,7 +170,7 @@ describe("decodePullRequestJson", () => {
 
     expect(detail?.reviewRequestLogins).toEqual(["julius@acme.dev"]);
     expect(detail?.reviewers).toEqual([
-      { login: "julius@acme.dev", name: "Julius", avatarUrl: null },
+      { login: "julius@acme.dev", name: "Julius", avatarUrl: null, reviewState: "approved" },
     ]);
   });
 

@@ -15,6 +15,8 @@ vi.mock("./PullRequestMarkdown", async () => ({
 vi.mock("../ui/menu", () => ({
   Menu: "div",
   MenuCheckboxItem: "div",
+  MenuRadioGroup: "div",
+  MenuRadioItem: "div",
   MenuGroup: "div",
   MenuGroupLabel: "div",
   MenuPopup: "div",
@@ -119,6 +121,101 @@ function render(value = detail) {
     />
   );
 }
+
+function renderedText() {
+  return renderer.root
+    .findAll((node) => typeof node.type === "string")
+    .flatMap((node) => node.children.filter((child) => typeof child === "string"))
+    .join(" ");
+}
+
+it("shows a current Azure approval without review comments and removes it after reset", () => {
+  const azure = {
+    ...detail,
+    provider: SourceControlProviderKind.make("azure-devops"),
+    reviewers: [
+      { login: "reviewer", name: "Reviewer", avatarUrl: null, reviewState: "approved" as const },
+    ],
+  };
+  act(() => {
+    renderer = create(render(azure));
+  });
+  expect(renderedText()).toContain("Approved");
+  act(() => {
+    renderer.update(
+      render({ ...azure, reviewers: [{ ...azure.reviewers[0]!, reviewState: "none" }] }),
+    );
+  });
+  expect(renderedText()).not.toContain("Approved");
+});
+
+it("switches Azure discussion filters without losing the parent of a matching reply", () => {
+  const base = {
+    kind: "issue-comment" as const,
+    path: null,
+    url: null,
+    reviewState: null,
+    createdAt: "2026-09-01T00:00:00Z",
+  };
+  const azure: PullRequestDetailView = {
+    ...detail,
+    provider: SourceControlProviderKind.make("azure-devops"),
+    commentCount: 3,
+    comments: [
+      {
+        ...base,
+        id: "root",
+        threadId: "a",
+        threadStatus: "active",
+        author: { login: "reviewer", name: null, avatarUrl: null },
+        body: "Original question",
+      },
+      {
+        ...base,
+        id: "reply",
+        threadId: "a",
+        replyToCommentId: "root",
+        threadStatus: "active",
+        author: detail.author,
+        body: "My answer",
+      },
+      {
+        ...base,
+        id: "resolved",
+        threadId: "r",
+        threadStatus: "fixed",
+        author: detail.author,
+        body: "Finished question",
+      },
+    ],
+    events: [
+      { id: "event", actor: detail.author, createdAt: base.createdAt, body: "Pushed an update" },
+    ],
+  };
+  act(() => {
+    renderer = create(render(azure));
+  });
+  const select = (value: string) =>
+    act(() =>
+      renderer.root
+        .findAllByType("div")
+        .find((node) => typeof node.props.onValueChange === "function")!
+        .props.onValueChange(value),
+    );
+  expect(renderedText()).toContain("Pushed an update");
+  select("comments");
+  expect(renderedText()).not.toContain("Pushed an update");
+  select("active");
+  expect(renderedText()).toContain("Original question");
+  expect(renderedText()).toContain("My answer");
+  expect(renderedText()).not.toContain("Finished question");
+  select("resolved");
+  expect(renderedText()).toContain("Finished question");
+  expect(renderedText()).not.toContain("Original question");
+  select("mine");
+  expect(renderedText()).toContain("Original question");
+  expect(renderedText()).toContain("My answer");
+});
 
 function heading(title: string) {
   const section = renderer.root

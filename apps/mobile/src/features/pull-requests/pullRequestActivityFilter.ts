@@ -1,7 +1,12 @@
+import {
+  filterAzureDevOpsDiscussions,
+  type AzureDevOpsDiscussionFilter,
+} from "@t3tools/client-runtime/azure-devops-discussion-filter";
 import type { PullRequestActivity, PullRequestActor } from "@t3tools/contracts";
 import { groupPullRequestComments } from "@t3tools/client-runtime/pull-request-comment-replies";
 
 export interface ActivityFilter {
+  readonly azure?: AzureDevOpsDiscussionFilter;
   readonly kind: "all" | "comments" | "commits";
   readonly bots: boolean;
   readonly resolved: boolean;
@@ -36,7 +41,16 @@ function eventCount(activity: PullRequestActivity) {
   );
 }
 
-export function filterPullRequestActivity(activity: PullRequestActivity, filter: ActivityFilter) {
+export function filterPullRequestActivity(
+  activity: PullRequestActivity,
+  filter: ActivityFilter,
+  context?: { provider: string; viewer?: string | undefined },
+) {
+  if (context?.provider === "azure-devops")
+    return filterAzureDevOpsDiscussions(activity, filter.azure ?? "all", {
+      viewer: context.viewer,
+      since: filter.since,
+    });
   const newer = (date: string) =>
     !filter.newOnly || !filter.since || Date.parse(date) > Date.parse(filter.since);
   // A discussion's replies stay together, even when a bot replies to a human.

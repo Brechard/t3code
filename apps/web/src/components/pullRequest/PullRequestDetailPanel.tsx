@@ -1539,12 +1539,13 @@ export function PullRequestDetailPanel({
     : detail
       ? summarizePullRequestChecks(detail.checks)
       : null;
-  const approvalCount =
-    detail && !detail.commentsTruncated
-      ? latestPullRequestReviewOutcomes(detail.comments, detail.commits).filter(
-          (entry) => entry.outcome === "approved" && !entry.stale,
-        ).length
-      : 0;
+  const approvalCount = detail
+    ? latestPullRequestReviewOutcomes(
+        detail.commentsTruncated ? [] : detail.comments,
+        detail.commits,
+        detail.reviewers,
+      ).filter((entry) => entry.outcome === "approved" && !entry.stale).length
+    : 0;
 
   const checkoutControl =
     context === "page" ? (
