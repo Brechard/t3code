@@ -568,13 +568,18 @@ export const make = Effect.gen(function* () {
         const location = rememberLocation(input, pullRequest.location);
         const target =
           location === null ? null : { cwd: input.cwd, location, number: input.number };
+        const iterations = yield* Effect.cached(
+          target === null
+            ? Effect.succeed([])
+            : cli.listIterations(target).pipe(Effect.orElseSucceed(() => [])),
+        );
         // Read side by side. Only the checks are the detail's own: a failed file count, label
         // or permission read leaves that part unknown rather than losing the whole detail.
         const [changedFiles, labels, policy, deniedActions] = yield* Effect.all(
           [
             target === null
               ? Effect.succeed(0)
-              : cli.listIterations(target).pipe(
+              : iterations.pipe(
                   Effect.flatMap((iterations) => listLatestChanges({ ...target, iterations })),
                   Effect.map((listed) => listed.changes.length),
                   Effect.orElseSucceed(() => 0),
@@ -589,7 +594,18 @@ export const make = Effect.gen(function* () {
                   ),
                   Effect.orElseSucceed(() => pullRequest.labels ?? []),
                 ),
-            target === null ? Effect.succeed(null) : cli.listChecks(target),
+            target === null
+              ? Effect.succeed(null)
+              : iterations.pipe(
+                  Effect.flatMap((items) => {
+                    const latest = items.at(-1);
+                    return cli.listChecks({
+                      ...target,
+                      iterationId:
+                        latest && latest.headCommit === pullRequest.headSha ? latest.id : null,
+                    });
+                  }),
+                ),
             target === null
               ? Effect.succeed({})
               : accessFor(input).pipe(Effect.map(({ denied }) => denied)),

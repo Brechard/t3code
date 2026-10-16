@@ -31,6 +31,7 @@ const fixture = (
   branchOperation = { cherryPickId: 1, status: "completed" },
   policySettings?: Record<string, boolean>,
   statuses: ReadonlyArray<Record<string, unknown>> = [],
+  policyContext?: Record<string, unknown>,
 ) => {
   const commands: ReadonlyArray<string>[] = [];
   const writes: Parameters<Parameters<typeof makeAzureDevOpsPullRequestTools>[0]["write"]>[0][] =
@@ -71,6 +72,9 @@ const fixture = (
                             {
                               evaluationId: "evaluation",
                               status: "approved",
+                              ...(policyContext
+                                ? { status: "queued", context: policyContext }
+                                : {}),
                               configuration: {
                                 id: 7,
                                 isBlocking: policySettings !== undefined,
@@ -122,7 +126,7 @@ it.effect("reads queued checks without a state and preserves other check results
         state,
       })),
     );
-    const result = yield* tools.checks(target);
+    const result = yield* tools.checks({ ...target, iterationId: 1 });
     expect(result.checks).toEqual([
       expect.objectContaining({ name: "Validation", status: "success" }),
       ...[
@@ -141,6 +145,54 @@ it.effect("reads queued checks without a state and preserves other check results
         status,
       })),
     ]);
+  }),
+);
+it.effect("keeps only the latest status per context for the current update", () =>
+  Effect.gen(function* () {
+    const statuses = [
+      {
+        id: 6,
+        iterationId: 10,
+        context: { genre: "ci", name: "coverage" },
+        state: "notApplicable",
+      },
+      { id: 4, iterationId: 10, context: { genre: "ci", name: "coverage" } },
+      { id: 5, iterationId: 10, context: { genre: "ci", name: "coverage" }, state: "pending" },
+      { id: 7, iterationId: 8, context: { genre: "ci", name: "coverage" }, state: "pending" },
+      { id: 8, iterationId: 8, context: { name: "old-only" }, state: "failed" },
+      { id: 9, context: { genre: "ci", name: "author" }, state: "succeeded" },
+      { id: 10, context: { genre: "other", name: "coverage" }, state: "failed" },
+    ];
+    for (const values of [statuses, statuses.toReversed()]) {
+      const tools = fixture({}, undefined, undefined, values);
+      const result = yield* tools.checks({ ...target, iterationId: 10 });
+      expect(result.checks).toHaveLength(4);
+      expect(result.checks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: "ci / coverage", status: "skipped" }),
+          expect.objectContaining({ name: "ci / author", status: "success" }),
+          expect.objectContaining({ name: "other / coverage", status: "failure" }),
+        ]),
+      );
+      const nextUpdate = yield* tools.checks({ ...target, iterationId: 11 });
+      expect(nextUpdate.checks.map((check) => check.name)).not.toContain("ci / coverage");
+      expect(nextUpdate.checks).toHaveLength(3);
+      const unknownUpdate = yield* tools.checks({ ...target, iterationId: null });
+      expect(unknownUpdate.checks.find((check) => check.name === "ci / coverage")).toMatchObject({
+        status: "pending",
+        description: expect.stringContaining("unverified"),
+      });
+    }
+  }),
+);
+it.effect("describes an expired build without claiming a queued policy is running", () =>
+  Effect.gen(function* () {
+    const tools = fixture({}, undefined, undefined, [], { isExpired: true });
+    const result = yield* tools.checks({ ...target, iterationId: 1 });
+    expect(result.checks[0]).toMatchObject({
+      status: "pending",
+      description: "Branch policy: queued (previous build expired; awaiting a new evaluation)",
+    });
   }),
 );
 it.effect("retains all native completion options and completes the source commit it read", () =>

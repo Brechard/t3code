@@ -15,6 +15,7 @@ import {
   CircleDashedIcon,
   CircleDotIcon,
   CircleXIcon,
+  ClockIcon,
   UserCheckIcon,
   UserRoundIcon,
   UserRoundXIcon,
@@ -191,7 +192,7 @@ export function PullRequestConflictGlyph({
 }
 
 const CHECK_STATUS_PRESENTATION = {
-  pending: { label: "Running", Icon: Spinner, toneClassName: "text-amber-500" },
+  pending: { label: "Pending", Icon: ClockIcon, toneClassName: "text-amber-500" },
   "action-required": {
     label: "Awaiting action",
     Icon: CircleDotIcon,
@@ -528,6 +529,6 @@ export function summarizePullRequestChecks(checks: ReadonlyArray<PullRequestChec
   if (otherActionRequired > 0) {
     return `${otherActionRequired} ${otherActionRequired === 1 ? "check" : "checks"} awaiting action`;
   }
-  if (pending > 0) return `${pending} of ${checks.length} running`;
+  if (pending > 0) return `${pending} of ${checks.length} pending`;
   return passed === checks.length ? "All checks passed" : `${passed} of ${checks.length} passing`;
 }

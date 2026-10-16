@@ -1834,7 +1834,7 @@ describe("the compact row's single action slot", () => {
         ...Array.from({ length: 8 }, () => check("success")),
         check("failure"),
       ]),
-    ).toBe("7 of 16 running · 1 failed");
+    ).toBe("7 of 16 pending · 1 failed");
     expect(describePullRequestChecks([check("failure"), check("success")])).toBe("1 of 2 failing");
     expect(describePullRequestChecks([check("action-required")])).toBe("1 of 1 awaiting action");
     expect(describePullRequestChecks([check("action-required"), check("failure")])).toBe(

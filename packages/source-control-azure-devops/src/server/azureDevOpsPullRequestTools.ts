@@ -92,6 +92,8 @@ const PullRequest = Schema.Struct({
   lastMergeCommit: Schema.optional(Schema.NullOr(Schema.Struct({ commitId: Schema.String }))),
 });
 const Status = Schema.Struct({
+  id: Schema.optional(Schema.NullOr(Schema.Int)),
+  iterationId: Schema.optional(Schema.NullOr(Schema.Int)),
   state: Schema.optional(Schema.NullOr(Schema.String)),
   description: Schema.optional(Schema.NullOr(Schema.String)),
   targetUrl: Schema.optional(Schema.NullOr(Schema.String)),
@@ -103,6 +105,7 @@ const Status = Schema.Struct({
 const Policy = Schema.Struct({
   evaluationId: Schema.String,
   status: Schema.optional(Schema.NullOr(Schema.String)),
+  context: Schema.optional(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
   configuration: Schema.Struct({
     id: Schema.Int,
     isBlocking: Schema.optional(Schema.NullOr(Schema.Boolean)),
@@ -219,6 +222,30 @@ function lineRange(content: string, start: number, end: number) {
   return start < 1 || end < start || end > lines.length ? null : lines.slice(start - 1, end);
 }
 
+function currentStatuses(
+  statuses: ReadonlyArray<Schema.Schema.Type<typeof Status>>,
+  iterationId: number | null,
+) {
+  const latest = new Map<string, Schema.Schema.Type<typeof Status>>();
+  for (const status of statuses) {
+    if (status.iterationId != null && iterationId !== null && status.iterationId !== iterationId)
+      continue;
+    const key = JSON.stringify([status.context.genre ?? "", status.context.name]);
+    const previous = latest.get(key);
+    // Azure appends a new status for each update; collection order is not guaranteed.
+    if (!previous || (status.id ?? 0) >= (previous.id ?? 0)) latest.set(key, status);
+  }
+  return [...latest.values()].map((status) =>
+    status.iterationId != null && iterationId === null
+      ? {
+          ...status,
+          state: "pending",
+          description: "The current PR update could not be read; this status is unverified.",
+        }
+      : status,
+  );
+}
+
 export function makeAzureDevOpsPullRequestTools(deps: {
   listIterations: (
     input: Target,
@@ -331,7 +358,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
   const mergeStrategies = (target: Target) =>
     policies(target).pipe(Effect.map(allowedMergeStrategies));
   const checks = (
-    target: Target,
+    target: Target & { iterationId: number | null },
   ): Effect.Effect<
     {
       checks: ReadonlyArray<PullRequestCheck>;
@@ -369,7 +396,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
           ...items.map((item) => ({
             name: item.configuration.type.displayName,
             required: item.configuration.isBlocking === true,
-            description: `Branch policy: ${item.status ?? "unknown"}`,
+            description: `Branch policy: ${item.status ?? "unknown"}${item.status === "queued" && (item.context?.isExpired === true || item.context?.buildIsNotCurrent === true) ? " (previous build expired; awaiting a new evaluation)" : ""}`,
             url: null,
             status:
               item.status === "approved"
@@ -380,7 +407,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
                     ? ("skipped" as const)
                     : ("pending" as const),
           })),
-          ...statuses.value.map((status) => ({
+          ...currentStatuses(statuses.value, target.iterationId).map((status) => ({
             name: [status.context.genre, status.context.name].filter(Boolean).join(" / "),
             description: status.description ?? null,
             url: status.targetUrl ?? null,

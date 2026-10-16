@@ -282,6 +282,7 @@ export class AzureDevOpsPullRequestCli extends Context.Service<
       cwd: string;
       location: AzureDevOpsRepositoryLocation;
       number: number;
+      iterationId: number | null;
     }) => Effect.Effect<
       {
         checks: ReadonlyArray<PullRequestCheck>;

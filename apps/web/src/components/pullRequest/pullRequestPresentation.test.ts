@@ -1,7 +1,23 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolvePullRequestConflict, resolvePullRequestState } from "./pullRequestPresentation";
+import {
+  resolvePullRequestConflict,
+  resolvePullRequestState,
+  pullRequestCheckStatusLabel,
+  summarizePullRequestChecks,
+} from "./pullRequestPresentation";
 import { PullRequestGlyph } from "./pullRequestIcons";
+
+it("does not call a pending check running when it may still be queued", () => {
+  const check = {
+    name: "Build",
+    status: "pending" as const,
+    description: "Branch policy: queued",
+    url: null,
+  };
+  expect(pullRequestCheckStatusLabel(check)).toBe("Pending");
+  expect(summarizePullRequestChecks([check])).toBe("1 of 1 pending");
+});
 
 describe("resolvePullRequestState", () => {
   it.each([

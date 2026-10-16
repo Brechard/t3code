@@ -219,6 +219,45 @@ describe("getChangeRequestSummary", () => {
 });
 
 describe("getChangeRequest", () => {
+  it.effect(
+    "shares the iteration read and verifies it belongs to the PR head before selecting checks",
+    () =>
+      Effect.gen(function* () {
+        for (const headSha of ["head", "new-head", undefined]) {
+          let iterationReads = 0;
+          const checkIterations: Array<number | null> = [];
+          const provider = yield* make.pipe(
+            Effect.provide(
+              Layer.mock(AzureDevOpsPullRequestCli.AzureDevOpsPullRequestCli)({
+                readAccess: () => Effect.succeed({ credentialKey: "test-pat", permissions: {} }),
+                getPullRequest: () =>
+                  Effect.succeed({ ...PULL_REQUEST, ...(headSha ? { headSha } : {}) }),
+                listIterations: () =>
+                  Effect.sync(() => {
+                    iterationReads++;
+                    return [ITERATION];
+                  }),
+                listIterationChanges: () => Effect.succeed({ changes: [], truncated: false }),
+                listLabelCandidates: () => Effect.succeed({ candidates: [], truncated: false }),
+                listChecks: ({ iterationId }) =>
+                  Effect.sync(() => {
+                    checkIterations.push(iterationId);
+                    return { checks: [], allowedMergeStrategies: [] };
+                  }),
+              }),
+            ),
+          );
+          yield* provider.getChangeRequest({
+            cwd: "/w",
+            repository: "web",
+            host: "dev.azure.com",
+            number: 7,
+          });
+          expect(iterationReads).toBe(1);
+          expect(checkIterations).toEqual([headSha === "head" ? 3 : null]);
+        }
+      }),
+  );
   it.effect("still reports the file count the detail panel needs", () =>
     Effect.gen(function* () {
       const provider = yield* make.pipe(

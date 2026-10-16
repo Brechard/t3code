@@ -100,7 +100,7 @@ export function pullRequestChecksSummary(pr: Pick<PullRequestDetail, "checks">) 
   if (pending)
     return {
       label: `${pending} pending`,
-      title: "Checks running",
+      title: "Checks pending",
       count: `${pending} pending`,
       icon: "clock",
       tint: "accent-warning-foreground",

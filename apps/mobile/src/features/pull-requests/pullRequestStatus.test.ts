@@ -91,6 +91,12 @@ describe("mobile overview review status", () => {
 });
 
 describe("mobile overview check status", () => {
+  it("does not claim a pending check has started running", () => {
+    expect(pullRequestChecksSummary({ checks: [check("pending")] })).toMatchObject({
+      title: "Checks pending",
+      count: "1 pending",
+    });
+  });
   it("only says all passed when every check succeeded", () => {
     expect(pullRequestChecksSummary({ checks: [check("success"), check("success")] }).title).toBe(
       "All checks passed",

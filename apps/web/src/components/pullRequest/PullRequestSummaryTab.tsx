@@ -881,7 +881,12 @@ export function PullRequestSummaryTab({
                   )}
                 >
                   <PullRequestCheckStatusIcon status={check.status} />
-                  <span className="min-w-0 flex-1 wrap-anywhere">{check.name}</span>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={<span className="min-w-0 flex-1 wrap-anywhere">{check.name}</span>}
+                    />
+                    <TooltipPopup>{check.description ?? check.name}</TooltipPopup>
+                  </Tooltip>
                   <span className="shrink-0 text-muted-foreground">
                     {pullRequestCheckStatusLabel(check)}
                   </span>
