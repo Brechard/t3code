@@ -541,3 +541,26 @@ it.each(["token", "connection", "account"])(
     expect(runAction).not.toHaveBeenCalled();
   },
 );
+
+it.each(["github", "azure-devops", "gitlab", "bitbucket", "forgejo", "gitcafe"])(
+  "keeps draft conflict resolution reachable while publishing is primary on %s",
+  async (provider) => {
+    const panel = renderAzureDraft();
+    detail = {
+      ...detail,
+      provider: SourceControlProviderKind.make(provider),
+      mergeability: "conflicting",
+    };
+    await act(async () => {
+      renderer = create(panel);
+    });
+    expect(
+      headerButton(provider === "azure-devops" ? "Publish" : "Ready for review"),
+    ).toBeDefined();
+    await click("Resolve conflicts");
+    expect(newThread).toHaveBeenCalled();
+    const draft = useComposerDraftStore.getState().getComposerDraft(newDraftId);
+    expect(draft?.prompt).toContain("resolve every conflict");
+    expect(runAction).not.toHaveBeenCalled();
+  },
+);

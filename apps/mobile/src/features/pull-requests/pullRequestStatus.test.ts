@@ -122,6 +122,15 @@ describe("mobile overview check status", () => {
     expect(pullRequestChecksSummary({ checks: [] }).title).toBe("No checks reported");
   });
 
+  it("excludes skipped checks from completed totals", () => {
+    expect(
+      pullRequestChecksSummary({ checks: [check("neutral"), check("skipped")] }),
+    ).toMatchObject({
+      label: "1 completed",
+      title: "Checks completed",
+    });
+  });
+
   it("prioritizes failed checks while others are running", () => {
     expect(
       pullRequestChecksSummary({ checks: [check("success"), check("pending"), check("failure")] }),

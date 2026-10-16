@@ -120,7 +120,7 @@ export function pullRequestChecksSummary(pr: Pick<PullRequestDetail, "checks">) 
       ? "All checks skipped"
       : "Checks completed";
   return {
-    label: total ? `${pr.checks.length} completed` : title,
+    label: total ? `${total} completed` : title,
     title,
     count,
     icon: "minus",

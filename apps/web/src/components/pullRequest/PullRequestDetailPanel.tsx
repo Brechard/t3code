@@ -2130,6 +2130,17 @@ export function PullRequestDetailPanel({
                         <RefreshIcon size="sm" refreshing={refreshing} />
                         Refresh
                       </MenuItem>
+                      {conflicting && primaryAction !== "resolve" ? (
+                        <MenuItem
+                          disabled={
+                            handoff !== null || (attachTarget === null && checkoutRoot === null)
+                          }
+                          onClick={startResolveConflicts}
+                        >
+                          <PullRequestGlyph.conflicting aria-hidden className="size-3.5" />
+                          {handoff === "conflicts" ? "Preparing..." : "Resolve conflicts"}
+                        </MenuItem>
+                      ) : null}
                       <MenuItem disabled={handoff !== null} onClick={askAboutPullRequest}>
                         <MessageCircleQuestionIcon className="mt-1 size-3.5 shrink-0 self-start" />
                         <span className="flex min-w-0 flex-col">
