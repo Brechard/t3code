@@ -7403,7 +7403,15 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         const replies: string[] = [];
         for (const question of approvalTurnItem.questions) {
           const answer = command.answers?.[question.id];
-          if (typeof answer !== "string" || answer.trim().length === 0) {
+          const text =
+            typeof answer === "string"
+              ? answer.trim()
+              : question.multiSelect &&
+                  Array.isArray(answer) &&
+                  answer.every((value) => typeof value === "string" && value.trim().length > 0)
+                ? answer.join(", ")
+                : "";
+          if (text.length === 0) {
             if (question.required === false) continue;
             return yield* new OrchestratorDispatchError({
               commandId: command.commandId,
@@ -7411,7 +7419,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               cause: "Answer each question before sending.",
             });
           }
-          replies.push(`${question.question}\n${answer.trim()}`);
+          replies.push(`${question.question}\n${text}`);
         }
         if (replies.length === 0) {
           return yield* new OrchestratorDispatchError({
