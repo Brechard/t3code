@@ -225,6 +225,38 @@ describe("RelayEnvironmentDiscovery", () => {
     }),
   );
 
+  it.effect("reports an environment as unregistered only once the relay list has loaded", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* Effect.gen(function* () {
+        const discovery = yield* RelayEnvironmentDiscovery.RelayEnvironmentDiscovery;
+        const listed = environments[0]!.environmentId;
+        const deregistered = "deregistered-environment";
+        const before = yield* SubscriptionRef.get(discovery.state);
+        expect(RelayEnvironmentDiscovery.relayEnvironmentRegistration(before, deregistered)).toBe(
+          "unknown",
+        );
+
+        const requests = yield* Ref.get(harness.statusRequests);
+        for (const environment of environments) {
+          yield* Deferred.succeed(
+            requests.get(environment.environmentId)!,
+            status(environment, "online"),
+          );
+        }
+        yield* discovery.refresh;
+
+        const after = yield* SubscriptionRef.get(discovery.state);
+        expect(RelayEnvironmentDiscovery.relayEnvironmentRegistration(after, listed)).toBe(
+          "registered",
+        );
+        expect(RelayEnvironmentDiscovery.relayEnvironmentRegistration(after, deregistered)).toBe(
+          "unregistered",
+        );
+      }).pipe(Effect.provide(harness.layer));
+    }),
+  );
+
   it.effect(
     "preserves discovered rows while offline and refreshes after connectivity returns",
     () =>
@@ -344,6 +376,12 @@ describe("RelayEnvironmentDiscovery", () => {
         const failed = yield* SubscriptionRef.get(discovery.state);
         expect(failed.environments.size).toBe(0);
         expect(Option.isSome(failed.error)).toBe(true);
+        expect(
+          RelayEnvironmentDiscovery.relayEnvironmentRegistration(
+            failed,
+            environments[0]!.environmentId,
+          ),
+        ).toBe("unknown");
       }).pipe(Effect.provide(harness.layer));
     }),
   );
@@ -391,6 +429,12 @@ describe("RelayEnvironmentDiscovery", () => {
         expect(state.environments.size).toBe(0);
         expect(state.refreshing).toBe(false);
         expect(Option.isNone(state.error)).toBe(true);
+        expect(
+          RelayEnvironmentDiscovery.relayEnvironmentRegistration(
+            state,
+            environments[0]!.environmentId,
+          ),
+        ).toBe("unknown");
       }).pipe(Effect.provide(harness.layer));
     }),
   );
@@ -423,7 +467,14 @@ describe("RelayEnvironmentDiscovery", () => {
         yield* Fiber.join(refreshFiber);
         yield* Effect.yieldNow;
 
-        expect((yield* SubscriptionRef.get(discovery.state)).environments.size).toBe(0);
+        const signedOut = yield* SubscriptionRef.get(discovery.state);
+        expect(signedOut.environments.size).toBe(0);
+        expect(
+          RelayEnvironmentDiscovery.relayEnvironmentRegistration(
+            signedOut,
+            environments[0]!.environmentId,
+          ),
+        ).toBe("unknown");
       }).pipe(Effect.provide(harness.layer), Effect.scoped);
     }),
   );
