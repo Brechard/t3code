@@ -41,7 +41,8 @@ export function RemoveT3ConnectEnvironmentDialog({
               This forgets its pairing, credentials, and cached threads here.
             </AlertDialogDescription>
             <AlertDialogDescription>
-              It stays on your T3 Connect account and keeps its host space. Deregister it in{" "}
+              Your T3 Connect account doesn't change. If it's still registered there, deregister it
+              in{" "}
               {openAccountPage ? (
                 <InlineButton
                   onClick={() => {
@@ -54,7 +55,7 @@ export function RemoveT3ConnectEnvironmentDialog({
               ) : (
                 "T3 Connect settings"
               )}{" "}
-              to free it.
+              to free its host space.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
