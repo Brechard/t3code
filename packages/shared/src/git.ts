@@ -318,7 +318,7 @@ export function dedupeRemoteBranchesWithLocalMatches(
   });
 }
 
-function localBranchNameOfRemoteRef(ref: Pick<VcsRef, "name" | "remoteName">): string {
+export function remoteRefLocalBranchName(ref: Pick<VcsRef, "name" | "remoteName">): string {
   const remotePrefix = ref.remoteName ? `${ref.remoteName}/` : null;
   return remotePrefix && ref.name.startsWith(remotePrefix) && ref.name.length > remotePrefix.length
     ? ref.name.slice(remotePrefix.length)
@@ -326,24 +326,20 @@ function localBranchNameOfRemoteRef(ref: Pick<VcsRef, "name" | "remoteName">): s
 }
 
 /**
- * A new worktree based on a remote-only branch continues that branch under its
- * local name. Null keeps a fresh branch off the base: the base is local (so
- * stacking works), the local name is taken, or it names the default branch.
+ * The existing branch a new worktree should check out instead of forking one:
+ * the base itself, or a remote-only base's local name. Null forks, because the
+ * branch is checked out elsewhere or a local branch already holds the name.
  */
-export function resolveRemoteBaseWorktreeBranch(
+export function resolveWorktreeAttachBranch(
   baseRefName: string,
-  refs: ReadonlyArray<Pick<VcsRef, "name" | "isRemote" | "isDefault" | "remoteName">>,
+  refs: ReadonlyArray<Pick<VcsRef, "name" | "isRemote" | "remoteName" | "worktreePath">>,
 ): string | null {
-  const baseRef = refs.find((ref) => ref.name === baseRefName);
-  if (!baseRef?.isRemote) return null;
-  const localName = localBranchNameOfRemoteRef(baseRef);
-  if (localName === baseRef.name) return null;
-  const taken = refs.some((ref) =>
-    ref.isRemote
-      ? ref.isDefault && localBranchNameOfRemoteRef(ref) === localName
-      : ref.name === localName,
-  );
-  return taken ? null : localName;
+  const base = refs.find((ref) => ref.name === baseRefName);
+  if (base === undefined) return null;
+  if (!base.isRemote) return base.worktreePath === null ? base.name : null;
+  const localName = remoteRefLocalBranchName(base);
+  if (localName === base.name) return null;
+  return refs.some((ref) => !ref.isRemote && ref.name === localName) ? null : localName;
 }
 
 export function detectSourceControlProviderFromGitRemoteUrl(

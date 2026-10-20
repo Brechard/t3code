@@ -12,17 +12,21 @@ import {
   parseGitHubRepositoryNameWithOwnerFromRemoteUrl,
   parseOriginUrlFromGitConfig,
   resolveAutoFeatureBranchName,
-  resolveRemoteBaseWorktreeBranch,
+  resolveWorktreeAttachBranch,
   sanitizeFeatureBranchName,
   WORKTREE_BRANCH_PREFIX,
 } from "./git.ts";
 
-const localRef = (name: string, isDefault = false) => ({ name, isRemote: false, isDefault });
-const remoteRef = (name: string, remoteName = "origin", isDefault = false) => ({
+const localRef = (name: string, worktreePath: string | null = null) => ({
+  name,
+  isRemote: false,
+  worktreePath,
+});
+const remoteRef = (name: string, remoteName = "origin") => ({
   name,
   isRemote: true,
-  isDefault,
   remoteName,
+  worktreePath: null,
 });
 
 describe("normalizeGitRemoteUrl", () => {
@@ -245,50 +249,46 @@ describe("isTemporaryWorktreeBranch", () => {
   });
 });
 
-describe("resolveRemoteBaseWorktreeBranch", () => {
+describe("resolveWorktreeAttachBranch", () => {
+  it("attaches to a local branch no worktree has checked out", () => {
+    expect(resolveWorktreeAttachBranch("feature-x", [localRef("feature-x")])).toBe("feature-x");
+  });
+
+  it("forks a local branch that is already checked out", () => {
+    expect(resolveWorktreeAttachBranch("main", [localRef("main", "/repo")])).toBeNull();
+  });
+
   it("continues a remote-only branch under its local name", () => {
     expect(
-      resolveRemoteBaseWorktreeBranch("origin/feature/x", [
-        localRef("main", true),
+      resolveWorktreeAttachBranch("origin/feature/x", [
+        localRef("main", "/repo"),
         remoteRef("origin/feature/x"),
       ]),
     ).toBe("feature/x");
     expect(
-      resolveRemoteBaseWorktreeBranch("team/fork/feature-x", [
+      resolveWorktreeAttachBranch("team/fork/feature-x", [
         remoteRef("team/fork/feature-x", "team/fork"),
       ]),
     ).toBe("feature-x");
   });
 
-  it("branches off a local base so stacking still works", () => {
-    expect(resolveRemoteBaseWorktreeBranch("feature-x", [localRef("feature-x")])).toBeNull();
-  });
-
-  it("branches off when the local name already exists", () => {
+  it("forks a remote branch whose local name already exists", () => {
     expect(
-      resolveRemoteBaseWorktreeBranch("upstream/feature-x", [
+      resolveWorktreeAttachBranch("upstream/feature-x", [
         localRef("feature-x"),
         remoteRef("upstream/feature-x", "upstream"),
       ]),
     ).toBeNull();
-  });
-
-  it("branches off the default branch", () => {
     expect(
-      resolveRemoteBaseWorktreeBranch("origin/main", [remoteRef("origin/main", "origin", true)]),
-    ).toBeNull();
-    expect(
-      resolveRemoteBaseWorktreeBranch("upstream/main", [
-        remoteRef("origin/main", "origin", true),
-        remoteRef("upstream/main", "upstream"),
+      resolveWorktreeAttachBranch("team/fork/feature-x", [
+        localRef("feature-x"),
+        remoteRef("team/fork/feature-x", "team/fork"),
       ]),
     ).toBeNull();
   });
 
-  it("keeps the fresh branch when the base is not among the refs", () => {
-    expect(
-      resolveRemoteBaseWorktreeBranch("origin/feature-x", [localRef("main", true)]),
-    ).toBeNull();
+  it("forks when the base is not among the refs", () => {
+    expect(resolveWorktreeAttachBranch("origin/feature-x", [localRef("main")])).toBeNull();
   });
 });
 

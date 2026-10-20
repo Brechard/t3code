@@ -4338,6 +4338,29 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         }),
     );
 
+    it.effect("checks out an existing branch without recording a base", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        yield* git(cwd, ["branch", "feature/existing"]);
+        const path = yield* Path.Path;
+        const worktreePath = path.join(yield* makeTmpDir("git-worktrees-"), "existing");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const result = yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: "feature/existing",
+        });
+
+        assert.equal(result.worktree.refName, "feature/existing");
+        assert.equal(yield* git(worktreePath, ["branch", "--show-current"]), "feature/existing");
+        assert.equal(
+          yield* driver.readConfigValue(cwd, "branch.feature/existing.gh-merge-base"),
+          null,
+        );
+      }),
+    );
+
     it("parses checkout progress lines from git's stderr", () => {
       assert.deepStrictEqual(parseGitCheckoutProgressLine("Updating files:  78% (2104/2700)"), {
         percent: 78,

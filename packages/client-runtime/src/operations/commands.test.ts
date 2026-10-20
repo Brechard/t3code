@@ -85,14 +85,19 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
   readonly refs?: ReadonlyArray<VcsRef>;
 }) {
   const client = {
-    [WS_METHODS.vcsListRefs]: (listInput: VcsListRefsInput) =>
-      Effect.succeed({
-        refs: (input.refs ?? []).filter((ref) => ref.name.includes(listInput.query ?? "")),
+    [WS_METHODS.vcsListRefs]: (listInput: VcsListRefsInput) => {
+      const query = (listInput.query ?? "").toLowerCase();
+      const matching = (input.refs ?? []).filter((ref) => ref.name.toLowerCase().includes(query));
+      const start = listInput.cursor ?? 0;
+      const end = start + (listInput.limit ?? matching.length);
+      return Effect.succeed({
+        refs: matching.slice(start, end),
         isRepo: true,
         hasPrimaryRemote: true,
-        nextCursor: null,
-        totalCount: input.refs?.length ?? 0,
-      }),
+        nextCursor: end < matching.length ? end : null,
+        totalCount: matching.length,
+      });
+    },
     [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command: OrchestrationV2Command) =>
       Effect.sync(() => {
         input.commands.push(command);
@@ -415,56 +420,92 @@ describe("V2 environment commands", () => {
     }).pipe(Effect.provide(layerTestCrypto)),
   );
 
-  it.effect("continues a remote-only base branch instead of branching off it", () =>
-    Effect.gen(function* () {
-      const remoteRef = (name: string): VcsRef => ({
-        name,
-        current: false,
-        isRemote: true,
-        isDefault: false,
-        worktreePath: null,
-        remoteName: "origin",
-      });
-      const localRef = (name: string): VcsRef => ({
-        name,
-        current: false,
-        isRemote: false,
-        isDefault: false,
-        worktreePath: null,
-      });
-      const launchWith = Effect.fn(function* (refs: ReadonlyArray<VcsRef>) {
-        const launches: OrchestrationV2ThreadLaunchInput[] = [];
-        const supervisor = yield* makeSupervisor({ commands: [], projects: [], launches, refs });
-        yield* startThreadTurn({
-          commandId: CommandId.make("launch-remote-base"),
-          threadId: v2ThreadId,
-          message: {
-            messageId: MessageId.make("message-remote-base"),
-            role: "user",
-            text: "Continue the feature",
-            attachments: [],
-          },
-          runtimeMode: "full-access",
-          interactionMode: "default",
-          bootstrap: {
-            prepareWorktree: {
-              projectCwd: "/workspace/project",
-              baseBranch: "origin/feature-x",
-              branch: "t3/deadbeef",
-              continueRemoteBranch: true,
-            },
-          },
-        }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
-        return launches[0]?.workspaceStrategy;
-      });
+  const vcsRef = (name: string, fields: Partial<VcsRef> = {}): VcsRef => ({
+    name,
+    current: false,
+    isRemote: false,
+    isDefault: false,
+    worktreePath: null,
+    ...fields,
+  });
+  const remoteRef = (name: string, remoteName = "origin") =>
+    vcsRef(name, { isRemote: true, remoteName });
+  // Fills more than one page of the client's ref lookup.
+  const manyRefs = (makeRef: (name: string) => VcsRef, prefix: string) =>
+    Array.from({ length: 250 }, (_, index) => makeRef(`${prefix}-${index}`));
 
-      expect(yield* launchWith([remoteRef("origin/feature-x")])).toMatchObject({
-        baseRef: "origin/feature-x",
-        branch: "feature-x",
-      });
-      expect(
-        yield* launchWith([localRef("feature-x"), remoteRef("origin/feature-x")]),
-      ).toMatchObject({ baseRef: "origin/feature-x", branch: "t3/deadbeef" });
+  it.effect.each([
+    {
+      name: "attaches to a local base no worktree has",
+      baseBranch: "feature-x",
+      refs: [vcsRef("feature-x")],
+      branch: "feature-x",
+    },
+    {
+      name: "continues a remote-only base under its local name",
+      baseBranch: "origin/feature-x",
+      refs: [remoteRef("origin/feature-x")],
+      branch: "feature-x",
+    },
+    {
+      name: "forks a base that is already checked out",
+      baseBranch: "main",
+      refs: [vcsRef("main", { current: true, worktreePath: "/workspace/project" })],
+      branch: null,
+    },
+    {
+      name: "forks a remote base whose local copy exists under a slashed remote",
+      baseBranch: "team/upstream/feature-x",
+      refs: [vcsRef("feature-x"), remoteRef("team/upstream/feature-x", "team/upstream")],
+      branch: null,
+    },
+    {
+      name: "forks a remote base whose local copy is listed after a full page",
+      baseBranch: "team/upstream/feature-x",
+      refs: [
+        remoteRef("team/upstream/feature-x", "team/upstream"),
+        ...manyRefs(vcsRef, "feature-x"),
+        vcsRef("feature-x"),
+      ],
+      branch: null,
+    },
+    {
+      name: "finds a base listed after a full page",
+      baseBranch: "origin/feature-x",
+      refs: [...manyRefs(remoteRef, "origin/feature-x"), remoteRef("origin/feature-x")],
+      branch: "feature-x",
+    },
+  ])("$name", ({ baseBranch, refs, branch }) =>
+    Effect.gen(function* () {
+      const launches: OrchestrationV2ThreadLaunchInput[] = [];
+      const supervisor = yield* makeSupervisor({ commands: [], projects: [], launches, refs });
+      yield* startThreadTurn({
+        commandId: CommandId.make("launch-attach"),
+        threadId: v2ThreadId,
+        message: {
+          messageId: MessageId.make("message-attach"),
+          role: "user",
+          text: "Continue the feature",
+          attachments: [],
+        },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        bootstrap: {
+          prepareWorktree: {
+            projectCwd: "/workspace/project",
+            baseBranch,
+            branch: "t3/deadbeef",
+            startFromOrigin: true,
+            attachExistingBranch: true,
+          },
+        },
+      }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
+
+      expect(launches[0]?.workspaceStrategy).toEqual(
+        branch === null
+          ? { type: "worktree", baseRef: baseBranch, branch: "t3/deadbeef", startFromOrigin: true }
+          : { type: "worktree", baseRef: baseBranch, branch },
+      );
     }).pipe(Effect.provide(layerTestCrypto)),
   );
 

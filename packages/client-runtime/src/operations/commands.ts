@@ -26,11 +26,10 @@ import {
   type ThreadId,
   type ThreadEnvMode,
   type UploadChatAttachment,
+  type VcsListRefsResult,
+  type VcsRef,
 } from "@t3tools/contracts";
-import {
-  deriveLocalBranchNameFromRemoteRef,
-  resolveRemoteBaseWorktreeBranch,
-} from "@t3tools/shared/git";
+import { remoteRefLocalBranchName, resolveWorktreeAttachBranch } from "@t3tools/shared/git";
 import { modelSelectionCommandType } from "@t3tools/shared/model";
 import { derivePendingBackgroundWork } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
@@ -158,25 +157,46 @@ interface StartThreadBootstrap {
     readonly baseBranch: string;
     readonly branch?: string;
     readonly startFromOrigin?: boolean;
-    /** A remote-only base branch is continued under its local name, taking precedence over `branch`. */
-    readonly continueRemoteBranch?: boolean;
+    /** Check out the base branch, or a remote base's local copy, when no worktree has it. */
+    readonly attachExistingBranch?: boolean;
   };
   readonly runSetupScript?: boolean;
 }
 
-const resolveContinuedRemoteBranch = (cwd: string, baseRef: string) => {
-  const query = deriveLocalBranchNameFromRemoteRef(baseRef);
-  if (query === baseRef) return Effect.succeed(null);
-  return request(WS_METHODS.vcsListRefs, {
-    cwd,
-    query,
-    includeMatchingRemoteRefs: true,
-    limit: 100,
-  }).pipe(
-    Effect.map((result) => resolveRemoteBaseWorktreeBranch(baseRef, result.refs)),
-    Effect.orElseSucceed(() => null),
-  );
-};
+// The ref query is a substring match, so page until the exact name turns up.
+const listRefsMatching = Effect.fn("EnvironmentCommands.listRefsMatching")(function* (
+  cwd: string,
+  name: string,
+) {
+  const refs: VcsRef[] = [];
+  let cursor: number | null = null;
+  do {
+    const page: VcsListRefsResult = yield* request(WS_METHODS.vcsListRefs, {
+      cwd,
+      query: name,
+      includeMatchingRemoteRefs: true,
+      limit: 200,
+      ...(cursor === null ? {} : { cursor }),
+    });
+    refs.push(...page.refs);
+    if (page.refs.some((ref) => ref.name === name)) break;
+    cursor = page.nextCursor;
+  } while (cursor !== null);
+  return refs;
+});
+
+// A remote base's local name depends on its remote, which may itself contain a slash.
+const resolveAttachBranch = Effect.fn("EnvironmentCommands.resolveAttachBranch")(
+  function* (cwd: string, baseRef: string) {
+    const base = (yield* listRefsMatching(cwd, baseRef)).find((ref) => ref.name === baseRef);
+    if (base === undefined) return null;
+    const candidates = base.isRemote
+      ? yield* listRefsMatching(cwd, remoteRefLocalBranchName(base))
+      : [];
+    return resolveWorktreeAttachBranch(baseRef, [base, ...candidates]);
+  },
+  Effect.orElseSucceed(() => null),
+);
 
 export interface StartThreadTurnInput extends ThreadCommandInput {
   readonly manualContinuationOfRunId?: RunId;
@@ -657,20 +677,18 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
     const existingProjection =
       bootstrap === undefined ? yield* getProjection(input.threadId) : null;
     const thread = bootstrap ?? existingProjection!.thread;
-    const worktreeBranch =
-      prepareWorktree?.continueRemoteBranch === true
-        ? ((yield* resolveContinuedRemoteBranch(
-            prepareWorktree.projectCwd,
-            prepareWorktree.baseBranch,
-          )) ?? prepareWorktree.branch)
-        : prepareWorktree?.branch;
+    const attachBranch =
+      prepareWorktree?.attachExistingBranch === true
+        ? yield* resolveAttachBranch(prepareWorktree.projectCwd, prepareWorktree.baseBranch)
+        : null;
+    const worktreeBranch = attachBranch ?? prepareWorktree?.branch;
     const workspaceStrategy =
       prepareWorktree !== undefined
         ? {
             type: "worktree" as const,
             baseRef: prepareWorktree.baseBranch,
             ...(worktreeBranch === undefined ? {} : { branch: worktreeBranch }),
-            ...(prepareWorktree.startFromOrigin === undefined
+            ...(prepareWorktree.startFromOrigin === undefined || attachBranch !== null
               ? {}
               : { startFromOrigin: prepareWorktree.startFromOrigin }),
           }
