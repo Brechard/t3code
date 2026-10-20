@@ -6899,6 +6899,8 @@ export default function ChatView(props: ChatViewProps) {
                         worktreePath: null,
                         createdAt: messageCreatedAt,
                       },
+                      // No continueRemoteBranch: a branch can be checked out in only one
+                      // worktree, so each fan-out thread needs its own.
                       prepareWorktree: {
                         projectCwd: activeProject.workspaceRoot,
                         baseBranch: activeThreadBranch!,
@@ -7183,6 +7185,7 @@ export default function ChatView(props: ChatViewProps) {
                       projectCwd: activeProject.workspaceRoot,
                       baseBranch: baseBranchForWorktree,
                       ...(startFromOrigin ? { startFromOrigin: true } : {}),
+                      continueRemoteBranch: true,
                     },
                     runSetupScript: true,
                   }

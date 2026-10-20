@@ -20,6 +20,8 @@ import {
   type OrchestrationV2ThreadLaunchInput,
   type OrchestrationV2ThreadProjection,
   type ProjectMutation,
+  type VcsListRefsInput,
+  type VcsRef,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Crypto from "effect/Crypto";
@@ -80,8 +82,17 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
   readonly projectionRequests?: ThreadId[];
   readonly advertiseServerResolvedCommandContext?: boolean;
   readonly advertiseThreadStop?: boolean;
+  readonly refs?: ReadonlyArray<VcsRef>;
 }) {
   const client = {
+    [WS_METHODS.vcsListRefs]: (listInput: VcsListRefsInput) =>
+      Effect.succeed({
+        refs: (input.refs ?? []).filter((ref) => ref.name.includes(listInput.query ?? "")),
+        isRepo: true,
+        hasPrimaryRemote: true,
+        nextCursor: null,
+        totalCount: input.refs?.length ?? 0,
+      }),
     [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command: OrchestrationV2Command) =>
       Effect.sync(() => {
         input.commands.push(command);
@@ -401,6 +412,59 @@ describe("V2 environment commands", () => {
           startFromOrigin: true,
         },
       });
+    }).pipe(Effect.provide(layerTestCrypto)),
+  );
+
+  it.effect("continues a remote-only base branch instead of branching off it", () =>
+    Effect.gen(function* () {
+      const remoteRef = (name: string): VcsRef => ({
+        name,
+        current: false,
+        isRemote: true,
+        isDefault: false,
+        worktreePath: null,
+        remoteName: "origin",
+      });
+      const localRef = (name: string): VcsRef => ({
+        name,
+        current: false,
+        isRemote: false,
+        isDefault: false,
+        worktreePath: null,
+      });
+      const launchWith = Effect.fn(function* (refs: ReadonlyArray<VcsRef>) {
+        const launches: OrchestrationV2ThreadLaunchInput[] = [];
+        const supervisor = yield* makeSupervisor({ commands: [], projects: [], launches, refs });
+        yield* startThreadTurn({
+          commandId: CommandId.make("launch-remote-base"),
+          threadId: v2ThreadId,
+          message: {
+            messageId: MessageId.make("message-remote-base"),
+            role: "user",
+            text: "Continue the feature",
+            attachments: [],
+          },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          bootstrap: {
+            prepareWorktree: {
+              projectCwd: "/workspace/project",
+              baseBranch: "origin/feature-x",
+              branch: "t3/deadbeef",
+              continueRemoteBranch: true,
+            },
+          },
+        }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
+        return launches[0]?.workspaceStrategy;
+      });
+
+      expect(yield* launchWith([remoteRef("origin/feature-x")])).toMatchObject({
+        baseRef: "origin/feature-x",
+        branch: "feature-x",
+      });
+      expect(
+        yield* launchWith([localRef("feature-x"), remoteRef("origin/feature-x")]),
+      ).toMatchObject({ baseRef: "origin/feature-x", branch: "t3/deadbeef" });
     }).pipe(Effect.provide(layerTestCrypto)),
   );
 

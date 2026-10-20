@@ -12,9 +12,18 @@ import {
   parseGitHubRepositoryNameWithOwnerFromRemoteUrl,
   parseOriginUrlFromGitConfig,
   resolveAutoFeatureBranchName,
+  resolveRemoteBaseWorktreeBranch,
   sanitizeFeatureBranchName,
   WORKTREE_BRANCH_PREFIX,
 } from "./git.ts";
+
+const localRef = (name: string, isDefault = false) => ({ name, isRemote: false, isDefault });
+const remoteRef = (name: string, remoteName = "origin", isDefault = false) => ({
+  name,
+  isRemote: true,
+  isDefault,
+  remoteName,
+});
 
 describe("normalizeGitRemoteUrl", () => {
   it("canonicalizes equivalent GitHub remotes across protocol variants", () => {
@@ -233,6 +242,53 @@ describe("isTemporaryWorktreeBranch", () => {
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/feature/demo`)).toBe(false);
     expect(isTemporaryWorktreeBranch("main")).toBe(false);
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/deadbeef-extra`)).toBe(false);
+  });
+});
+
+describe("resolveRemoteBaseWorktreeBranch", () => {
+  it("continues a remote-only branch under its local name", () => {
+    expect(
+      resolveRemoteBaseWorktreeBranch("origin/feature/x", [
+        localRef("main", true),
+        remoteRef("origin/feature/x"),
+      ]),
+    ).toBe("feature/x");
+    expect(
+      resolveRemoteBaseWorktreeBranch("team/fork/feature-x", [
+        remoteRef("team/fork/feature-x", "team/fork"),
+      ]),
+    ).toBe("feature-x");
+  });
+
+  it("branches off a local base so stacking still works", () => {
+    expect(resolveRemoteBaseWorktreeBranch("feature-x", [localRef("feature-x")])).toBeNull();
+  });
+
+  it("branches off when the local name already exists", () => {
+    expect(
+      resolveRemoteBaseWorktreeBranch("upstream/feature-x", [
+        localRef("feature-x"),
+        remoteRef("upstream/feature-x", "upstream"),
+      ]),
+    ).toBeNull();
+  });
+
+  it("branches off the default branch", () => {
+    expect(
+      resolveRemoteBaseWorktreeBranch("origin/main", [remoteRef("origin/main", "origin", true)]),
+    ).toBeNull();
+    expect(
+      resolveRemoteBaseWorktreeBranch("upstream/main", [
+        remoteRef("origin/main", "origin", true),
+        remoteRef("upstream/main", "upstream"),
+      ]),
+    ).toBeNull();
+  });
+
+  it("keeps the fresh branch when the base is not among the refs", () => {
+    expect(
+      resolveRemoteBaseWorktreeBranch("origin/feature-x", [localRef("main", true)]),
+    ).toBeNull();
   });
 });
 

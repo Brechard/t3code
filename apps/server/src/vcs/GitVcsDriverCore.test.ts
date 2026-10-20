@@ -4308,6 +4308,36 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         }),
     );
 
+    it.effect(
+      "continues a remote branch as a tracking branch without recording it as its base",
+      () =>
+        Effect.gen(function* () {
+          const cwd = yield* makeTmpDir();
+          yield* initRepoWithCommit(cwd);
+          const remote = yield* makeTmpDir("git-remote-");
+          yield* git(remote, ["init", "--bare"]);
+          yield* git(cwd, ["remote", "add", "origin", remote]);
+          yield* git(cwd, ["push", "origin", "HEAD:refs/heads/feature/x"]);
+          yield* git(cwd, ["config", "branch.autoSetupMerge", "false"]);
+          const path = yield* Path.Path;
+          const worktreePath = path.join(yield* makeTmpDir("git-worktrees-"), "continued");
+          const driver = yield* GitVcsDriver.GitVcsDriver;
+          yield* driver.createWorktree({
+            cwd,
+            path: worktreePath,
+            refName: "origin/feature/x",
+            newRefName: "feature/x",
+            baseRefName: "origin/feature/x",
+          });
+
+          assert.equal(
+            yield* git(worktreePath, ["rev-parse", "--abbrev-ref", "@{upstream}"]),
+            "origin/feature/x",
+          );
+          assert.equal(yield* driver.readConfigValue(cwd, "branch.feature/x.gh-merge-base"), null);
+        }),
+    );
+
     it("parses checkout progress lines from git's stderr", () => {
       assert.deepStrictEqual(parseGitCheckoutProgressLine("Updating files:  78% (2104/2700)"), {
         percent: 78,

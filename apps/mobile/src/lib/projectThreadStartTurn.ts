@@ -76,6 +76,7 @@ export function buildProjectThreadStartTurnInput(spec: ProjectThreadStartTurnSpe
               baseBranch: spec.branch!,
               branch: spec.worktreeBranchName,
               ...(spec.startFromOrigin ? { startFromOrigin: true } : {}),
+              continueRemoteBranch: true,
             },
             runSetupScript: true,
           }

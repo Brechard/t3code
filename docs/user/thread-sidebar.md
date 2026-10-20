@@ -1,7 +1,9 @@
 # Working with threads
 
 Use a new thread for a separate task. Choose **New worktree** when its code changes
-need a separate branch and working directory.
+need a separate branch and working directory. Basing it on a branch that exists only
+on the remote, such as `origin/feature-x`, continues that branch: the worktree checks
+out a local `feature-x` that tracks it, instead of a new branch.
 
 ## Start a thread
 

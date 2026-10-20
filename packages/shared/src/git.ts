@@ -318,6 +318,34 @@ export function dedupeRemoteBranchesWithLocalMatches(
   });
 }
 
+function localBranchNameOfRemoteRef(ref: Pick<VcsRef, "name" | "remoteName">): string {
+  const remotePrefix = ref.remoteName ? `${ref.remoteName}/` : null;
+  return remotePrefix && ref.name.startsWith(remotePrefix) && ref.name.length > remotePrefix.length
+    ? ref.name.slice(remotePrefix.length)
+    : deriveLocalBranchNameFromRemoteRef(ref.name);
+}
+
+/**
+ * A new worktree based on a remote-only branch continues that branch under its
+ * local name. Null keeps a fresh branch off the base: the base is local (so
+ * stacking works), the local name is taken, or it names the default branch.
+ */
+export function resolveRemoteBaseWorktreeBranch(
+  baseRefName: string,
+  refs: ReadonlyArray<Pick<VcsRef, "name" | "isRemote" | "isDefault" | "remoteName">>,
+): string | null {
+  const baseRef = refs.find((ref) => ref.name === baseRefName);
+  if (!baseRef?.isRemote) return null;
+  const localName = localBranchNameOfRemoteRef(baseRef);
+  if (localName === baseRef.name) return null;
+  const taken = refs.some((ref) =>
+    ref.isRemote
+      ? ref.isDefault && localBranchNameOfRemoteRef(ref) === localName
+      : ref.name === localName,
+  );
+  return taken ? null : localName;
+}
+
 export function detectSourceControlProviderFromGitRemoteUrl(
   remoteUrl: string,
 ): SourceControlProviderInfo | null {
