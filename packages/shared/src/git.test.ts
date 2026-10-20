@@ -287,6 +287,27 @@ describe("resolveWorktreeAttachBranch", () => {
     ).toBeNull();
   });
 
+  it("forks a remote branch whose local name is a local branch's parent or child", () => {
+    expect(
+      resolveWorktreeAttachBranch("origin/feature/x", [
+        localRef("feature/x/y"),
+        remoteRef("origin/feature/x"),
+      ]),
+    ).toBeNull();
+    expect(
+      resolveWorktreeAttachBranch("origin/feature/x", [
+        localRef("feature"),
+        remoteRef("origin/feature/x"),
+      ]),
+    ).toBeNull();
+    expect(
+      resolveWorktreeAttachBranch("origin/feature/x", [
+        localRef("feature/xy"),
+        remoteRef("origin/feature/x"),
+      ]),
+    ).toBe("feature/x");
+  });
+
   it("forks when the base is not among the refs", () => {
     expect(resolveWorktreeAttachBranch("origin/feature-x", [localRef("main")])).toBeNull();
   });

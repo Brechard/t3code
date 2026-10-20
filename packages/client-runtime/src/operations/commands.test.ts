@@ -87,7 +87,13 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
   const client = {
     [WS_METHODS.vcsListRefs]: (listInput: VcsListRefsInput) => {
       const query = (listInput.query ?? "").toLowerCase();
-      const matching = (input.refs ?? []).filter((ref) => ref.name.toLowerCase().includes(query));
+      const matching = (input.refs ?? []).filter(
+        (ref) =>
+          ref.name.toLowerCase().includes(query) &&
+          (listInput.refKind === undefined ||
+            listInput.refKind === "all" ||
+            ref.isRemote === (listInput.refKind === "remote")),
+      );
       const start = listInput.cursor ?? 0;
       const end = start + (listInput.limit ?? matching.length);
       return Effect.succeed({
@@ -440,24 +446,35 @@ describe("V2 environment commands", () => {
       baseBranch: "feature-x",
       refs: [vcsRef("feature-x")],
       branch: "feature-x",
+      startFromOrigin: false,
     },
     {
       name: "continues a remote-only base under its local name",
       baseBranch: "origin/feature-x",
       refs: [remoteRef("origin/feature-x")],
       branch: "feature-x",
+      startFromOrigin: true,
     },
     {
       name: "forks a base that is already checked out",
       baseBranch: "main",
       refs: [vcsRef("main", { current: true, worktreePath: "/workspace/project" })],
       branch: null,
+      startFromOrigin: true,
     },
     {
       name: "forks a remote base whose local copy exists under a slashed remote",
       baseBranch: "team/upstream/feature-x",
       refs: [vcsRef("feature-x"), remoteRef("team/upstream/feature-x", "team/upstream")],
       branch: null,
+      startFromOrigin: true,
+    },
+    {
+      name: "forks a remote base whose local name is a nested branch's parent",
+      baseBranch: "origin/feature/x",
+      refs: [remoteRef("origin/feature/x"), vcsRef("feature/x/y")],
+      branch: null,
+      startFromOrigin: true,
     },
     {
       name: "forks a remote base whose local copy is listed after a full page",
@@ -468,14 +485,16 @@ describe("V2 environment commands", () => {
         vcsRef("feature-x"),
       ],
       branch: null,
+      startFromOrigin: true,
     },
     {
       name: "finds a base listed after a full page",
       baseBranch: "origin/feature-x",
       refs: [...manyRefs(remoteRef, "origin/feature-x"), remoteRef("origin/feature-x")],
       branch: "feature-x",
+      startFromOrigin: true,
     },
-  ])("$name", ({ baseBranch, refs, branch }) =>
+  ])("$name", ({ baseBranch, refs, branch, startFromOrigin }) =>
     Effect.gen(function* () {
       const launches: OrchestrationV2ThreadLaunchInput[] = [];
       const supervisor = yield* makeSupervisor({ commands: [], projects: [], launches, refs });
@@ -501,11 +520,12 @@ describe("V2 environment commands", () => {
         },
       }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
 
-      expect(launches[0]?.workspaceStrategy).toEqual(
-        branch === null
-          ? { type: "worktree", baseRef: baseBranch, branch: "t3/deadbeef", startFromOrigin: true }
-          : { type: "worktree", baseRef: baseBranch, branch },
-      );
+      expect(launches[0]?.workspaceStrategy).toEqual({
+        type: "worktree",
+        baseRef: baseBranch,
+        branch: branch ?? "t3/deadbeef",
+        ...(startFromOrigin ? { startFromOrigin } : {}),
+      });
     }).pipe(Effect.provide(layerTestCrypto)),
   );
 
