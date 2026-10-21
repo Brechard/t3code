@@ -283,7 +283,7 @@ function NoticeText({
       // the button stays until the banner itself gets wider than where it appeared.
       const width = banner.clientWidth;
       setDetailsAtWidth((shownAt) =>
-        overflowing ? width : shownAt !== null && width <= shownAt ? shownAt : null,
+        overflowing ? (shownAt ?? width) : shownAt !== null && width <= shownAt ? shownAt : null,
       );
     };
     measure();
