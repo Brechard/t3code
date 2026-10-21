@@ -3872,6 +3872,79 @@ it.effect("expands only files the change request changes, across every slice of 
   }),
 );
 
+it.effect("validates expanded files against the selected Azure iteration comparison", () =>
+  Effect.gen(function* () {
+    const comparisons = [
+      { iterationRange: { from: 0, to: 1 }, path: "first.ts" },
+      { iterationRange: { from: 0, to: 2 }, path: "combined.ts" },
+      { iterationRange: { from: 1, to: 2 }, path: "second.ts" },
+      { iterationRange: undefined, path: "current.ts" },
+    ];
+    const kind = SourceControlProviderKind.make("azure-devops");
+    const service = yield* makeService({
+      projects: [
+        project({
+          id: "azure",
+          title: "web",
+          workspaceRoot: "/azure",
+          provider: kind,
+          host: "dev.azure.com",
+          repository: "org/project/_git/web",
+        }),
+      ],
+      providers: [
+        fakeProvider(kind, {
+          getDiff: (input) => {
+            const comparison = comparisons.find(
+              ({ iterationRange }) =>
+                iterationRange?.from === input.iterationRange?.from &&
+                iterationRange?.to === input.iterationRange?.to,
+            )!;
+            return Effect.succeed({
+              patch: [
+                `diff --git a/${comparison.path} b/${comparison.path}`,
+                `--- a/${comparison.path}`,
+                `+++ b/${comparison.path}`,
+                "@@ -1 +1 @@",
+                "-old",
+                "+new",
+                "",
+              ].join("\n"),
+              truncated: false,
+              nextCursor: null,
+            });
+          },
+          getDiffFileContents: (input) =>
+            Effect.succeed({ oldContents: input.oldPath, newContents: input.newPath }),
+        }),
+      ],
+    });
+    const ref = { projectId: "azure" as ProjectId, repository: "web", number: 1 };
+    for (const { iterationRange, path } of comparisons) {
+      const comparison = { ...ref, ...(iterationRange ? { iterationRange } : {}) };
+      expect((yield* service.diff(comparison)).patch).toContain(`+++ b/${path}`);
+      expect(
+        yield* service.diffFileContents({
+          ...comparison,
+          changeType: "change",
+          oldPath: path,
+          newPath: path,
+        }),
+      ).toEqual({ oldContents: path, newContents: path });
+    }
+    const outside = yield* service
+      .diffFileContents({
+        ...ref,
+        iterationRange: { from: 1, to: 2 },
+        changeType: "change",
+        oldPath: "first.ts",
+        newPath: "first.ts",
+      })
+      .pipe(Effect.flip);
+    expect(outside).toMatchObject({ _tag: "PullRequestOperationError", reason: "not-found" });
+  }),
+);
+
 it.effect("gates comment deletion by host capability and retains native comment identity", () =>
   Effect.gen(function* () {
     const removed: string[] = [];

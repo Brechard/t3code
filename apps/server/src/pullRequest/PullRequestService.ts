@@ -3481,7 +3481,12 @@ export const make = Effect.gen(function* () {
     const ttlMs = Duration.toMillis(DIFF_CACHE_TTL);
     const fileKey = (oldPath: string, newPath: string) => JSON.stringify([oldPath, newPath]);
     const sliceKey = (input: PullRequestDiffInput) =>
-      JSON.stringify([refCacheKey(input), input.cursor ?? null, input.commit ?? null]);
+      JSON.stringify([
+        refCacheKey(input),
+        input.cursor ?? null,
+        input.commit ?? null,
+        input.iterationRange ?? null,
+      ]);
     const read = Effect.fn("PullRequestService.read")(function* (input: PullRequestDiffInput) {
       const key = sliceKey(input);
       const now = yield* Clock.currentTimeMillis;
