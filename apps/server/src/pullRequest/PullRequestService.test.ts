@@ -4146,6 +4146,34 @@ it.effect(
     }),
 );
 
+it.effect("keeps a successful detail read if its project disappears before notification", () =>
+  Effect.gen(function* () {
+    const projects = [
+      project({ id: "p1", title: "web", workspaceRoot: "/w", repository: "acme/web" }),
+    ];
+    const service = yield* makeService({
+      projects,
+      providers: [
+        fakeProvider(SourceControlProviderKind.make("github"), {
+          getChangeRequest: () =>
+            Effect.sync(() => {
+              projects.splice(0);
+              return hostedChangeRequest("The provider read succeeded.");
+            }),
+        }),
+      ],
+    });
+    const detail = yield* service.detail({
+      projectId: "p1" as ProjectId,
+      repository: "acme/web",
+      number: 1,
+      allowStale: false,
+    });
+    expect(detail.body).toBe("The provider read succeeded.");
+    expect(detail.number).toBe(1);
+  }),
+);
+
 it.effect("announces Azure reads, reports, and native actions with the linked PR identity", () =>
   Effect.gen(function* () {
     const kind = SourceControlProviderKind.make("azure-devops");

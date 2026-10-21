@@ -911,6 +911,7 @@ export const make = Effect.gen(function* () {
         const key = pullRequestSyncKey(ref, project.project.repositoryIdentity);
         return key === null ? Effect.void : PubSub.publish(stateChanges, key);
       }),
+      Effect.ignore,
     );
 
   /**
