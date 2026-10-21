@@ -76,23 +76,28 @@ export function PullRequestReviewButton({
     if (reason || disabled || pending.current) return;
     pending.current = true;
     setBusy(true);
-    try {
-      const result = await run({
-        environmentId,
-        input: { ...reference, action: { type: "vote", vote: value } },
+    await Promise.resolve()
+      .then(() =>
+        run({
+          environmentId,
+          input: { ...reference, action: { type: "vote", vote: value } },
+        }),
+      )
+      .then((result) => {
+        if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+        toastManager.add({ type: "success", title: result.value.message });
+        onActed();
+      })
+      .catch((cause: unknown) => {
+        toastManager.add({
+          type: "error",
+          title: readableFailure(cause, "Your review could not be submitted."),
+        });
+      })
+      .finally(() => {
+        pending.current = false;
+        setBusy(false);
       });
-      if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-      toastManager.add({ type: "success", title: result.value.message });
-      onActed();
-    } catch (cause) {
-      toastManager.add({
-        type: "error",
-        title: readableFailure(cause, "Your review could not be submitted."),
-      });
-    } finally {
-      pending.current = false;
-      setBusy(false);
-    }
   };
   const review = (verdict: PullRequestReviewVerdict) => {
     if (!disabled && !verdictReason(verdict)) onReview(verdict);

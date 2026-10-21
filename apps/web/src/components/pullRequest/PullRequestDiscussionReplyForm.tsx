@@ -58,32 +58,34 @@ function ReplyComposer({
     pending.current = true;
     setPosting(true);
     setError(null);
-    try {
-      const result = await reply({ environmentId, input: { ...reference, threadId, body: text } });
-      if (result._tag === "Failure") {
-        setError("Could not post the reply. Your draft is still here; try again.");
-        return;
-      }
-      setBody("");
-      if (resolveAfter && stillResolvable.current) {
-        const resolution = await resolve({
-          environmentId,
-          input: { ...reference, threadId, resolved: true },
-        });
-        if (resolution._tag === "Failure") {
-          setError(
-            "Your reply was posted, but the discussion could not be resolved. Use its status control to retry.",
-          );
-          onReplied();
+    await Promise.resolve()
+      .then(() => reply({ environmentId, input: { ...reference, threadId, body: text } }))
+      .then(async (result) => {
+        if (result._tag === "Failure") {
+          setError("Could not post the reply. Your draft is still here; try again.");
           return;
         }
-      }
-      setOpen(false);
-      onReplied();
-    } finally {
-      pending.current = false;
-      setPosting(false);
-    }
+        setBody("");
+        if (resolveAfter && stillResolvable.current) {
+          const resolution = await resolve({
+            environmentId,
+            input: { ...reference, threadId, resolved: true },
+          });
+          if (resolution._tag === "Failure") {
+            setError(
+              "Your reply was posted, but the discussion could not be resolved. Use its status control to retry.",
+            );
+            onReplied();
+            return;
+          }
+        }
+        setOpen(false);
+        onReplied();
+      })
+      .finally(() => {
+        pending.current = false;
+        setPosting(false);
+      });
   };
   if (!open)
     return (

@@ -55,24 +55,28 @@ export function PullRequestDiscussionStatus({
     setError(false);
     const choice = { key, from: status, to: next };
     setChosen(choice);
-    try {
-      const result = await command({
-        environmentId,
-        input: {
-          ...reference,
-          threadId,
-          status: next,
-          resolved: next !== "active" && next !== "pending",
-        },
+    await Promise.resolve()
+      .then(() =>
+        command({
+          environmentId,
+          input: {
+            ...reference,
+            threadId,
+            status: next,
+            resolved: next !== "active" && next !== "pending",
+          },
+        }),
+      )
+      .then((result) => {
+        if (result._tag === "Failure") {
+          setChosen((latest) => (latest === choice ? current : latest));
+          setError(true);
+        }
+      })
+      .finally(() => {
+        pending.current = false;
+        setBusy(false);
       });
-      if (result._tag === "Failure") {
-        setChosen((latest) => (latest === choice ? current : latest));
-        setError(true);
-      }
-    } finally {
-      pending.current = false;
-      setBusy(false);
-    }
   };
   return (
     <div className="flex items-center gap-2 text-xs">

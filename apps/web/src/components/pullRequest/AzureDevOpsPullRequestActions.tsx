@@ -118,16 +118,17 @@ function AzureActions({
     setBusy(true);
     setError(null);
     setResult(null);
-    try {
-      await operation();
-    } catch (cause) {
-      const message = readableFailure(cause, "Azure could not complete this action.");
-      setError(message);
-      if (openSection.current === null) toastManager.add({ type: "error", title: message });
-    } finally {
-      pending.current = false;
-      setBusy(false);
-    }
+    await Promise.resolve()
+      .then(operation)
+      .catch((cause: unknown) => {
+        const message = readableFailure(cause, "Azure could not complete this action.");
+        setError(message);
+        if (openSection.current === null) toastManager.add({ type: "error", title: message });
+      })
+      .finally(() => {
+        pending.current = false;
+        setBusy(false);
+      });
   };
   const hostAction = async (action: PullRequestHostAction) => {
     const value = settled(await run({ environmentId, input: { ...reference, action } }));

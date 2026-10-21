@@ -64,6 +64,63 @@ function settled<A, E>(result: AtomCommandResult<A, E>) {
   return result.value;
 }
 
+type AzureMenuEntry = {
+  id: string;
+  title: string;
+  reason: string | undefined;
+  disabled: boolean;
+  onPress: () => void;
+};
+
+// A render prop can invoke its arguments; keep event handlers that capture refs behind a component boundary.
+function AzureActionMenu({
+  voteEntries,
+  entries,
+  children,
+}: {
+  voteEntries: ReadonlyArray<AzureMenuEntry>;
+  entries: ReadonlyArray<AzureMenuEntry>;
+  children: ActionsProps["children"];
+}) {
+  const menuAction = (entry: AzureMenuEntry): MenuAction => ({
+    id: entry.id,
+    title: entry.reason ? `${entry.title} — ${entry.reason}` : entry.title,
+    attributes: { disabled: entry.disabled || Boolean(entry.reason) },
+  });
+  const nativeAction = (entry: AzureMenuEntry) => (
+    <Toolbar.MenuAction
+      key={entry.id}
+      disabled={entry.disabled || Boolean(entry.reason)}
+      subtitle={entry.reason}
+      onPress={entry.onPress}
+    >
+      <Toolbar.Label>{entry.title}</Toolbar.Label>
+    </Toolbar.MenuAction>
+  );
+  return children({
+    actions: [
+      {
+        id: "azure",
+        title: "Azure DevOps",
+        subactions: [
+          { id: "azure-vote", title: "Your review", subactions: voteEntries.map(menuAction) },
+          ...entries.map(menuAction),
+        ],
+      },
+    ],
+    onSelect: (id) => {
+      const entry = [...voteEntries, ...entries].find((entry) => entry.id === id);
+      if (entry && !entry.disabled && !entry.reason) entry.onPress();
+    },
+    nativeMenu: (
+      <Toolbar.Menu title="Azure DevOps">
+        <Toolbar.Menu title="Your review">{voteEntries.map(nativeAction)}</Toolbar.Menu>
+        {entries.map(nativeAction)}
+      </Toolbar.Menu>
+    ),
+  });
+}
+
 export function AzureDevOpsPullRequestActions(
   props: Omit<ActionsProps, "pr"> & {
     pr: PullRequestDetail | null;
@@ -101,17 +158,18 @@ function Actions({ pr, params, children }: ActionsProps) {
     setBusy(true);
     setError(null);
     setResult(null);
-    try {
-      await run();
-    } catch (cause) {
-      const message =
-        cause instanceof Error ? cause.message : "Azure could not complete this action.";
-      setError(message);
-      if (openSection.current === null) Dialog.alert("Azure DevOps", message);
-    } finally {
-      pending.current = false;
-      setBusy(false);
-    }
+    await Promise.resolve()
+      .then(run)
+      .catch((cause: unknown) => {
+        const message =
+          cause instanceof Error ? cause.message : "Azure could not complete this action.";
+        setError(message);
+        if (openSection.current === null) Dialog.alert("Azure DevOps", message);
+      })
+      .finally(() => {
+        pending.current = false;
+        setBusy(false);
+      });
   };
   const hostAction = async (action: PullRequestHostAction) => {
     const value = settled(await command({ ...target, input: { ...target.input, action } }));
@@ -187,45 +245,11 @@ function Actions({ pr, params, children }: ActionsProps) {
       },
     })),
   ];
-  const menuAction = (entry: (typeof entries)[number]): MenuAction => ({
-    id: entry.id,
-    title: entry.reason ? `${entry.title} — ${entry.reason}` : entry.title,
-    attributes: { disabled: entry.disabled || Boolean(entry.reason) },
-  });
-  const nativeAction = (entry: (typeof entries)[number]) => (
-    <Toolbar.MenuAction
-      key={entry.id}
-      disabled={entry.disabled || Boolean(entry.reason)}
-      subtitle={entry.reason}
-      onPress={entry.onPress}
-    >
-      <Toolbar.Label>{entry.title}</Toolbar.Label>
-    </Toolbar.MenuAction>
-  );
   return (
     <>
-      {children({
-        actions: [
-          {
-            id: "azure",
-            title: "Azure DevOps",
-            subactions: [
-              { id: "azure-vote", title: "Your review", subactions: voteEntries.map(menuAction) },
-              ...entries.map(menuAction),
-            ],
-          },
-        ],
-        onSelect: (id) => {
-          const entry = [...voteEntries, ...entries].find((entry) => entry.id === id);
-          if (entry && !entry.disabled && !entry.reason) entry.onPress();
-        },
-        nativeMenu: (
-          <Toolbar.Menu title="Azure DevOps">
-            <Toolbar.Menu title="Your review">{voteEntries.map(nativeAction)}</Toolbar.Menu>
-            {entries.map(nativeAction)}
-          </Toolbar.Menu>
-        ),
-      })}
+      <AzureActionMenu voteEntries={voteEntries} entries={entries}>
+        {children}
+      </AzureActionMenu>
       <AzureActionSheet
         section={section}
         onClose={() => setSection(null)}

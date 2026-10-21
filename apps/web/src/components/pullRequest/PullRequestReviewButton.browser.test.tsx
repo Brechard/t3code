@@ -202,21 +202,30 @@ it("sends one Azure vote for repeated clicks and locks all votes until completio
   });
 });
 
-it("reports Azure refusal and unlocks the vote for retry", async () => {
-  using fixture = setup();
-  state.run.mockResolvedValueOnce({
-    _tag: "Failure",
-    cause: Cause.fail(new Error("Vote refused")),
-  });
-  await using _screen = await renderUi(fixture.wrap(buttonNode()));
-  await approve().click();
-  expect(onActed).not.toHaveBeenCalled();
-  expect(state.toast).toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
-  await expect.element(approve()).toBeEnabled();
-  await approve().click();
-  expect(state.run).toHaveBeenCalledTimes(2);
-  expect(onActed).toHaveBeenCalledOnce();
-});
+it.each(["typed", "rejected", "thrown"] as const)(
+  "reports a %s Azure refusal and unlocks the vote for retry",
+  async (failure) => {
+    using fixture = setup();
+    if (failure === "typed")
+      state.run.mockResolvedValueOnce({
+        _tag: "Failure",
+        cause: Cause.fail(new Error("Vote refused")),
+      });
+    else if (failure === "rejected") state.run.mockRejectedValueOnce(new Error("Vote refused"));
+    else
+      state.run.mockImplementationOnce(() => {
+        throw new Error("Vote refused");
+      });
+    await using _screen = await renderUi(fixture.wrap(buttonNode()));
+    await approve().click();
+    expect(onActed).not.toHaveBeenCalled();
+    expect(state.toast).toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
+    await expect.element(approve()).toBeEnabled();
+    await approve().click();
+    expect(state.run).toHaveBeenCalledTimes(2);
+    expect(onActed).toHaveBeenCalledOnce();
+  },
+);
 
 it.each([
   { allowed: false, denial: undefined, reason: "This connection does not allow" },

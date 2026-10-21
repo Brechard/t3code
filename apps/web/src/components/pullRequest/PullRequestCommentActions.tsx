@@ -101,14 +101,16 @@ export function PullRequestCommentActions({
     pending.current = true;
     setBusy(true);
     setError(null);
-    try {
-      const result = await mutation();
-      if (result._tag === "Failure") setError(failure);
-      else succeeded(result.value);
-    } finally {
-      pending.current = false;
-      setBusy(false);
-    }
+    await Promise.resolve()
+      .then(mutation)
+      .then((result) => {
+        if (result._tag === "Failure") setError(failure);
+        else succeeded(result.value);
+      })
+      .finally(() => {
+        pending.current = false;
+        setBusy(false);
+      });
   };
   const toggleLike = () => {
     if (!canLike || !likeAllowed) return;
