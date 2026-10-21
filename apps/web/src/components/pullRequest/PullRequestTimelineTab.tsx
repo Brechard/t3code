@@ -850,10 +850,12 @@ export function PullRequestTimelineTab({
           })}
         </div>
 
-        {events.length === 0 ? (
+        {rows.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
             <PullRequestGlyph.pullRequest className="mb-2 size-5" />
-            <p className="text-xs">No activity yet.</p>
+            <p className="text-xs">
+              {events.length === 0 ? "No activity yet." : "Nothing new since your last visit."}
+            </p>
           </div>
         ) : null}
       </div>
