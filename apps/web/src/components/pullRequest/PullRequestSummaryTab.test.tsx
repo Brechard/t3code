@@ -189,7 +189,13 @@ it("switches Azure discussion filters without losing the parent of a matching re
       },
     ],
     events: [
-      { id: "event", actor: detail.author, createdAt: base.createdAt, body: "Pushed an update" },
+      {
+        id: "event",
+        kind: "approved",
+        actor: { login: "activity-reviewer@example.com", name: "Reviewer", avatarUrl: null },
+        createdAt: base.createdAt,
+        body: "Reviewer approved the pull request with suggestions",
+      },
     ],
   };
   act(() => {
@@ -202,9 +208,10 @@ it("switches Azure discussion filters without losing the parent of a matching re
         .find((node) => typeof node.props.onValueChange === "function")!
         .props.onValueChange(value),
     );
-  expect(renderedText()).toContain("Pushed an update");
+  expect(renderedText()).toContain("Reviewer approved the pull request with suggestions");
+  expect(renderedText()).not.toContain("activity-reviewer@example.com");
   select("comments");
-  expect(renderedText()).not.toContain("Pushed an update");
+  expect(renderedText()).not.toContain("Reviewer approved the pull request with suggestions");
   select("active");
   expect(renderedText()).toContain("Original question");
   expect(renderedText()).toContain("My answer");

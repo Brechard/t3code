@@ -1,5 +1,6 @@
 import { Spinner } from "~/components/ui/spinner";
 import type {
+  PullRequestActivityEvent,
   PullRequestActor,
   PullRequestCheck,
   PullRequestCheckStatus,
@@ -16,6 +17,9 @@ import {
   CircleDotIcon,
   CircleXIcon,
   ClockIcon,
+  GitCommitHorizontalIcon,
+  MessageSquareIcon,
+  UsersIcon,
   UserCheckIcon,
   UserRoundIcon,
   UserRoundXIcon,
@@ -35,6 +39,30 @@ import {
   type PullRequestStatePresentation,
   type PullRequestGlyphIcon,
 } from "./pullRequestIcons";
+
+export function PullRequestActivityIcon({ kind }: Pick<PullRequestActivityEvent, "kind">) {
+  switch (kind) {
+    case "approved":
+      return <CircleCheckIcon aria-hidden className="size-4 text-success" />;
+    case "changes-requested":
+      return <CircleXIcon aria-hidden className="size-4 text-destructive" />;
+    case "review":
+      return <ClockIcon aria-hidden className="size-4" />;
+    case "push":
+      return <GitCommitHorizontalIcon aria-hidden className="size-4" />;
+    case "reviewers":
+      return <UsersIcon aria-hidden className="size-4" />;
+    case "merged":
+      return <PullRequestGlyph.merged aria-hidden className="size-4" />;
+    case "closed":
+      return <PullRequestGlyph.closed aria-hidden className="size-4" />;
+    case "opened":
+    case "reopened":
+      return <PullRequestGlyph.pullRequest aria-hidden className="size-4" />;
+    default:
+      return <MessageSquareIcon aria-hidden className="size-4" />;
+  }
+}
 
 export function PullRequestLabelChip({
   label,

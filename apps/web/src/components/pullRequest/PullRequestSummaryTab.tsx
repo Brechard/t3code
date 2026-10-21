@@ -55,6 +55,7 @@ import {
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
+  PullRequestActivityIcon,
   PullRequestActorLabel,
   PullRequestCheckStatusIcon,
   pullRequestCheckStatusLabel,
@@ -1086,18 +1087,19 @@ export function PullRequestSummaryTab({
                     return (
                       <div
                         key={item.id}
-                        className="rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground"
+                        className="flex items-start gap-3 px-3 py-2 text-xs text-muted-foreground"
                       >
-                        <div className="mb-1 flex items-center gap-2">
-                          <PullRequestActorLabel actor={item.event.actor} />
-                          <time dateTime={item.at}>{formatRelativeTimeLabel(item.at)}</time>
+                        <span className="mt-0.5 shrink-0">
+                          <PullRequestActivityIcon kind={item.event.kind} />
+                        </span>
+                        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
+                          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-foreground">
+                            {item.event.body}
+                          </span>
+                          <time className="shrink-0 text-2xs" dateTime={item.at}>
+                            {formatRelativeTimeLabel(item.at)}
+                          </time>
                         </div>
-                        <PullRequestMarkdown
-                          text={item.event.body}
-                          cwd={detail.workspaceRoot}
-                          environmentId={environmentId}
-                          threadRef={threadRef}
-                        />
                       </div>
                     );
                   const discussion = item.discussion;

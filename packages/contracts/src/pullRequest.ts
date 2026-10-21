@@ -654,6 +654,19 @@ export const PullRequestActivityEvent = Schema.Struct({
   createdAt: IsoDateTime,
   actor: Schema.NullOr(PullRequestActor),
   body: Schema.String,
+  kind: Schema.optional(
+    Schema.Literals([
+      "opened",
+      "approved",
+      "changes-requested",
+      "review",
+      "push",
+      "reviewers",
+      "merged",
+      "closed",
+      "reopened",
+    ]),
+  ),
 });
 export type PullRequestActivityEvent = typeof PullRequestActivityEvent.Type;
 

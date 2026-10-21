@@ -100,6 +100,7 @@ const RawPullRequestSchema = Schema.Struct({
 const Position = Schema.NullOr(Schema.Struct({ line: Schema.Int }));
 const RawThreadSchema = Schema.Struct({
   identities: Schema.optional(Schema.NullOr(Schema.Record(Schema.String, RawIdentitySchema))),
+  properties: Schema.optional(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
   pullRequestThreadContext: Schema.optional(
     Schema.NullOr(
       Schema.Struct({
@@ -465,6 +466,98 @@ export function decodeThreadsJson(
   );
 }
 
+const decodeThreadProperty = Schema.decodeUnknownExit(
+  Schema.Struct({ $value: Schema.Union([Schema.String, Schema.Number, Schema.Boolean]) }),
+);
+
+function systemActivity(
+  thread: typeof RawThreadSchema.Type,
+  author: typeof RawIdentitySchema.Type | null | undefined,
+  content: string,
+): Pick<PullRequestActivityEvent, "actor" | "body" | "kind"> {
+  const property = (key: string) => {
+    const decoded = decodeThreadProperty(thread.properties?.[key]);
+    return Exit.isSuccess(decoded) ? String(decoded.value.$value) : undefined;
+  };
+  const identity = (key: string) => thread.identities?.[property(key) ?? ""];
+  const event = (
+    kind: PullRequestActivityEvent["kind"],
+    action: string,
+    actor: PullRequestActor | null,
+  ) => ({ kind, actor, body: `${actor?.name ?? actor?.login ?? "Someone"} ${action}` });
+  const actorFor = (prefix: string) => {
+    const actor = toActor(identity(`${prefix}Identity`));
+    if (actor) return actor;
+    const name = property(`${prefix}DisplayName`);
+    return name ? { name, login: property(prefix) ?? name, avatarUrl: null } : toActor(author);
+  };
+
+  switch (property("CodeReviewThreadType")) {
+    case "VoteUpdate": {
+      const actor = actorFor("CodeReviewVotedBy");
+      switch (property("CodeReviewVoteResult")) {
+        case "10":
+          return event("approved", "approved the pull request", actor);
+        case "5":
+          return event("approved", "approved the pull request with suggestions", actor);
+        case "0":
+          return event("review", "reset their vote", actor);
+        case "-5":
+          return event("review", "is waiting for the author", actor);
+        case "-10":
+          return event("changes-requested", "rejected the pull request", actor);
+      }
+      break;
+    }
+    case "RefUpdate": {
+      const count = property("CodeReviewRefNewCommitsCount");
+      const branch = property("CodeReviewRefName")?.replace(/^refs\/heads\//, "");
+      const actor = actorFor("CodeReviewRefUpdatedBy");
+      if (count && /^\d+$/.test(count) && Number(count) > 0)
+        return event("push", `pushed ${count} commit${count === "1" ? "" : "s"}`, actor);
+      if (branch) return event("push", `updated ${branch}`, actor);
+      break;
+    }
+    case "StatusUpdate": {
+      const actor = actorFor("CodeReviewStatusUpdatedBy");
+      switch (property("CodeReviewStatus")?.toLowerCase()) {
+        case "completed":
+          return event("merged", "completed the pull request", actor);
+        case "abandoned":
+          return event("closed", "abandoned the pull request", actor);
+        case "active":
+          return event("reopened", "reactivated the pull request", actor);
+      }
+      break;
+    }
+    case "PolicyStatusUpdate": {
+      const reviewers = decodeJsonResult(Schema.Array(Schema.String))(
+        property("CodeReviewRequiredReviewerExampleReviewerIdentities") ?? "null",
+      );
+      if (Result.isSuccess(reviewers) && reviewers.success.length > 0) {
+        const names = reviewers.success.map((id) => {
+          const reviewer = thread.identities?.[id];
+          return reviewer?.displayName ?? reviewer?.uniqueName;
+        });
+        if (names.every((name): name is string => typeof name === "string" && name.length > 0))
+          return {
+            kind: "reviewers",
+            actor: toActor(author),
+            body: `${new Intl.ListFormat("en").format(names)} ${names.length === 1 ? "was added as a reviewer" : "were added as reviewers"}.`,
+          };
+      }
+      break;
+    }
+    case "ReviewersUpdate":
+      return {
+        kind: "reviewers",
+        actor: toActor(identity("CodeReviewReviewersUpdatedByIdentity")) ?? toActor(author),
+        body: content,
+      };
+  }
+  return { actor: toActor(author), body: content };
+}
+
 export function decodeDiscussionJson(
   raw: string,
   viewer?: string,
@@ -508,7 +601,7 @@ export function decodeDiscussionJson(
     }
     for (const comment of thread.comments ?? []) {
       if (
-        comment.commentType !== "system" ||
+        comment.commentType?.trim().toLowerCase() !== "system" ||
         comment.isDeleted ||
         !comment.content ||
         !comment.publishedDate
@@ -517,8 +610,7 @@ export function decodeDiscussionJson(
       events.push({
         id: `azure-event:${thread.id}:${comment.id}`,
         createdAt: comment.publishedDate,
-        actor: toActor(comment.author),
-        body: comment.content,
+        ...systemActivity(thread, comment.author, comment.content),
       });
     }
     const path = trimmed(thread.threadContext?.filePath)?.replace(/^\//, "");

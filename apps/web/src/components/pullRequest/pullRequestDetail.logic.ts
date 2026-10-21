@@ -7,6 +7,7 @@ import {
   PullRequestOperationError,
   pullRequestHostOf,
   type PullRequestAction,
+  type PullRequestActivityEvent,
   type PullRequestActor,
   type PullRequestReviewer,
   type PullRequestBaseComparison,
@@ -480,6 +481,7 @@ export interface PullRequestTimelineEvent {
   readonly id: string;
   readonly at: string;
   readonly kind: "opened" | "commit" | "comment" | "review" | "merged" | "closed" | "activity";
+  readonly activityKind?: PullRequestActivityEvent["kind"];
   readonly title: string;
   readonly body: string | null;
   readonly markdown: boolean;
@@ -574,27 +576,34 @@ export function buildPullRequestTimeline(
     "createdAt" | "author" | "commits" | "comments" | "mergedAt" | "closedAt" | "events"
   >,
 ): ReadonlyArray<PullRequestTimelineEvent> {
+  const hasEvent = (kind: PullRequestActivityEvent["kind"]) =>
+    detail.events?.some((event) => event.kind === kind) === true;
   return [
-    {
-      id: "created",
-      at: detail.createdAt,
-      kind: "opened" as const,
-      title: "opened this pull request",
-      body: null,
-      markdown: false,
-      url: null,
-      actor: detail.author,
-      commitAuthors: [],
-      additions: null,
-      deletions: null,
-      path: null,
-      reviewState: null,
-      reactions: [],
-    },
+    ...(!hasEvent("opened")
+      ? [
+          {
+            id: "created",
+            at: detail.createdAt,
+            kind: "opened" as const,
+            title: "opened this pull request",
+            body: null,
+            markdown: false,
+            url: null,
+            actor: detail.author,
+            commitAuthors: [],
+            additions: null,
+            deletions: null,
+            path: null,
+            reviewState: null,
+            reactions: [],
+          },
+        ]
+      : []),
     ...(detail.events ?? []).map((event) => ({
       id: event.id,
       at: event.createdAt,
       kind: "activity" as const,
+      activityKind: event.kind,
       title: event.body,
       body: null,
       markdown: false,
@@ -639,7 +648,7 @@ export function buildPullRequestTimeline(
       reviewState: comment.reviewState,
       reactions: comment.reactions ?? [],
     })),
-    ...(detail.mergedAt
+    ...(detail.mergedAt && !hasEvent("merged")
       ? [
           {
             id: "merged",
@@ -659,7 +668,7 @@ export function buildPullRequestTimeline(
           },
         ]
       : []),
-    ...(detail.closedAt && !detail.mergedAt
+    ...(detail.closedAt && !detail.mergedAt && !hasEvent("closed")
       ? [
           {
             id: "closed",

@@ -7,7 +7,11 @@ import {
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import IconGitCommit from "@tabler/icons-react-native/IconGitCommit";
-import type { PullRequestActivity, PullRequestComment } from "@t3tools/contracts";
+import type {
+  PullRequestActivity,
+  PullRequestActivityEvent,
+  PullRequestComment,
+} from "@t3tools/contracts";
 import { StackActions, type NavigationProp } from "@react-navigation/native";
 import { useMemo, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -19,6 +23,21 @@ import { PullRequestAvatar } from "./PullRequestPresentation";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import { pullRequestDescriptionContent } from "./pullRequestDescriptionContent";
 import type { PullRequestParams } from "./usePullRequestDiff";
+
+const activityIcons = {
+  approved: "checkmark",
+  "changes-requested": "xmark",
+  push: "commit",
+  reviewers: "person.2",
+  review: "clock",
+  merged: "arrow.triangle.merge",
+  closed: "xmark",
+  opened: "arrow.triangle.branch",
+  reopened: "arrow.triangle.branch",
+} as const satisfies Record<
+  NonNullable<PullRequestActivityEvent["kind"]>,
+  AppSymbolName | "commit"
+>;
 
 function TimelineEvent(props: {
   icon: AppSymbolName | "commit";
@@ -207,8 +226,18 @@ export function pullRequestTimelineRows(
       key: event.id,
       date: event.createdAt,
       content: (
-        <TimelineEvent icon="text.bubble">
+        <TimelineEvent
+          icon={event.kind ? activityIcons[event.kind] : "text.bubble"}
+          tone={
+            event.kind === "approved"
+              ? "success"
+              : event.kind === "changes-requested"
+                ? "danger"
+                : undefined
+          }
+        >
           <Text className="text-sm text-foreground-muted">{event.body}</Text>
+          <Text className="text-2xs text-foreground-tertiary">{relativeTime(event.createdAt)}</Text>
         </TimelineEvent>
       ),
     })),

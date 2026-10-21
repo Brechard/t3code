@@ -51,6 +51,7 @@ import { PullRequestDiscussionReplyForm } from "./PullRequestDiscussionReplyForm
 import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
 import { PullRequestReactionBar } from "./PullRequestReactions";
 import {
+  PullRequestActivityIcon,
   PullRequestActorAvatar,
   PullRequestDiffStat,
   PullRequestMetaLine,
@@ -479,7 +480,7 @@ function CommitEvent({
 function LifecycleEvent({ event }: { event: PullRequestTimelineEvent }) {
   const presentation =
     event.kind === "activity"
-      ? { icon: <PullRequestGlyph.pullRequest className="size-3.5" />, label: event.title }
+      ? { icon: <PullRequestActivityIcon kind={event.activityKind} />, label: event.title }
       : event.kind === "opened"
         ? {
             icon: <PullRequestGlyph.pullRequest className="size-3.5" />,
@@ -500,7 +501,7 @@ function LifecycleEvent({ event }: { event: PullRequestTimelineEvent }) {
       <IconMarker icon={presentation.icon} />
       <div className="py-1.5 text-xs">
         <div className="flex flex-wrap items-center gap-1.5">
-          {event.actor ? <ActorName actor={event.actor} /> : null}
+          {event.actor && event.kind !== "activity" ? <ActorName actor={event.actor} /> : null}
           <span className="font-semibold text-foreground">{presentation.label}</span>
         </div>
         <div className="mt-0.5 text-2xs text-muted-foreground">

@@ -762,7 +762,16 @@ export const make = Effect.gen(function* () {
             ...pullRequest.identities,
             ...("identities" in discussion ? (discussion.identities ?? {}) : {}),
           },
-          events: "events" in discussion ? (discussion.events ?? []) : [],
+          events: [
+            {
+              id: "azure-created",
+              kind: "opened",
+              actor: pullRequest.author,
+              createdAt: pullRequest.createdAt,
+              body: `${pullRequest.author?.name ?? pullRequest.author?.login ?? "Someone"} created the pull request`,
+            },
+            ...("events" in discussion ? (discussion.events ?? []) : []),
+          ],
           updates: iterations.flatMap((iteration) => (iteration.update ? [iteration.update] : [])),
         } satisfies ProviderChangeRequestActivity;
       }).pipe(Effect.mapError(fail("getChangeRequestActivity"))),

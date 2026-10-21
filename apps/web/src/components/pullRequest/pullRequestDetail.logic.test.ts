@@ -616,6 +616,34 @@ describe("pull request timeline", () => {
     });
   });
 
+  it("does not duplicate creation and completion already reported by the host", () => {
+    const events = buildPullRequestTimeline({
+      ...TIMELINE_SOURCE,
+      comments: [],
+      commits: [],
+      mergedAt: "2026-07-04T00:00:00Z",
+      events: [
+        {
+          id: "azure-created",
+          kind: "opened",
+          body: "Author created the pull request",
+          actor: TIMELINE_SOURCE.author,
+          createdAt: TIMELINE_SOURCE.createdAt,
+        },
+        {
+          id: "azure-merged",
+          kind: "merged",
+          body: "Maintainer completed the pull request",
+          actor: null,
+          createdAt: "2026-07-04T00:00:00Z",
+        },
+      ],
+    });
+    expect(events.map(({ id, activityKind }) => ({ id, activityKind }))).toEqual([
+      { id: "azure-merged", activityKind: "merged" },
+      { id: "azure-created", activityKind: "opened" },
+    ]);
+  });
   it("drops a body that is nothing but a bot's HTML comment, and keeps one that says more", () => {
     const events = buildPullRequestTimeline({
       ...TIMELINE_SOURCE,

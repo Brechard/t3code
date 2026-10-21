@@ -665,6 +665,15 @@ it.effect("only accepts native comment likes and returns discussion links", () =
     expect(liked).toHaveLength(2);
     const activity = yield* provider.getChangeRequestActivity(ref);
     expect(activity.comments[0]?.url).toBe(`${PULL_REQUEST.url}?discussionId=8#1792058400`);
+    expect(activity.events).toEqual([
+      {
+        id: "azure-created",
+        kind: "opened",
+        actor: null,
+        createdAt: PULL_REQUEST.createdAt,
+        body: "Someone created the pull request",
+      },
+    ]);
   }),
 );
 

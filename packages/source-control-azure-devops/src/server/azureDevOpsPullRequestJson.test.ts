@@ -823,6 +823,161 @@ it("keeps nullable native identities, tracked ranges, and system activity", () =
   ]);
 });
 
+describe("Azure system activity", () => {
+  const author = { displayName: "Reviewer", uniqueName: "reviewer@example.com" };
+  const system = { displayName: "Microsoft.VisualStudio.Services.TFS" };
+  const date = "2026-10-21T10:00:00Z";
+  const decode = (properties: Record<string, unknown>, content = "Raw Azure event") =>
+    expectSuccess(
+      decodeDiscussionJson(
+        JSON.stringify({
+          value: [
+            {
+              id: 1,
+              properties: Object.fromEntries(
+                Object.entries(properties).map(([key, value]) => [key, { $value: value }]),
+              ),
+              identities: {
+                "1": author,
+                "2": { displayName: "Second reviewer", uniqueName: "second@example.com" },
+              },
+              comments: [
+                { id: 1, author: system, commentType: "system", content, publishedDate: date },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+
+  it.each([
+    [10, "approved", "approved the pull request"],
+    [5, "approved", "approved the pull request with suggestions"],
+    [0, "review", "reset their vote"],
+    [-5, "review", "is waiting for the author"],
+    [-10, "changes-requested", "rejected the pull request"],
+  ])("describes vote %s using the voter identity", (vote, kind, action) => {
+    const discussion = decode({
+      CodeReviewThreadType: "VoteUpdate",
+      CodeReviewVoteResult: String(vote),
+      CodeReviewVotedByIdentity: "1",
+    });
+    expect(discussion.comments).toEqual([]);
+    expect(discussion.events).toEqual([
+      {
+        id: "azure-event:1:1",
+        createdAt: date,
+        kind,
+        body: `Reviewer ${action}`,
+        actor: { name: "Reviewer", login: "reviewer@example.com", avatarUrl: null },
+      },
+    ]);
+  });
+
+  it("supports Azure's older display-name properties", () => {
+    expect(
+      decode({
+        CodeReviewThreadType: "VoteUpdate",
+        CodeReviewVoteResult: 10,
+        CodeReviewVotedByDisplayName: "Legacy reviewer",
+      }).events[0]?.body,
+    ).toBe("Legacy reviewer approved the pull request");
+  });
+
+  it.each([1, 2, 0])("attributes a push of %s commits to the person who pushed", (count) => {
+    expect(
+      decode({
+        CodeReviewThreadType: "RefUpdate",
+        CodeReviewRefNewCommitsCount: count,
+        CodeReviewRefUpdatedByIdentity: "1",
+        CodeReviewRefName: "refs/heads/topic",
+      }).events[0],
+    ).toMatchObject({
+      kind: "push",
+      actor: { login: "reviewer@example.com" },
+      body:
+        count === 0
+          ? "Reviewer updated topic"
+          : `Reviewer pushed ${count} commit${count === 1 ? "" : "s"}`,
+    });
+  });
+
+  it.each([
+    ["Completed", "merged", "completed"],
+    ["Abandoned", "closed", "abandoned"],
+    ["Active", "reopened", "reactivated"],
+  ])("describes status %s", (status, kind, action) => {
+    expect(
+      decode({
+        CodeReviewThreadType: "StatusUpdate",
+        CodeReviewStatus: status,
+        CodeReviewStatusUpdatedByIdentity: "1",
+      }).events[0],
+    ).toMatchObject({ kind, body: `Reviewer ${action} the pull request` });
+  });
+
+  it("names reviewers added by policy instead of reporting a generic policy update", () => {
+    expect(
+      decode({
+        CodeReviewThreadType: "PolicyStatusUpdate",
+        CodeReviewRequiredReviewerExampleReviewerIdentities: '["1","2"]',
+      }).events[0],
+    ).toMatchObject({
+      kind: "reviewers",
+      body: "Reviewer and Second reviewer were added as reviewers.",
+    });
+  });
+
+  it.each([
+    { CodeReviewThreadType: "VoteUpdate", CodeReviewVoteResult: "99" },
+    { CodeReviewThreadType: "VoteUpdate", CodeReviewVoteResult: { invalid: true } },
+    {
+      CodeReviewThreadType: "PolicyStatusUpdate",
+      CodeReviewRequiredReviewerExampleReviewerIdentities: "invalid JSON",
+    },
+    {
+      CodeReviewThreadType: "PolicyStatusUpdate",
+      CodeReviewRequiredReviewerExampleReviewerIdentities: '["missing"]',
+    },
+    { CodeReviewThreadType: "FutureEvent" },
+  ])("preserves unfamiliar or incomplete activity: %j", (properties) => {
+    expect(decode(properties).events[0]).toMatchObject({
+      body: "Raw Azure event",
+      actor: { name: system.displayName },
+    });
+    expect(decode(properties).events[0]?.kind).toBeUndefined();
+  });
+
+  it("does not interpret a user's comment as a system event", () => {
+    const discussion = expectSuccess(
+      decodeDiscussionJson(
+        JSON.stringify({
+          value: [
+            {
+              id: 1,
+              properties: {
+                CodeReviewThreadType: { $value: "VoteUpdate" },
+                CodeReviewVoteResult: { $value: "10" },
+              },
+              comments: [
+                {
+                  id: 1,
+                  author,
+                  commentType: "text",
+                  content: "Reviewer voted 10",
+                  publishedDate: date,
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    expect(discussion.comments[0]?.body).toBe("Reviewer voted 10");
+    expect(discussion.events).toEqual([]);
+  });
+});
+
 it("decodes likes against the DevOps viewer and excludes the viewer from named actors", () => {
   const decoded = expectSuccess(
     decodeThreadsJson(
