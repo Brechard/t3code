@@ -40,19 +40,14 @@ import { usePullRequestAction } from "./usePullRequestAction";
 import { annotatePullRequestDiff, reviewPosition } from "./pullRequestDiffComments";
 import { usePullRequestFileFilter } from "./usePullRequestFileFilter";
 import { isPullRequestTestFile } from "./pullRequestFileFilters";
-import {
-  StackActions,
-  useFocusEffect,
-  useNavigation,
-  useRoute,
-  type StaticScreenProps,
-} from "@react-navigation/native";
-import { useAtomRefresh } from "@effect/atom-react";
+import { useFocusEffect, useNavigation, type StaticScreenProps } from "@react-navigation/native";
+import { RegistryContext, useAtomRefresh } from "@effect/atom-react";
 import { pullRequestReviewKey } from "./pullRequestReviewDrafts";
 import { type PullRequestDetail, type PullRequestListEntry } from "@t3tools/contracts";
 import { PullRequestOverviewLoading } from "./PullRequestOverviewLoading";
+import { copyPullRequestLink, sharePullRequestLink } from "./pullRequestLink";
 import { pullRequestStatus } from "./pullRequestStatus";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import {
   Linking,
   Platform,
@@ -80,7 +75,6 @@ import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { usePullRequestConnected } from "./usePullRequestConnected";
 import { composerPullRequests } from "../../state/pull-requests";
 import { useEnvironmentQuery } from "../../state/query";
-import { useAtomCommand } from "../../state/use-atom-command";
 import { usePullToRefresh } from "../../state/use-pull-to-refresh";
 import {
   isNativeReviewDiffDrawEvent,
@@ -108,8 +102,7 @@ import {
   PullRequestDiffStats,
   PullRequestReadStatus,
 } from "./PullRequestPresentation";
-import { PullRequestFiles, usePullRequestFilesContent } from "./PullRequestFiles";
-import { PullRequestSheetContent } from "./PullRequestSheetContent";
+import { usePullRequestFilesSection } from "./PullRequestFiles";
 import { PullRequestDescription } from "./PullRequestDescription";
 import { PullRequestMarkdownRepository } from "./PullRequestMarkdown";
 import {
@@ -145,18 +138,14 @@ function usePullRequestActivityRows(params: PullRequestParams, filter: ActivityF
   const previousVisit = usePullRequestPreviousVisit(params, result.isSuccess);
   const detail = useEnvironmentQuery(composerPullRequests.detail(requestTarget(params)));
   const { canReply } = usePullRequestPermissions(params, detail.data);
-  const filtered = useMemo(
-    () =>
-      result.data
-        ? filterPullRequestActivity(
-            result.data,
-            { ...filter, since: previousVisit },
-            detail.data ?? undefined,
-          )
-        : null,
-    [result.data, filter, previousVisit, detail.data],
-  );
-  const rows = useMemo(() => {
+  const filtered = result.data
+    ? filterPullRequestActivity(
+        result.data,
+        { ...filter, since: previousVisit },
+        detail.data ?? undefined,
+      )
+    : null;
+  const rows = (() => {
     if (!filtered || !result.data) return [];
     const rows = pullRequestTimelineRows(
       filtered.activity,
@@ -181,13 +170,13 @@ function usePullRequestActivityRows(params: PullRequestParams, filter: ActivityF
         ),
       });
     return rows;
-  }, [filtered, filter.newestFirst, params, navigation, result.data, canReply]);
+  })();
   return {
     rows,
     hiddenCount: filtered?.hiddenCount ?? 0,
     azureCounts: filtered && "counts" in filtered ? filtered.counts : undefined,
     countsTruncated: result.data?.commentsTruncated || result.data?.reviewThreadsTruncated,
-    pending: result.isPending,
+    pending: result.isPending && !result.data,
     error: result.error,
   };
 }
@@ -320,7 +309,7 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
   const requestedSection = useRef(section);
   const [listAnimationsReady, setListAnimationsReady] = useState(false);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
-  const filesContent = usePullRequestFilesContent({ params });
+  const filesContent = usePullRequestFilesSection(params);
   const guidesEnabled = useReviewGuidesEnabled(params);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>(DEFAULT_ACTIVITY_FILTER);
   const activityContent = usePullRequestActivityRows(params, activityFilter);
@@ -357,14 +346,11 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
   const descriptionY = useRef(0);
   const pendingDescriptionJump = useRef(false);
   const pendingFilesJump = useRef(false);
-  const target = requestTarget(params);
-  const detailAtom = composerPullRequests.detail(target);
+  const detailAtom = composerPullRequests.detail(requestTarget(params));
   const result = useEnvironmentQuery(detailAtom);
   const pullRefresh = usePullToRefresh(detailAtom);
-  const invalidate = useAtomCommand(composerPullRequests.invalidate, { reportFailure: false });
-  const [invalidating, setInvalidating] = useState(false);
   const { refresh: refreshDetail } = result;
-  useFocusEffect(useCallback(() => refreshDetail(), [refreshDetail]));
+  useFocusEffect(() => refreshDetail());
   const pr = result.data;
   const summary = params.initialSummary;
   const identity = pr ?? summary;
@@ -379,24 +365,24 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
       `Delete ${pr.headBranch} from ${pr.headRepositoryNameWithOwner ?? pr.repository}? Local branches and worktrees are not changed.`,
     );
   const stack = usePullRequestStack(params, pr);
-  const refreshActivity = useAtomRefresh(composerPullRequests.activity(target));
-  const refreshGuide = useAtomRefresh(composerPullRequests.reviewGuide(target));
-  // A pull skips the server's cache and clears the permission denials it learned, so the re-reads
-  // wait for the invalidation. If it fails, they still run against the cache.
-  const refresh = async () => {
-    if (invalidating) return;
-    setInvalidating(true);
-    try {
-      await invalidate({ environmentId: target.environmentId, input: { reference: target.input } });
-    } finally {
-      setInvalidating(false);
-    }
-    pullRefresh.onRefresh();
-    if (guidesEnabled) refreshGuide();
-    stack.refresh();
-    refreshActivity();
-    filesContent.refresh();
-  };
+  const refreshActivity = useAtomRefresh(composerPullRequests.activity(requestTarget(params)));
+  const refreshGuide = useAtomRefresh(composerPullRequests.reviewGuide(requestTarget(params)));
+  const registry = use(RegistryContext);
+  const refresh = () =>
+    pullRefresh.onRefresh(async (signal) => {
+      const target = requestTarget(params);
+      await composerPullRequests.invalidate
+        .run(registry, {
+          environmentId: target.environmentId,
+          input: { reference: target.input },
+        })
+        .catch(() => undefined);
+      if (signal.aborted) return;
+      if (guidesEnabled) refreshGuide();
+      stack.refresh();
+      refreshActivity();
+      filesContent.refresh();
+    });
   const jumpToFiles = () => {
     scrollViews.current.overview?.scrollToOffset({
       offset: bodyY.current + filesY.current - insets.top,
@@ -431,12 +417,24 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
           },
         ]
       : []),
-    ...(pr
+    ...(identity
       ? [
           {
-            accessibilityLabel: openOnProviderLabel(pr.provider),
+            accessibilityLabel: openOnProviderLabel(identity.provider),
             icon: "arrow.up.right" as const,
-            onPress: () => void Linking.openURL(pr.url),
+            onPress: () => void Linking.openURL(identity.url),
+          },
+          {
+            accessibilityLabel: "Copy link",
+            icon: "link" as const,
+            overflowOnly: true,
+            onPress: () => copyPullRequestLink(identity),
+          },
+          {
+            accessibilityLabel: "Share…",
+            icon: "square.and.arrow.up" as const,
+            overflowOnly: true,
+            onPress: () => sharePullRequestLink(identity),
           },
         ]
       : []),
@@ -540,12 +538,25 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
                       <Toolbar.Label>Add comment</Toolbar.Label>
                     </Toolbar.MenuAction>
                   ) : null}
-                  {pr ? (
+                  {identity ? (
                     <Toolbar.MenuAction
                       icon="arrow.up.right"
-                      onPress={() => void Linking.openURL(pr.url)}
+                      onPress={() => void Linking.openURL(identity.url)}
                     >
-                      <Toolbar.Label>{openOnProviderLabel(pr.provider)}</Toolbar.Label>
+                      <Toolbar.Label>{openOnProviderLabel(identity.provider)}</Toolbar.Label>
+                    </Toolbar.MenuAction>
+                  ) : null}
+                  {identity ? (
+                    <Toolbar.MenuAction icon="link" onPress={() => copyPullRequestLink(identity)}>
+                      <Toolbar.Label>Copy link</Toolbar.Label>
+                    </Toolbar.MenuAction>
+                  ) : null}
+                  {identity ? (
+                    <Toolbar.MenuAction
+                      icon="square.and.arrow.up"
+                      onPress={() => sharePullRequestLink(identity)}
+                    >
+                      <Toolbar.Label>Share…</Toolbar.Label>
                     </Toolbar.MenuAction>
                   ) : null}
                   {showsDeleteBranch ? (
@@ -614,7 +625,7 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
                   contentInsetStartAdjustment={Platform.OS === "ios" ? insets.top : 0}
                   refreshControl={
                     <RefreshControl
-                      refreshing={section === tab && (invalidating || pullRefresh.refreshing)}
+                      refreshing={section === tab && pullRefresh.refreshing}
                       onRefresh={() => void refresh()}
                     />
                   }
@@ -761,7 +772,6 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
                         >
                           <PullRequestIdentity pr={identity} params={params} />
                           <SegmentedControl
-                            className={Platform.OS === "android" ? undefined : "bg-grouped-card"}
                             options={[
                               { value: "overview", label: "Overview" },
                               ...(guidesEnabled
@@ -794,32 +804,6 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
   );
 }
 
-export function PullRequestFilesRouteScreen({ route }: StaticScreenProps<PullRequestDiffParams>) {
-  const navigation = useNavigation();
-  const fileSelectionId = useRoute().key;
-  return (
-    <PullRequestSheetContent
-      title="Changed files"
-      scrollable={false}
-      subtitle={`#${route.params.number}${route.params.commit ? ` · ${route.params.commit.slice(0, 7)}` : ` · ${route.params.repository}`}`}
-    >
-      <PullRequestFiles
-        params={route.params}
-        groupByDirectory
-        onSelectFile={(path, comparison) =>
-          navigation.dispatch(
-            StackActions.popTo("PullRequestFile", {
-              ...comparison,
-              path,
-              fileSelectionId,
-            }),
-          )
-        }
-      />
-    </PullRequestSheetContent>
-  );
-}
-
 export function PullRequestFileRouteScreen({
   route,
 }: StaticScreenProps<
@@ -848,7 +832,7 @@ export function PullRequestFileRouteScreen({
   );
   const detail = useEnvironmentQuery(composerPullRequests.detail(requestTarget(route.params)));
   const { refresh: refreshDetail } = detail;
-  useFocusEffect(useCallback(() => refreshDetail(), [refreshDetail]));
+  useFocusEffect(() => refreshDetail());
   const { loadMore } = result;
   const parsed = filter.parsed;
   const reviewDraft = usePullRequestReviewDraft(route.params);
@@ -870,16 +854,12 @@ export function PullRequestFileRouteScreen({
     !result.isPending &&
     !result.error;
   const activity = useEnvironmentQuery(composerPullRequests.activity(requestTarget(route.params)));
-  const baseData = useMemo(() => buildNativeReviewDiffData(parsed), [parsed]);
-  const data = useMemo(
-    () =>
-      annotatePullRequestDiff(
-        baseData,
-        staleDiff || historical ? [] : (activity.data?.reviewThreads ?? []),
-        historical ? [] : reviewDraft.draft.comments,
-        diffHead.sha ?? undefined,
-      ),
-    [baseData, activity.data, reviewDraft.draft.comments, diffHead.sha, staleDiff, historical],
+  const baseData = buildNativeReviewDiffData(parsed);
+  const data = annotatePullRequestDiff(
+    baseData,
+    staleDiff || historical ? [] : (activity.data?.reviewThreads ?? []),
+    historical ? [] : reviewDraft.draft.comments,
+    diffHead.sha ?? undefined,
   );
   const viewedIds = data.files
     .filter((file) => (historical ? commitViewedPaths.has(file.path) : viewed.isViewed(file.path)))
@@ -973,49 +953,43 @@ export function PullRequestFileRouteScreen({
     if (!targetFile) loadMore();
   }, [targetFile, loadMore]);
   const { onDebug: updateVisibleRange } = bridge;
-  const onDebug = useCallback<NonNullable<NativeReviewDiffViewProps["onDebug"]>>(
-    (event) => {
-      const drawn = isNativeReviewDiffDrawEvent(event.nativeEvent);
-      const decoded =
-        event.nativeEvent.message === "rows-decoded" && event.nativeEvent.rows === data.rows.length;
-      if (!drawn && !decoded) return;
-      // Filtering replaces the native row payload asynchronously. Old draw events
-      // must not consume the file jump or highlight the new payload's row indices.
-      if (
-        typeof event.nativeEvent.totalRows === "number" &&
-        event.nativeEvent.totalRows !== data.rows.length
-      )
-        return;
-      if (drawn) updateVisibleRange(event);
-      if (
-        targetFile &&
-        !jumpStarted.current &&
-        nativeView.current &&
-        (Platform.OS !== "ios" || decoded)
-      ) {
-        jumpStarted.current = true;
-        if (focusIndex >= 0) return;
-        void nativeView.current.scrollToFile(targetFile.id, false).catch(() => {
-          jumpStarted.current = false;
-        });
-        return;
-      }
-      if (!drawn) return;
-      const lastRow = event.nativeEvent.lastRowIndex;
-      if (typeof lastRow === "number" && lastRow >= data.rows.length - 40) loadMore();
-    },
-    [updateVisibleRange, data.rows.length, loadMore, targetFile, focusIndex],
-  );
-  const onToggleFile = useCallback<NonNullable<NativeReviewDiffViewProps["onToggleFile"]>>(
-    (event) => {
-      const id = event.nativeEvent.fileId;
-      if (!id) return;
-      setCollapsedIds((ids) =>
-        ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id],
-      );
-    },
-    [],
-  );
+  const onDebug: NonNullable<NativeReviewDiffViewProps["onDebug"]> = (event) => {
+    const drawn = isNativeReviewDiffDrawEvent(event.nativeEvent);
+    const decoded =
+      event.nativeEvent.message === "rows-decoded" && event.nativeEvent.rows === data.rows.length;
+    if (!drawn && !decoded) return;
+    // Filtering replaces the native row payload asynchronously. Old draw events
+    // must not consume the file jump or highlight the new payload's row indices.
+    if (
+      typeof event.nativeEvent.totalRows === "number" &&
+      event.nativeEvent.totalRows !== data.rows.length
+    )
+      return;
+    if (drawn) updateVisibleRange(event);
+    if (
+      targetFile &&
+      !jumpStarted.current &&
+      nativeView.current &&
+      (Platform.OS !== "ios" || decoded)
+    ) {
+      jumpStarted.current = true;
+      if (focusIndex >= 0) return;
+      void nativeView.current.scrollToFile(targetFile.id, false).catch(() => {
+        jumpStarted.current = false;
+      });
+      return;
+    }
+    if (!drawn) return;
+    const lastRow = event.nativeEvent.lastRowIndex;
+    if (typeof lastRow === "number" && lastRow >= data.rows.length - 40) loadMore();
+  };
+  const onToggleFile: NonNullable<NativeReviewDiffViewProps["onToggleFile"]> = (event) => {
+    const id = event.nativeEvent.fileId;
+    if (!id) return;
+    setCollapsedIds((ids) =>
+      ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id],
+    );
+  };
   const visibleFile = data.files.find((file) => file.id === visibleFileId) ?? targetFile;
   const toggleTestFiles = () => {
     setJumpPath(visibleFile?.path ?? route.params.path);
@@ -1283,13 +1257,9 @@ export function PullRequestFileRouteScreen({
           </View>
         ) : null}
         {result.error && result.nextCursor ? (
-          <Pressable
-            accessibilityRole="button"
-            onPress={result.refresh}
-            className="min-h-11 items-center justify-center py-2"
-          >
-            <Text className="text-sm font-t3-medium">Retry loading remaining files</Text>
-          </Pressable>
+          <View className="self-center">
+            <Button label="Retry loading remaining files" tone="text" onPress={result.refresh} />
+          </View>
         ) : null}
         {parsed.kind === "files" && parsed.notice ? (
           <Text className="px-4 py-2 text-2xs text-foreground-muted">{parsed.notice}</Text>

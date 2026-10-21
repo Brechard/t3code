@@ -6,6 +6,7 @@ import {
 } from "@t3tools/client-runtime/pull-request-comment-replies";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
+import { PullRequestGlyph } from "./pullRequestGlyphs";
 import IconGitCommit from "@tabler/icons-react-native/IconGitCommit";
 import type {
   PullRequestActivity,
@@ -30,10 +31,10 @@ const activityIcons = {
   push: "commit",
   reviewers: "person.2",
   review: "clock",
-  merged: "arrow.triangle.merge",
-  closed: "xmark",
-  opened: "arrow.triangle.branch",
-  reopened: "arrow.triangle.branch",
+  merged: PullRequestGlyph.merged,
+  closed: PullRequestGlyph.closed,
+  opened: PullRequestGlyph.pullRequest,
+  reopened: PullRequestGlyph.pullRequest,
 } as const satisfies Record<
   NonNullable<PullRequestActivityEvent["kind"]>,
   AppSymbolName | "commit"

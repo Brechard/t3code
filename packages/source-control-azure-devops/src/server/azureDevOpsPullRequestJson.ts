@@ -165,12 +165,6 @@ const RawThreadPageSchema = Schema.Struct({
   value: Schema.Array(Schema.Unknown),
 });
 
-const RawViewerSchema = Schema.Struct({
-  user: Schema.optional(
-    Schema.NullOr(Schema.Struct({ name: Schema.optional(Schema.NullOr(Schema.String)) })),
-  ),
-});
-
 export interface AzureDevOpsRepositoryLocation {
   readonly project: string;
   readonly repository: string;
@@ -340,7 +334,6 @@ const decodePullRequestEntry = Schema.decodeUnknownExit(RawPullRequestSchema);
 const decodePullRequest = decodeJsonResult(RawPullRequestSchema);
 const decodeThreadPage = decodeJsonResult(RawThreadPageSchema);
 const decodeThreadEntry = Schema.decodeUnknownExit(RawThreadSchema);
-const decodeViewer = decodeJsonResult(RawViewerSchema);
 
 type DecodeFailure = Cause.Cause<Schema.SchemaError>;
 
@@ -379,13 +372,6 @@ export function decodePullRequestJson(
   const decoded = decodePullRequest(raw);
   return Result.isSuccess(decoded)
     ? Result.succeed(toPullRequest(decoded.success))
-    : Result.fail(decoded.failure);
-}
-
-export function decodeViewerJson(raw: string): Result.Result<string | null, DecodeFailure> {
-  const decoded = decodeViewer(raw);
-  return Result.isSuccess(decoded)
-    ? Result.succeed(trimmed(decoded.success.user?.name))
     : Result.fail(decoded.failure);
 }
 

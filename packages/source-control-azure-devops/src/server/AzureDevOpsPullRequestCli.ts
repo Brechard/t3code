@@ -653,81 +653,80 @@ const make = Effect.gen(function* () {
    * other tenant answers that with a sign-in page, which arrives here as unreadable output
    * rather than as a failure.
    */
-  const writeResponse = (input: {
+  const writeResponse = Effect.fn("AzureDevOpsPullRequestCli.writeResponse")(function* (input: {
     cwd: string;
     resource: string;
     routeParameters: ReadonlyArray<string>;
     area?: string;
     method: "POST" | "PATCH" | "DELETE" | "PUT";
     body?: string;
-  }) =>
-    Effect.gen(function* () {
-      let bodyFile: string | undefined;
-      if (input.body !== undefined) {
-        bodyFile = yield* fileSystem
-          .makeTempFileScoped({ prefix: "t3-azure-comment-", suffix: ".json" })
-          .pipe(
-            Effect.mapError(
-              (cause) => new AzureDevOpsDiscussionPreparationError({ cwd: input.cwd, cause }),
-            ),
-          );
-        yield* fileSystem
-          .writeFileString(bodyFile, input.body)
-          .pipe(
-            Effect.mapError(
-              (cause) => new AzureDevOpsDiscussionPreparationError({ cwd: input.cwd, cause }),
-            ),
-          );
-      }
-      if (input.area === "notification" && (input.method === "POST" || input.method === "DELETE")) {
-        const subscriptionId = input.routeParameters
-          .find((value) => value.startsWith("subscriptionId="))
-          ?.slice("subscriptionId=".length);
-        return yield* azure.notificationSubscriptions({
-          cwd: input.cwd,
-          method: input.method,
-          ...(subscriptionId === undefined ? {} : { subscriptionId }),
-          ...(bodyFile === undefined ? {} : { bodyFile }),
-        });
-      }
-      if (input.resource === "pullRequests" && input.method === "PATCH" && bodyFile !== undefined) {
-        const parameters = new Map(
-          input.routeParameters.map((parameter) => {
-            const index = parameter.indexOf("=");
-            return [parameter.slice(0, index), parameter.slice(index + 1)] as const;
-          }),
+  }) {
+    let bodyFile: string | undefined;
+    if (input.body !== undefined) {
+      bodyFile = yield* fileSystem
+        .makeTempFileScoped({ prefix: "t3-azure-comment-", suffix: ".json" })
+        .pipe(
+          Effect.mapError(
+            (cause) => new AzureDevOpsDiscussionPreparationError({ cwd: input.cwd, cause }),
+          ),
         );
-        return yield* azure.patchPullRequest({
-          cwd: input.cwd,
-          bodyFile,
-          routeValues: {
-            project: parameters.get("project")!,
-            repositoryId: parameters.get("repositoryId")!,
-            pullRequestId: parameters.get("pullRequestId")!,
-          },
-        });
-      }
-      return yield* executeJson({
+      yield* fileSystem
+        .writeFileString(bodyFile, input.body)
+        .pipe(
+          Effect.mapError(
+            (cause) => new AzureDevOpsDiscussionPreparationError({ cwd: input.cwd, cause }),
+          ),
+        );
+    }
+    if (input.area === "notification" && (input.method === "POST" || input.method === "DELETE")) {
+      const subscriptionId = input.routeParameters
+        .find((value) => value.startsWith("subscriptionId="))
+        ?.slice("subscriptionId=".length);
+      return yield* azure.notificationSubscriptions({
         cwd: input.cwd,
-        args: [
-          "devops",
-          "invoke",
-          ...detectArgs,
-          "--area",
-          input.area ?? "git",
-          "--resource",
-          input.resource,
-          "--api-version",
-          input.area === "policy" ? "7.1-preview" : REST_API_VERSION,
-          ...(input.routeParameters.length === 0
-            ? []
-            : ["--route-parameters", ...input.routeParameters]),
-          "--http-method",
-          input.method,
-          ...(bodyFile === undefined ? [] : ["--in-file", bodyFile, "--encoding", "utf-8"]),
-        ],
+        method: input.method,
+        ...(subscriptionId === undefined ? {} : { subscriptionId }),
+        ...(bodyFile === undefined ? {} : { bodyFile }),
       });
-    }).pipe(Effect.scoped);
+    }
+    if (input.resource === "pullRequests" && input.method === "PATCH" && bodyFile !== undefined) {
+      const parameters = new Map(
+        input.routeParameters.map((parameter) => {
+          const index = parameter.indexOf("=");
+          return [parameter.slice(0, index), parameter.slice(index + 1)] as const;
+        }),
+      );
+      return yield* azure.patchPullRequest({
+        cwd: input.cwd,
+        bodyFile,
+        routeValues: {
+          project: parameters.get("project")!,
+          repositoryId: parameters.get("repositoryId")!,
+          pullRequestId: parameters.get("pullRequestId")!,
+        },
+      });
+    }
+    return yield* executeJson({
+      cwd: input.cwd,
+      args: [
+        "devops",
+        "invoke",
+        ...detectArgs,
+        "--area",
+        input.area ?? "git",
+        "--resource",
+        input.resource,
+        "--api-version",
+        input.area === "policy" ? "7.1-preview" : REST_API_VERSION,
+        ...(input.routeParameters.length === 0
+          ? []
+          : ["--route-parameters", ...input.routeParameters]),
+        "--http-method",
+        input.method,
+        ...(bodyFile === undefined ? [] : ["--in-file", bodyFile, "--encoding", "utf-8"]),
+      ],
+    });
+  }, Effect.scoped);
 
   const write = (input: Parameters<typeof writeResponse>[0]) =>
     writeResponse(input).pipe(Effect.asVoid);

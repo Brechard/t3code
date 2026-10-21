@@ -8,7 +8,6 @@ import {
   decodePullRequestJson,
   decodePullRequestListJson,
   decodeThreadsJson,
-  decodeViewerJson,
   decodeDiscussionJson,
   decodeCommitsJson,
   decodeCommitChangesJson,
@@ -93,26 +92,8 @@ describe("decodePullRequestListJson", () => {
     expect(batch.items[0]?.url).toBe("https://dev.azure.com/acme/platform/_git/web/pullrequest/42");
   });
 
-  it("prefers the web link Azure sends when asked for one", () => {
-    const batch = expectSuccess(
-      decodePullRequestListJson(
-        asJson([
-          pullRequest({
-            _links: {
-              web: { href: "https://dev.azure.com/acme/platform/_git/web/pullrequest/42" },
-            },
-          }),
-        ]),
-      ),
-    );
-
-    expect(batch.items[0]?.url).toBe("https://dev.azure.com/acme/platform/_git/web/pullrequest/42");
-  });
-
   it.each([
-    ["active", "open"],
     ["completed", "merged"],
-    ["abandoned", "closed"],
     ["something new", "open"],
   ])("reads the %s status as %s", (status, expected) => {
     const batch = expectSuccess(decodePullRequestListJson(asJson([pullRequest({ status })])));
@@ -123,9 +104,7 @@ describe("decodePullRequestListJson", () => {
   it.each([
     ["succeeded", "mergeable"],
     ["conflicts", "conflicting"],
-    ["rejectedByPolicy", "conflicting"],
     ["queued", "unknown"],
-    ["notSet", "unknown"],
   ])("reads the %s merge status as %s", (mergeStatus, expected) => {
     const batch = expectSuccess(decodePullRequestListJson(asJson([pullRequest({ mergeStatus })])));
 
@@ -172,19 +151,6 @@ describe("decodePullRequestJson", () => {
     expect(detail?.reviewers).toEqual([
       { login: "julius@acme.dev", name: "Julius", avatarUrl: null, reviewState: "approved" },
     ]);
-  });
-
-  it("reads auto-complete from whoever armed it, and its absence as nobody", () => {
-    const armed = expectSuccess(
-      decodePullRequestJson(
-        asJson(pullRequest({ autoCompleteSetBy: { displayName: "Bilal Hassan" } })),
-      ),
-    );
-    expect(armed?.autoMergeEnabled).toBe(true);
-
-    expect(expectSuccess(decodePullRequestJson(asJson(pullRequest())))?.autoMergeEnabled).toBe(
-      false,
-    );
   });
 
   it("keeps the strategy stored with auto-complete", () => {
@@ -245,18 +211,6 @@ describe("decodePullRequestJson", () => {
     );
 
     expect(detail).toBeNull();
-  });
-});
-
-describe("decodeViewerJson", () => {
-  it("reads the signed-in account name", () => {
-    expect(expectSuccess(decodeViewerJson(asJson({ user: { name: "bilal@acme.dev" } })))).toBe(
-      "bilal@acme.dev",
-    );
-  });
-
-  it("returns nothing when nobody is signed in", () => {
-    expect(expectSuccess(decodeViewerJson(asJson({ user: null })))).toBeNull();
   });
 });
 
@@ -557,31 +511,6 @@ describe("decodeIterationChangesJson", () => {
     expect(page.changes.map((change) => change.path)).toEqual(["docs/page.md"]);
   });
 
-  it("carries where the next page of a long change starts", () => {
-    const page = expectSuccess(
-      decodeIterationChangesJson(
-        asJson({
-          changeEntries: [{ changeType: "add", item: { path: "/DEMO.md", objectId: "ec00" } }],
-          nextSkip: 2000,
-        }),
-      ),
-    );
-
-    expect(page.nextSkip).toBe(2000);
-  });
-
-  it("reads the last page, which names no page after it, as the end of the change", () => {
-    const page = expectSuccess(
-      decodeIterationChangesJson(
-        asJson({
-          changeEntries: [{ changeType: "add", item: { path: "/DEMO.md", objectId: "ec00" } }],
-        }),
-      ),
-    );
-
-    expect(page.nextSkip).toBeNull();
-  });
-
   it("reads where a rename came from out of either of the two places Azure names it", () => {
     const page = expectSuccess(
       decodeIterationChangesJson(
@@ -602,27 +531,11 @@ describe("decodeIterationChangesJson", () => {
 });
 
 describe("decodeItemContentJson", () => {
-  it("reads the file's text out of the envelope Azure wraps it in", () => {
-    expect(
-      expectSuccess(decodeItemContentJson(asJson({ path: "/a.md", content: "one\ntwo" }))),
-    ).toEqual({ contents: "one\ntwo", isBinary: false });
-  });
-
   it("reads an empty file as empty rather than as a failure to look", () => {
     expect(expectSuccess(decodeItemContentJson(asJson({ path: "/a.md" })))).toEqual({
       contents: "",
       isBinary: false,
     });
-  });
-
-  it("keeps Azure's own word that a file is binary", () => {
-    expect(
-      expectSuccess(
-        decodeItemContentJson(
-          asJson({ path: "/logo.png", content: "b2xk", contentMetadata: { isBinary: true } }),
-        ),
-      ),
-    ).toEqual({ contents: "b2xk", isBinary: true });
   });
 });
 

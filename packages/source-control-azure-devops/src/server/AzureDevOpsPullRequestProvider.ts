@@ -100,8 +100,7 @@ const AZURE_DEVOPS_VIEWER_PERMISSIONS: PullRequestViewerPermissions = {
 const isNativeRequestError = Schema.is(AzureDevOpsCli.AzureDevOpsNativeRequestError);
 const isReadError = Schema.is(AzureDevOpsPullRequestCli.AzureDevOpsPullRequestReadError);
 
-/** The CLI tags that mean the tool itself is unusable, rather than one request failing. */
-export function azureDevOpsProviderFailure(
+function azureDevOpsProviderFailure(
   error: AzureDevOpsPullRequestCli.AzureDevOpsPullRequestCliError,
 ): PullRequestProviderFailure {
   if (error._tag === "AzureDevOpsCliUnavailableError") return { reason: "missing-tool" };
@@ -206,52 +205,50 @@ export const make = Effect.gen(function* () {
    * which pushes the pull request has had. A client names neither, and the iterations are read
    * afresh every time because the newest one is what a push adds.
    */
-  const diffScope = (input: {
+  const diffScope = Effect.fn("AzureDevOpsPullRequestProvider.diffScope")(function* (input: {
     readonly cwd: string;
     readonly number: number;
     readonly iterationRange?: { readonly from: number; readonly to: number };
     readonly commit?: string | undefined;
-  }) =>
-    Effect.gen(function* () {
-      const location = yield* locationOf(input);
-      if (location === null) return null;
-      if (input.iterationRange && input.commit)
-        return yield* unsupported("combined diff selections");
-      if (input.commit !== undefined) {
-        const commits = yield* cli.listCommits({ ...input, location });
-        if (!commits.some((commit) => commit.oid === input.commit)) return null;
-        const scoped = yield* cli.getCommitScope({
-          cwd: input.cwd,
-          location,
-          commit: input.commit,
-        });
-        return { location, iterations: [scoped.iteration], commitChanges: scoped.changes };
-      }
-      const iterations = yield* cli.listIterations({
+  }) {
+    const location = yield* locationOf(input);
+    if (location === null) return null;
+    if (input.iterationRange && input.commit) return yield* unsupported("combined diff selections");
+    if (input.commit !== undefined) {
+      const commits = yield* cli.listCommits({ ...input, location });
+      if (!commits.some((commit) => commit.oid === input.commit)) return null;
+      const scoped = yield* cli.getCommitScope({
         cwd: input.cwd,
         location,
-        number: input.number,
+        commit: input.commit,
       });
-      if (input.iterationRange) {
-        const { from, to } = input.iterationRange;
-        const target = iterations.find((iteration) => iteration.id === to);
-        const base = from === 0 ? undefined : iterations.find((iteration) => iteration.id === from);
-        if (!target || (from !== 0 && !base) || from >= to)
-          return yield* unsupported("invalid update comparison");
-        const changes = yield* cli.listIterationChanges({
-          ...input,
-          location,
-          iterationId: to,
-          compareTo: from,
-        });
-        return {
-          location,
-          iterations: [{ ...target, mergeBaseCommit: base?.headCommit ?? target.mergeBaseCommit }],
-          commitChanges: changes,
-        };
-      }
-      return { location, iterations, commitChanges: null };
+      return { location, iterations: [scoped.iteration], commitChanges: scoped.changes };
+    }
+    const iterations = yield* cli.listIterations({
+      cwd: input.cwd,
+      location,
+      number: input.number,
     });
+    if (input.iterationRange) {
+      const { from, to } = input.iterationRange;
+      const target = iterations.find((iteration) => iteration.id === to);
+      const base = from === 0 ? undefined : iterations.find((iteration) => iteration.id === from);
+      if (!target || (from !== 0 && !base) || from >= to)
+        return yield* unsupported("invalid update comparison");
+      const changes = yield* cli.listIterationChanges({
+        ...input,
+        location,
+        iterationId: to,
+        compareTo: from,
+      });
+      return {
+        location,
+        iterations: [{ ...target, mergeBaseCommit: base?.headCommit ?? target.mergeBaseCommit }],
+        commitChanges: changes,
+      };
+    }
+    return { location, iterations, commitChanges: null };
+  });
 
   const EMPTY_ITEM: AzureDevOpsItemContent = { contents: "", isBinary: false };
 
@@ -561,8 +558,8 @@ export const make = Effect.gen(function* () {
         })),
       ),
 
-    getChangeRequest: (input) =>
-      Effect.gen(function* () {
+    getChangeRequest: Effect.fn("AzureDevOpsPullRequestProvider.getChangeRequest")(
+      function* (input) {
         const pullRequest = yield* cli.getPullRequest({ cwd: input.cwd, number: input.number });
         const location = rememberLocation(input, pullRequest.location);
         const target =
@@ -611,14 +608,16 @@ export const make = Effect.gen(function* () {
           ],
           { concurrency: "unbounded" },
         );
+        // The trial merge's lastMergeSourceCommit can lag behind a new source push.
+        const headSha = target === null ? undefined : (yield* iterations).at(-1)?.headCommit;
         // The shared merge control offers a merge commit and a squash, so each is offered only
         // where the target branch's merge-type policy allows it.
         const allowed = policy?.allowedMergeStrategies;
         const detail: ProviderChangeRequestDetail = {
           ...toChangeRequest(pullRequest),
           labels,
-          ...(pullRequest.headSha === undefined ? {} : { headSha: pullRequest.headSha }),
           body: pullRequest.body,
+          ...(headSha === undefined ? {} : { headSha }),
           changedFiles,
           mergedAt: pullRequest.state === "merged" ? pullRequest.closedAt : null,
           closedAt: pullRequest.state === "closed" ? pullRequest.closedAt : null,
@@ -640,10 +639,12 @@ export const make = Effect.gen(function* () {
             : { autoMergeMethod: pullRequest.autoMergeMethod }),
         };
         return detail;
-      }).pipe(Effect.mapError(fail("getChangeRequest"))),
+      },
+      Effect.mapError(fail("getChangeRequest")),
+    ),
 
-    getChangeRequestActivity: (input) =>
-      Effect.gen(function* () {
+    getChangeRequestActivity: Effect.fn("AzureDevOpsPullRequestProvider.getChangeRequestActivity")(
+      function* (input) {
         const pullRequest = yield* cli.getPullRequest({ cwd: input.cwd, number: input.number });
         if (pullRequest.location === null)
           return {
@@ -774,7 +775,9 @@ export const make = Effect.gen(function* () {
           ],
           updates: iterations.flatMap((iteration) => (iteration.update ? [iteration.update] : [])),
         } satisfies ProviderChangeRequestActivity;
-      }).pipe(Effect.mapError(fail("getChangeRequestActivity"))),
+      },
+      Effect.mapError(fail("getChangeRequestActivity")),
+    ),
 
     getViewerPermissions: (input) =>
       accessFor(input).pipe(
@@ -788,8 +791,8 @@ export const make = Effect.gen(function* () {
         return Cache.invalidate(accessReads, key);
       }),
 
-    getFilesViewed: (input) =>
-      Effect.gen(function* () {
+    getFilesViewed: Effect.fn("AzureDevOpsPullRequestProvider.getFilesViewed")(
+      function* (input) {
         const scope = yield* diffScope(input);
         if (!scope) return { files: [], truncated: false };
         const [visit, changes] = yield* Effect.all(
@@ -823,9 +826,11 @@ export const make = Effect.gen(function* () {
           }),
           truncated: changes.truncated,
         };
-      }).pipe(Effect.mapError(fail("getFilesViewed"))),
-    setFilesViewed: (input) =>
-      Effect.gen(function* () {
+      },
+      Effect.mapError(fail("getFilesViewed")),
+    ),
+    setFilesViewed: Effect.fn("AzureDevOpsPullRequestProvider.setFilesViewed")(
+      function* (input) {
         const scope = yield* diffScope(input);
         if (!scope) return;
         const changes = yield* listLatestChanges({
@@ -857,9 +862,11 @@ export const make = Effect.gen(function* () {
               detail: "Your token does not allow updating Azure review progress.",
             });
         }
-      }).pipe(Effect.mapError(fail("setFilesViewed"))),
-    getDiff: (input) =>
-      Effect.gen(function* () {
+      },
+      Effect.mapError(fail("setFilesViewed")),
+    ),
+    getDiff: Effect.fn("AzureDevOpsPullRequestProvider.getDiff")(
+      function* (input) {
         const scope = yield* diffScope(input);
         if (scope === null) return EMPTY_DIFF_SLICE;
         const cursor = parseAzureDevOpsDiffCursor(input.cursor);
@@ -959,10 +966,12 @@ export const make = Effect.gen(function* () {
               : formatAzureDevOpsDiffCursor({ iterationId: iteration.id, fileIndex: index }),
         };
         return slice;
-      }).pipe(Effect.mapError(fail("getDiff"))),
+      },
+      Effect.mapError(fail("getDiff")),
+    ),
 
-    getDiffFileContents: (input) =>
-      Effect.gen(function* () {
+    getDiffFileContents: Effect.fn("AzureDevOpsPullRequestProvider.getDiffFileContents")(
+      function* (input) {
         const scope = yield* diffScope(input);
         const iteration = scope?.iterations.at(-1);
         if (scope === null || iteration === undefined) return { oldContents: "", newContents: "" };
@@ -976,15 +985,17 @@ export const make = Effect.gen(function* () {
             oldPath: input.oldPath,
           },
         });
-      }).pipe(Effect.mapError(fail("getDiffFileContents"))),
+      },
+      Effect.mapError(fail("getDiffFileContents")),
+    ),
 
     /**
      * A path the change does not carry is at the empty revision, which is where a file the pull
      * request deletes sits. When the change was too long to follow to its end, those paths are left
      * out instead: reporting them as deleted would clear a file nobody has read.
      */
-    getFileRevisions: (input) =>
-      Effect.gen(function* () {
+    getFileRevisions: Effect.fn("AzureDevOpsPullRequestProvider.getFileRevisions")(
+      function* (input) {
         const revisions = new Map<string, string>();
         if (input.paths.length === 0) return { revisions };
         const scope = yield* diffScope(input);
@@ -1005,7 +1016,9 @@ export const make = Effect.gen(function* () {
           }
         }
         return { revisions };
-      }).pipe(Effect.mapError(fail("getFileRevisions"))),
+      },
+      Effect.mapError(fail("getFileRevisions")),
+    ),
 
     runAction: (input) =>
       cli

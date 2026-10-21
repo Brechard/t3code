@@ -9,7 +9,6 @@ import { pullRequestThreadStatusLabels } from "@t3tools/client-runtime/pull-requ
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import {
   pullRequestCommentReplies,
-  groupPullRequestComments,
   type PullRequestCommentReplyContext,
 } from "@t3tools/client-runtime/pull-request-comment-replies";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -31,13 +30,13 @@ import {
   UsersIcon,
 } from "lucide-react";
 import * as Schema from "effect/Schema";
-import { useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { useContext, useRef, useState, type ReactNode } from "react";
 
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { cn } from "~/lib/utils";
 import { useOpenLink } from "~/browser/useOpenLink";
-import { formatRelativeTimeLabel } from "~/timestampFormat";
+import { RelativeTime } from "~/components/RelativeTime";
 
 import { Button } from "../ui/button";
 import { PullRequestEditButton } from "./PullRequestEditButton";
@@ -70,10 +69,17 @@ import { PullRequestLabelPicker } from "./PullRequestLabelPicker";
 import { PullRequestReviewerPicker } from "./PullRequestReviewerPicker";
 import { PullRequestActivityUnavailableState } from "./PullRequestActivityUnavailableState";
 import {
+  filterPullRequestConversationItems,
+  isPullRequestCommentFinished,
   latestPullRequestReviewOutcomes,
+  orderPullRequestComments,
+  pagePullRequestConversationItems,
+  pullRequestConversationItemComments,
+  pullRequestConversationItems,
   pullRequestFindingKey,
   pullRequestReviewOutcome,
   visibleBody,
+  type PullRequestConversationItem,
   type PullRequestFinding,
 } from "./pullRequestDetail.logic";
 import {
@@ -82,6 +88,7 @@ import {
 } from "./pullRequestEditing.logic";
 import { PullRequestMarkdown, PullRequestMarkdownContext } from "./PullRequestMarkdown";
 import { PullRequestCommentBody } from "./PullRequestCommentBody";
+import { PullRequestMoreReplies } from "./PullRequestMoreReplies";
 import { PullRequestCommentReply } from "./PullRequestCommentReply";
 import { PullRequestDiscussionStatus } from "./PullRequestDiscussionStatus";
 import { PullRequestCommentActions } from "./PullRequestCommentActions";
@@ -107,7 +114,7 @@ function CommentIdentity({
     ? sourceControlClients.get(detail.provider).authorProfileUrl(actor.login, detail.url)
     : null;
   return (
-    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+    <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
       <PullRequestActorLabel actor={actor} profileUrl={profileUrl} className="max-w-full" />
       <Tooltip>
         <TooltipTrigger
@@ -124,7 +131,9 @@ function CommentIdentity({
             )
           }
         >
-          <time dateTime={comment.createdAt}>{formatRelativeTimeLabel(comment.createdAt)}</time>
+          <time dateTime={comment.createdAt}>
+            <RelativeTime timestamp={comment.createdAt} />
+          </time>
         </TooltipTrigger>
         <TooltipPopup>
           {new Date(comment.createdAt).toLocaleString()}
@@ -249,6 +258,9 @@ function CollapsedComment({
   reactionBar,
   detail,
   thread,
+  replyCount = 0,
+  replies = null,
+  moreReplies = null,
   children,
 }: {
   comment: PullRequestComment;
@@ -259,6 +271,9 @@ function CollapsedComment({
   reactionBar: ReactNode;
   detail: PullRequestDetailView;
   thread: PullRequestReviewThread | undefined;
+  replyCount?: number;
+  replies?: ReactNode;
+  moreReplies?: ReactNode;
   children?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -267,8 +282,13 @@ function CollapsedComment({
     <Collapsible open={open} onOpenChange={setOpen}>
       <article className="group rounded-lg border border-border/60 [contain-intrinsic-block-size:44px] [content-visibility:auto]">
         <div className="p-3">
-          <div className="flex flex-wrap items-start gap-2">
+          <div className="flex flex-wrap items-baseline gap-2">
             <CommentIdentity comment={comment} detail={detail} />
+            {replyCount > 0 ? (
+              <span className="shrink-0 py-1 text-xs text-muted-foreground">
+                {replyCount} {replyCount === 1 ? "reply" : "replies"}
+              </span>
+            ) : null}
             <CommentActions comment={comment} editing={editing} />
             <CollapsibleTrigger
               ref={statusTriggerRef}
@@ -306,10 +326,12 @@ function CollapsedComment({
               {body === null && !editing.canEdit(comment) ? null : (
                 <CommentBody className="mt-2" comment={comment} editing={editing} />
               )}
+              {replies ? <div className="mt-3">{replies}</div> : null}
               {children}
             </div>
           ) : null}
         </CollapsiblePanel>
+        {moreReplies ? <div className="px-3 pb-3">{moreReplies}</div> : null}
       </article>
     </Collapsible>
   );
@@ -437,105 +459,88 @@ export function PullRequestSummaryTab({
   onRefreshChecks?: () => void;
 }) {
   const [shown, setShown] = useState({ url: detail.url, count: COMMENT_PAGE });
-  const shownDiscussions = shown.url === detail.url ? shown.count : COMMENT_PAGE;
+  const shownConversations = shown.url === detail.url ? shown.count : COMMENT_PAGE;
   const identities = useContext(PullRequestMarkdownContext)?.identities;
-  const replies = useMemo(
-    () =>
-      pullRequestCommentReplies({
-        comments: detail.comments,
-        reviewThreads: detail.reviewThreads,
-        identities,
-      }),
-    [detail.comments, detail.reviewThreads, identities],
-  );
-  // Only a comment's own thread or reply link makes a discussion. GitHub repeats every line remark
-  // in a review thread, and grouping by those would turn each remark into a reply thread here.
-  const discussions = useMemo(
-    () => groupPullRequestComments({ comments: detail.comments, reviewThreads: [] }),
-    [detail.comments],
-  );
+  const replyContexts = pullRequestCommentReplies({
+    comments: detail.comments,
+    reviewThreads: detail.reviewThreads,
+    identities,
+  });
   const [commentFilter, setCommentFilter] = useLocalStorage(
     COMMENT_FILTER_STORAGE_KEY,
     DEFAULT_COMMENT_FILTER,
     CommentFilterSchema,
   );
-  const threadByCommentId = new Map(
-    detail.reviewThreads.flatMap((thread) =>
-      thread.comments.map((comment) => [comment.id, thread] as const),
-    ),
-  );
-
-  const isFinished = (comment: PullRequestComment) =>
-    (comment.threadStatus !== undefined && !["active", "pending"].includes(comment.threadStatus)) ||
-    threadByCommentId.get(comment.id)?.isResolved === true ||
-    pullRequestReviewOutcome(comment.reviewState) === "dismissed";
-  const isBot = (comment: PullRequestComment) =>
-    comment.author?.isBot === true || comment.author?.login.endsWith("[bot]") === true;
   const previousVisit = useContext(PullRequestReviewContext)?.previousVisit;
   const [newOnly, setNewOnly] = useState(false);
+  const items = pullRequestConversationItems(detail.comments, detail.reviewThreads);
+  const filteredItems = filterPullRequestConversationItems(items, commentFilter).filter(
+    (item) =>
+      !newOnly ||
+      !previousVisit ||
+      pullRequestConversationItemComments(item).some(
+        (comment) => Date.parse(comment.editedAt ?? comment.createdAt) > Date.parse(previousVisit),
+      ),
+  );
+  const commentCount = items.reduce(
+    (count, item) => count + pullRequestConversationItemComments(item).length,
+    0,
+  );
+  const filteredOutCount =
+    commentCount -
+    filteredItems.reduce(
+      (count, item) => count + pullRequestConversationItemComments(item).length,
+      0,
+    );
   const [azureFilter, setAzureFilter] = useState<{
     url: string;
     value: AzureDevOpsDiscussionFilter;
   }>({ url: detail.url, value: "all" });
   const selectedAzureFilter = azureFilter.url === detail.url ? azureFilter.value : "all";
-  const azureDiscussions = useMemo(
-    () =>
-      detail.provider === "azure-devops"
-        ? filterAzureDevOpsDiscussions(detail, selectedAzureFilter, {
-            viewer: detail.viewer,
-            since: previousVisit,
-          })
-        : null,
-    [detail, selectedAzureFilter, previousVisit],
+  const azureDiscussions =
+    detail.provider === "azure-devops"
+      ? filterAzureDevOpsDiscussions(detail, selectedAzureFilter, {
+          viewer: detail.viewer,
+          since: previousVisit,
+        })
+      : null;
+  // Azure DevOps pages its own discussions and activity, each discussion placed at its latest reply.
+  const azureItems = azureDiscussions
+    ? [
+        ...azureDiscussions.discussions.map((discussion) => ({
+          kind: "discussion" as const,
+          id: discussion.id,
+          createdAt: discussion.comments.at(-1)!.createdAt,
+          discussion,
+        })),
+        ...azureDiscussions.activity.events.map((event) => ({
+          kind: "event" as const,
+          id: event.id,
+          createdAt: event.createdAt,
+          event,
+        })),
+      ].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+    : null;
+  const conversationItems: ReadonlyArray<
+    PullRequestConversationItem | NonNullable<typeof azureItems>[number]
+  > = azureItems ?? filteredItems;
+  const { shown: recentItems, hidden: hiddenConversationCount } = pagePullRequestConversationItems(
+    conversationItems,
+    shownConversations,
   );
-  const filteredDiscussions =
-    azureDiscussions?.discussions ??
-    discussions.filter(
-      (discussion) =>
-        (!newOnly ||
-          !previousVisit ||
-          discussion.comments.some(
-            (comment) =>
-              Date.parse(comment.editedAt ?? comment.createdAt) > Date.parse(previousVisit),
-          )) &&
-        (commentFilter.bots || discussion.comments.some((comment) => !isBot(comment))) &&
-        (commentFilter.resolved || !discussion.comments.every(isFinished)),
-    );
-  const filteredComments = filteredDiscussions.flatMap((discussion) => discussion.comments);
-  // The one count the filter shows. Per-kind counts would overlap, since a resolved bot comment
-  // is both kinds and needs both shown.
-  const filteredOutCount = detail.comments.length - filteredComments.length;
-  // Page whole discussions so a reply never loses its original to a filter or page boundary.
-  const items = [
-    ...filteredDiscussions.map((discussion) => ({
-      kind: "discussion" as const,
-      id: discussion.id,
-      at: discussion.comments.at(-1)!.createdAt,
-      discussion,
-    })),
-    ...(azureDiscussions?.activity.events ?? []).map((event) => ({
-      kind: "event" as const,
-      id: event.id,
-      at: event.createdAt,
-      event,
-    })),
-  ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-  const recentDiscussions = items.slice(Math.max(0, items.length - shownDiscussions));
-  const hiddenDiscussionCount = items.length - recentDiscussions.length;
   const [commentOrder, setCommentOrder] = useState<"newest" | "oldest">("newest");
-  const visibleDiscussions =
-    commentOrder === "newest" ? recentDiscussions.toReversed() : recentDiscussions;
-  const showOlderDiscussionsButton =
-    hiddenDiscussionCount > 0 ? (
+  const visibleItems = orderPullRequestComments(recentItems, commentOrder);
+  const showOldestCommentsButton =
+    hiddenConversationCount > 0 ? (
       <Button
         size="sm"
         variant="outline"
         className="w-full"
-        onClick={() => setShown({ url: detail.url, count: shownDiscussions + COMMENT_PAGE })}
+        onClick={() => setShown({ url: detail.url, count: shownConversations + COMMENT_PAGE })}
       >
-        Show {Math.min(hiddenDiscussionCount, COMMENT_PAGE)} older{" "}
-        {azureDiscussions ? "item" : "discussion"}
-        {hiddenDiscussionCount === 1 ? "" : "s"} ({hiddenDiscussionCount} hidden)
+        Show {Math.min(hiddenConversationCount, COMMENT_PAGE)} older{" "}
+        {azureDiscussions ? "item" : "conversation"}
+        {hiddenConversationCount === 1 ? "" : "s"} ({hiddenConversationCount} hidden)
       </Button>
     ) : null;
   // Read from the whole conversation, not the window shown below it: a verdict older than the
@@ -652,82 +657,45 @@ export function PullRequestSummaryTab({
     },
   };
 
-  const renderComment = (
-    comment: PullRequestComment,
-    inDiscussion = false,
-    children?: ReactNode,
-  ) => {
-    const thread = threadByCommentId.get(comment.id);
-    const body = visibleBody(comment.body);
-    if (isFinished(comment) && !inDiscussion) {
-      return (
-        <CollapsedComment
-          key={`${detail.url}:${comment.id}`}
-          comment={comment}
-          reply={replies.get(comment.id)}
-          editing={commentEditing}
-          detail={detail}
-          thread={thread}
-          label={
-            comment.threadStatus
-              ? pullRequestThreadStatusLabels[comment.threadStatus]
-              : thread?.isResolved
-                ? "Resolved"
-                : "Review dismissed"
-          }
-          body={body}
-          reactionBar={
-            detail.capabilities.commentLikes ? null : (
-              <PullRequestReactionBar
-                className="ml-auto justify-end"
-                reactions={comment.reactions ?? []}
-                canReact={detail.capabilities.reactions === true}
-                subjectId={comment.id}
-                environmentId={environmentId}
-                reference={reference}
-                onRefresh={onRefresh}
-              />
-            )
-          }
-        >
-          {children}
-        </CollapsedComment>
-      );
-    }
-    const outcome = pullRequestReviewOutcome(comment.reviewState);
-    const finding: PullRequestFinding | null =
-      (comment.kind !== "review" && comment.kind !== "review-comment") || outcome === "approved"
-        ? null
-        : thread === undefined
-          ? body === null
-            ? null
-            : { kind: "comment", comment }
-          : { kind: "thread", thread };
-    const reactionBar = detail.capabilities.commentLikes ? null : (
+  const reactionBarFor = (comment: PullRequestComment) =>
+    detail.capabilities.commentLikes ? null : (
       <PullRequestReactionBar
+        className="ml-auto justify-end"
         reactions={comment.reactions ?? []}
         canReact={detail.capabilities.reactions === true}
         subjectId={comment.id}
         environmentId={environmentId}
         reference={reference}
         onRefresh={onRefresh}
-        className="ml-auto justify-end"
       />
     );
-    const Container = inDiscussion ? "div" : "article";
+
+  const renderCommentCard = (
+    comment: PullRequestComment,
+    thread: PullRequestReviewThread | undefined,
+    { reply = false }: { reply?: boolean } = {},
+  ) => {
+    const body = visibleBody(comment.body);
+    const outcome = pullRequestReviewOutcome(comment.reviewState);
+    const finding: PullRequestFinding | null =
+      reply ||
+      (comment.kind !== "review" && comment.kind !== "review-comment") ||
+      outcome === "approved"
+        ? null
+        : thread === undefined
+          ? body === null
+            ? null
+            : { kind: "comment", comment }
+          : { kind: "thread", thread };
     return (
-      <Container
+      <article
         key={`${detail.url}:${comment.id}`}
         // Offscreen comments skip style, layout and paint. Bot comments carry pages of
         // highlighted code, and the conversation is below the description either way.
-        className={
-          inDiscussion
-            ? "group"
-            : "group rounded-lg border border-border/60 bg-background [contain-intrinsic-block-size:160px] [content-visibility:auto]"
-        }
+        className="group rounded-lg border border-border/60 bg-background [contain-intrinsic-block-size:160px] [content-visibility:auto]"
       >
-        <div className="flex flex-wrap items-start gap-2 rounded-t-lg bg-muted/25 px-3 py-2.5">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-baseline gap-2 rounded-t-lg bg-muted/25 px-3 py-2.5">
+          <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2 text-xs text-muted-foreground">
             <CommentIdentity comment={comment} detail={detail} />
             {outcome ? (
               <PullRequestReviewOutcomeBadge outcome={outcome} />
@@ -736,33 +704,183 @@ export function PullRequestSummaryTab({
             ) : null}
           </div>
           <CommentActions comment={comment} editing={commentEditing} />
-          {/* Review remarks only. A plain conversation comment is talk, not a finding,
-                      and offering to fix one would promise more than it says. */}
           {onFixFinding && finding ? (
             <Button
               size="xs"
               variant="ghost"
-              className="-mt-1 shrink-0"
+              className="shrink-0"
               disabled={pendingFinding !== null && pendingFinding !== undefined}
               onClick={() => onFixFinding(finding)}
             >
-              <HammerIcon className="size-3" />
-              {pendingFinding === pullRequestFindingKey(finding) ? "Preparing..." : fixFindingLabel}
+              {/* Export the text baseline rather than the hammer icon's bottom edge. */}
+              <span className="inline-flex items-baseline gap-1">
+                <HammerIcon className="size-3 self-center" />
+                <span>
+                  {pendingFinding === pullRequestFindingKey(finding)
+                    ? "Preparing..."
+                    : fixFindingLabel}
+                </span>
+              </span>
             </Button>
           ) : null}
-          {reactionBar}
+          {reactionBarFor(comment)}
         </div>
-        <div className="px-3">
-          {!inDiscussion ? <PullRequestCommentReply reply={replies.get(comment.id)} /> : null}
-          {!inDiscussion ? <CommentLocation comment={comment} thread={thread} /> : null}
-        </div>
+        {reply ? null : (
+          <div className="px-3">
+            <PullRequestCommentReply reply={replyContexts.get(comment.id)} />
+            <CommentLocation comment={comment} thread={thread} />
+          </div>
+        )}
         {body === null && !commentEditing.canEdit(comment) ? null : (
           <CommentBody className="px-3 py-3" comment={comment} editing={commentEditing} />
         )}
-        {children}
-      </Container>
+      </article>
     );
   };
+
+  const renderItem = (item: PullRequestConversationItem) => {
+    const comment = item.kind === "comment" ? item.comment : item.root;
+    const thread = item.kind === "thread" ? item.thread : undefined;
+    const replies =
+      item.kind === "thread" && item.replies.length > 0 ? (
+        <div className="ml-4 space-y-2 border-l-2 border-border/60 pl-3">
+          {item.replies.map((reply) => renderCommentCard(reply, undefined, { reply: true }))}
+        </div>
+      ) : null;
+    const moreReplies =
+      item.kind === "thread" && item.hasMoreReplies ? <PullRequestMoreReplies {...item} /> : null;
+    if (isPullRequestCommentFinished(comment, thread)) {
+      return (
+        <CollapsedComment
+          key={`${detail.url}:${item.kind}:${item.id}`}
+          comment={comment}
+          reply={replyContexts.get(comment.id)}
+          editing={commentEditing}
+          detail={detail}
+          thread={thread}
+          label={thread?.isResolved ? "Resolved" : "Review dismissed"}
+          body={visibleBody(comment.body)}
+          replyCount={item.kind === "thread" ? item.replies.length + item.moreReplies : 0}
+          replies={replies}
+          moreReplies={moreReplies}
+          reactionBar={reactionBarFor(comment)}
+        />
+      );
+    }
+    if (item.kind === "comment") return renderCommentCard(comment, undefined);
+    return (
+      <div key={`${detail.url}:thread:${item.id}`} className="space-y-2">
+        {renderCommentCard(comment, thread)}
+        {replies}
+        {moreReplies}
+      </div>
+    );
+  };
+
+  const renderAzureDiscussion = (
+    discussion: NonNullable<typeof azureDiscussions>["discussions"][number],
+  ) => {
+    const [root, ...answers] = discussion.comments;
+    if (root === undefined) return null;
+    const thread = detail.reviewThreads.find((entry) => entry.id === discussion.threadId);
+    const status = root.threadStatus;
+    const replies =
+      answers.length > 0 ? (
+        <div className="ml-4 space-y-2 border-l-2 border-border/60 pl-3">
+          {answers.map((answer) => renderCommentCard(answer, undefined, { reply: true }))}
+        </div>
+      ) : null;
+    const statusControl =
+      discussion.threadId &&
+      status &&
+      detail.capabilities.review.threadStatuses &&
+      detail.viewerPermissions.resolve ? (
+        <PullRequestDiscussionStatus
+          key={discussion.threadId}
+          environmentId={environmentId}
+          reference={reference}
+          threadId={discussion.threadId}
+          status={status}
+          statuses={detail.capabilities.review.threadStatuses}
+        />
+      ) : null;
+    const replyControl =
+      discussion.threadId !== undefined &&
+      detail.capabilities.review.reply &&
+      detail.viewerPermissions.comment ? (
+        <PullRequestDiscussionReplyForm
+          environmentId={environmentId}
+          reference={reference}
+          threadId={discussion.threadId}
+          canResolve={
+            detail.capabilities.review.resolve &&
+            detail.viewerPermissions.resolve &&
+            (status === undefined || status === "active" || status === "pending")
+          }
+          onReplied={onRefresh}
+        />
+      ) : null;
+    const controls =
+      statusControl || replyControl ? (
+        <div className="ml-4 space-y-2 border-l-2 border-border/60 pl-3">
+          {statusControl}
+          {replyControl}
+        </div>
+      ) : null;
+    if (
+      (status !== undefined && status !== "active" && status !== "pending") ||
+      isPullRequestCommentFinished(root, thread)
+    ) {
+      return (
+        <CollapsedComment
+          key={`${detail.url}:discussion:${discussion.id}`}
+          comment={root}
+          reply={replyContexts.get(root.id)}
+          editing={commentEditing}
+          detail={detail}
+          thread={thread}
+          label={
+            status
+              ? pullRequestThreadStatusLabels[status]
+              : thread?.isResolved
+                ? "Resolved"
+                : "Review dismissed"
+          }
+          body={visibleBody(root.body)}
+          replyCount={answers.length}
+          replies={replies}
+          reactionBar={reactionBarFor(root)}
+        >
+          {controls ? <div className="mt-3">{controls}</div> : null}
+        </CollapsedComment>
+      );
+    }
+    return (
+      <div key={`${detail.url}:discussion:${discussion.id}`} className="space-y-2">
+        {renderCommentCard(root, thread)}
+        {replies}
+        {controls}
+      </div>
+    );
+  };
+
+  const renderAzureEvent = (
+    item: Extract<NonNullable<typeof azureItems>[number], { kind: "event" }>,
+  ) => (
+    <div key={item.id} className="flex items-start gap-3 px-3 py-2 text-xs text-muted-foreground">
+      <span className="mt-0.5 shrink-0">
+        <PullRequestActivityIcon kind={item.event.kind} />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-foreground">
+          {item.event.body}
+        </span>
+        <time className="shrink-0 text-2xs" dateTime={item.createdAt}>
+          <RelativeTime timestamp={item.createdAt} />
+        </time>
+      </div>
+    </div>
+  );
 
   return (
     <div ref={scrollerRef} className="h-full overflow-y-auto" data-pull-request-summary-scroll>
@@ -1065,13 +1183,13 @@ export function PullRequestSummaryTab({
           <>
             {detail.commentsTruncated ? (
               <p className="mb-2 rounded-md border border-warning/30 bg-warning-surface px-2 py-1.5 text-xs">
-                This conversation is longer than this page reads in one go. The most recent{" "}
-                {detail.comments.length} are here; open it on the host to read the rest.
+                This conversation is only partially loaded. {commentCount} comment
+                {commentCount === 1 ? " is" : "s are"} loaded; open it on the host to read the rest.
               </p>
             ) : null}
-            {detail.comments.length === 0 && !azureDiscussions?.counts.all ? (
+            {items.length === 0 && !azureDiscussions?.counts.all ? (
               <p className="py-2 text-xs text-muted-foreground">No comments yet.</p>
-            ) : items.length === 0 ? (
+            ) : conversationItems.length === 0 ? (
               <p className="py-2 text-xs text-muted-foreground">
                 {azureDiscussions
                   ? "No activity matches this filter."
@@ -1081,90 +1199,23 @@ export function PullRequestSummaryTab({
               </p>
             ) : (
               <div className="space-y-3">
-                {commentOrder === "oldest" ? showOlderDiscussionsButton : null}
-                {visibleDiscussions.map((item) => {
-                  if (item.kind === "event")
-                    return (
-                      <div
-                        key={item.id}
-                        className="flex items-start gap-3 px-3 py-2 text-xs text-muted-foreground"
-                      >
-                        <span className="mt-0.5 shrink-0">
-                          <PullRequestActivityIcon kind={item.event.kind} />
-                        </span>
-                        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
-                          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-foreground">
-                            {item.event.body}
-                          </span>
-                          <time className="shrink-0 text-2xs" dateTime={item.at}>
-                            {formatRelativeTimeLabel(item.at)}
-                          </time>
-                        </div>
-                      </div>
-                    );
-                  const discussion = item.discussion;
-                  const [original, ...answers] = discussion.comments;
-                  if (original === undefined) return null;
-                  return renderComment(
-                    original,
-                    false,
-                    <>
-                      {answers.length > 0 ? (
-                        <div className="border-t border-border/60 bg-muted/10 py-2">
-                          <p className="px-3 pb-2 text-xs font-medium text-muted-foreground">
-                            {answers.length} {answers.length === 1 ? "reply" : "replies"}
-                          </p>
-                          <div className="ml-5 divide-y divide-border/60 border-l-2 border-border">
-                            {answers.map((answer) => renderComment(answer, true))}
-                          </div>
-                        </div>
-                      ) : null}
-                      {discussion.threadId &&
-                      discussion.comments[0]?.threadStatus &&
-                      detail.capabilities.review.threadStatuses &&
-                      detail.viewerPermissions.resolve ? (
-                        <div className="border-t border-border/60 px-3 py-2">
-                          <PullRequestDiscussionStatus
-                            key={discussion.threadId}
-                            environmentId={environmentId}
-                            reference={reference}
-                            threadId={discussion.threadId}
-                            status={discussion.comments[0].threadStatus}
-                            statuses={detail.capabilities.review.threadStatuses}
-                          />
-                        </div>
-                      ) : null}
-                      {discussion.threadId !== undefined &&
-                      detail.capabilities.review.reply &&
-                      detail.viewerPermissions.comment ? (
-                        <div className="border-t border-border/60 px-3 py-2">
-                          <PullRequestDiscussionReplyForm
-                            environmentId={environmentId}
-                            reference={reference}
-                            threadId={discussion.threadId}
-                            canResolve={
-                              detail.capabilities.review.resolve &&
-                              detail.viewerPermissions.resolve &&
-                              (original.threadStatus === undefined ||
-                                original.threadStatus === "active" ||
-                                original.threadStatus === "pending")
-                            }
-                            onReplied={onRefresh}
-                          />
-                        </div>
-                      ) : null}
-                    </>,
-                  );
-                })}
-                {commentOrder === "newest" ? showOlderDiscussionsButton : null}
-                {shownDiscussions > COMMENT_PAGE ? (
+                {commentOrder === "oldest" ? showOldestCommentsButton : null}
+                {visibleItems.map((item) =>
+                  item.kind === "event"
+                    ? renderAzureEvent(item)
+                    : item.kind === "discussion"
+                      ? renderAzureDiscussion(item.discussion)
+                      : renderItem(item),
+                )}
+                {commentOrder === "newest" ? showOldestCommentsButton : null}
+                {shownConversations > COMMENT_PAGE ? (
                   <Button
                     size="sm"
                     variant="ghost"
                     className="w-full"
                     onClick={() => setShown({ url: detail.url, count: COMMENT_PAGE })}
                   >
-                    Show only {COMMENT_PAGE} recent discussions
+                    Show only {COMMENT_PAGE} recent conversations
                   </Button>
                 ) : null}
               </div>

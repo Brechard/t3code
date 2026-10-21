@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
 import { act } from "react";

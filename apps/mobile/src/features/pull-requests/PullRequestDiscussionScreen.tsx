@@ -13,7 +13,11 @@ import {
   pullRequestThreadStatusLabels as statusLabels,
 } from "@t3tools/client-runtime/pull-request-comment-replies";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
-import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import {
+  type AtomCommandResult,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
+import { AsyncResult } from "effect/reactivity";
 import type { PullRequestThreadComment, PullRequestThreadStatus } from "@t3tools/contracts";
 import { useMemo, useRef, useState } from "react";
 import { Linking, Platform, Pressable, ScrollView, View } from "react-native";
@@ -93,32 +97,31 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [composerHeight, setComposerHeight] = useState(64);
-  const operation = async (run: () => Promise<void>) => {
+  const operation = async (run: () => Promise<AtomCommandResult<unknown, unknown> | undefined>) => {
     if (pending.current) return;
     pending.current = true;
     setBusy(true);
     setError(null);
     setNotice(null);
-    try {
-      await run();
-    } catch (cause) {
+    const result = await run();
+    pending.current = false;
+    setBusy(false);
+    if (result && AsyncResult.isFailure(result)) {
+      const cause = squashAtomCommandFailure(result);
       setError(
         cause instanceof Error ? cause.message : "The provider could not complete this action.",
       );
-    } finally {
-      pending.current = false;
-      setBusy(false);
     }
   };
   const post = (resolveAfter = false) =>
     operation(async () => {
-      if (!permissions.canReply || !body.trim() || (!thread && !discussion)) return;
+      if (!permissions.canReply || !body.trim() || (!thread && !discussion)) return undefined;
       const submitted = body;
       const response = await reply({
         ...target,
         input: { ...target.input, threadId: params.discussionId, body: submitted },
       });
-      if (response._tag === "Failure") throw squashAtomCommandFailure(response);
+      if (AsyncResult.isFailure(response)) return response;
       setBody((current) => (current === submitted ? "" : current));
       setNotice("Reply posted.");
       if (resolveAfter && canReplyAndResolve) {
@@ -126,20 +129,23 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
           ...target,
           input: { ...target.input, threadId: params.discussionId, resolved: true },
         });
-        if (resolved._tag === "Failure")
-          throw new Error(
+        if (AsyncResult.isFailure(resolved)) {
+          setError(
             "Your reply was posted, but the discussion could not be resolved. Use its status control to retry.",
           );
+          return undefined;
+        }
       }
+      return response;
     });
   const toggleResolved = () =>
     operation(async () => {
-      if (!thread || !permissions.canResolve) return;
+      if (!thread || !permissions.canResolve) return undefined;
       const response = await resolve({
         ...target,
         input: { ...target.input, threadId: thread.id, resolved: !thread.isResolved },
       });
-      if (response._tag === "Failure") throw squashAtomCommandFailure(response);
+      return response;
     });
   const status =
     activity.data?.comments.find((comment) => comment.threadId === params.discussionId)
@@ -152,8 +158,8 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
     (status === undefined || status === "active" || status === "pending");
   const setStatus = (status: PullRequestThreadStatus) =>
     operation(async () => {
-      if (!permissions.canResolve) return;
-      const response = await resolve({
+      if (!permissions.canResolve) return undefined;
+      return resolve({
         ...target,
         input: {
           ...target.input,
@@ -162,7 +168,6 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
           resolved: status !== "active" && status !== "pending",
         },
       });
-      if (response._tag === "Failure") throw squashAtomCommandFailure(response);
     });
   const ownComment = (comment: PullRequestThreadComment) =>
     comment.canEdit ??
@@ -174,7 +179,8 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
     "kind" in comment && comment.kind === "issue-comment" ? "issue-comment" : "review-comment";
   const saveComment = (comment: PullRequestThreadComment) =>
     operation(async () => {
-      if (!editing?.body.trim() || !permissions.canEditComment || !ownComment(comment)) return;
+      if (!editing?.body.trim() || !permissions.canEditComment || !ownComment(comment))
+        return undefined;
       const response = await updateComment({
         ...target,
         input: {
@@ -184,8 +190,9 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
           body: editing.body,
         },
       });
-      if (response._tag === "Failure") throw squashAtomCommandFailure(response);
+      if (AsyncResult.isFailure(response)) return response;
       setEditing(null);
+      return response;
     });
   const removeComment = (comment: PullRequestThreadComment) =>
     Dialog.alert("Delete comment?", "This removes your comment from the pull request.", [
@@ -195,8 +202,8 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
         style: "destructive",
         onPress: () =>
           void operation(async () => {
-            if (!permissions.canDeleteComment || !ownComment(comment)) return;
-            const response = await deleteComment({
+            if (!permissions.canDeleteComment || !ownComment(comment)) return undefined;
+            return deleteComment({
               ...target,
               input: {
                 ...target.input,
@@ -204,15 +211,14 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
                 kind: commentKind(comment),
               },
             });
-            if (response._tag === "Failure") throw squashAtomCommandFailure(response);
           }),
       },
     ]);
   const toggleLike = (comment: PullRequestThreadComment) =>
     operation(async () => {
-      if (!permissions.canLikeComment) return;
+      if (!permissions.canLikeComment) return undefined;
       const like = comment.reactions?.find((reaction) => reaction.content === "thumbs-up");
-      const response = await setReaction({
+      return setReaction({
         ...target,
         input: {
           ...target.input,
@@ -221,7 +227,6 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
           reacted: !like?.viewerHasReacted,
         },
       });
-      if (response._tag === "Failure") throw squashAtomCommandFailure(response);
     });
   const canSuggest = (comment: PullRequestThreadComment) =>
     nativeAllowed &&
@@ -239,7 +244,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
           text: "Apply",
           onPress: () =>
             void operation(async () => {
-              if (!canSuggest(comment) || !detail.data?.headSha) return;
+              if (!canSuggest(comment) || !detail.data?.headSha) return undefined;
               const result = await nativeAction({
                 ...target,
                 input: {
@@ -251,8 +256,9 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
                   },
                 },
               });
-              if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+              if (AsyncResult.isFailure(result)) return result;
               setNotice(result.value.message);
+              return result;
             }),
         },
       ],
@@ -335,14 +341,15 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
   const nextCursor = cursor === undefined ? thread?.nextCommentsCursor : cursor;
   const more = () =>
     operation(async () => {
-      if (!thread || !nextCursor) return;
+      if (!thread || !nextCursor) return undefined;
       const response = await loadMore({
         ...target,
         input: { ...target.input, threadId: thread.id, cursor: nextCursor },
       });
-      if (response._tag === "Failure") throw squashAtomCommandFailure(response);
+      if (AsyncResult.isFailure(response)) return response;
       setExtra((comments) => [...comments, ...response.value.comments]);
       setCursor(response.value.nextCursor);
+      return response;
     });
   const comments = [
     ...new Map(

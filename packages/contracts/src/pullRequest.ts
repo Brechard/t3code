@@ -1,8 +1,10 @@
 import * as Schema from "effect/Schema";
+import * as Effect from "effect/Effect";
 import * as HttpServerRespondable from "effect/http/HttpServerRespondable";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import {
+  ForwardCompatibleArray,
   IsoDateTime,
   NonNegativeInt,
   PositiveInt,
@@ -278,9 +280,8 @@ export const PullRequestReviewCapabilities = Schema.Struct({
   inlineComment: Schema.Boolean,
   reply: Schema.Boolean,
   resolve: Schema.Boolean,
+  verdicts: ForwardCompatibleArray(PullRequestReviewVerdict),
   threadStatuses: Schema.optional(Schema.Array(PullRequestThreadStatus)),
-  /** The verdicts a submitted review can carry. Empty means reviews cannot be submitted. */
-  verdicts: Schema.Array(PullRequestReviewVerdict),
 });
 export type PullRequestReviewCapabilities = typeof PullRequestReviewCapabilities.Type;
 
@@ -304,14 +305,14 @@ export type PullRequestViewedFilesStore = typeof PullRequestViewedFilesStore.Typ
 export const PullRequestCapabilities = Schema.Struct({
   diff: Schema.Boolean,
   comment: Schema.Boolean,
-  actions: Schema.Array(PullRequestAction),
-  mergeMethods: Schema.Array(PullRequestMergeMethod),
+  actions: ForwardCompatibleArray(PullRequestAction),
+  mergeMethods: ForwardCompatibleArray(PullRequestMergeMethod),
   deleteBranch: Schema.optional(Schema.Boolean),
   /**
    * Absent where it cannot at all, which is every host that has not said otherwise — so a
    * provider that says nothing offers nothing.
    */
-  updateMethods: Schema.optional(Schema.Array(PullRequestUpdateMethod)),
+  updateMethods: Schema.optional(ForwardCompatibleArray(PullRequestUpdateMethod)),
   search: Schema.Boolean,
   reactions: Schema.optional(Schema.Boolean),
   /** The host supports likes on comments, without general emoji or PR reactions. */
@@ -338,12 +339,12 @@ export const PullRequestViewerPermissions = Schema.Struct({
   deniedActions: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   /** May request remote stack rebases, including when this layer is already current. */
   stackRebase: Schema.optional(Schema.Boolean),
-  actions: Schema.Array(PullRequestAction),
+  actions: ForwardCompatibleArray(PullRequestAction),
   comment: Schema.Boolean,
   resolve: Schema.Boolean,
-  verdicts: Schema.Array(PullRequestReviewVerdict),
+  verdicts: ForwardCompatibleArray(PullRequestReviewVerdict),
   requestReviewers: Schema.Boolean,
-  updateMethods: Schema.optional(Schema.Array(PullRequestUpdateMethod)),
+  updateMethods: Schema.optional(ForwardCompatibleArray(PullRequestUpdateMethod)),
   labels: Schema.optional(Schema.Boolean),
   editChangeRequest: Schema.optional(Schema.Boolean),
 });
@@ -419,7 +420,7 @@ export const PullRequestProviderSummary = Schema.Struct({
   host: TrimmedNonEmptyString,
   kind: SourceControlProviderKind,
   searchesOnHost: Schema.Boolean,
-  actions: Schema.optional(Schema.Array(PullRequestAction)),
+  actions: Schema.optional(ForwardCompatibleArray(PullRequestAction)),
   projectCount: PositiveInt,
   configured: Schema.Boolean,
   detail: Schema.NullOr(TrimmedNonEmptyString),
@@ -782,6 +783,30 @@ export const PullRequestFilesViewedResult = Schema.Struct({
   truncated: Schema.Boolean,
 });
 export type PullRequestFilesViewedResult = typeof PullRequestFilesViewedResult.Type;
+
+const PullRequestLineCount = Schema.Struct({
+  additions: NonNegativeInt,
+  deletions: NonNegativeInt,
+});
+
+/**
+ * A change's line counts split by what the changed files are, judged from their paths. Null when
+ * the host gives no per-file counts, or has more files than one read covers: a split of part of
+ * the change would not add up to the totals shown beside it.
+ */
+export const PullRequestChangeBreakdown = Schema.NullOr(
+  Schema.Struct({
+    code: PullRequestLineCount,
+    tests: PullRequestLineCount,
+    mocks: PullRequestLineCount,
+    generated: PullRequestLineCount,
+    // Servers from before the docs split send no key; their docs lines sit in `code`.
+    docs: PullRequestLineCount.pipe(
+      Schema.withDecodingDefault(Effect.succeed({ additions: 0, deletions: 0 })),
+    ),
+  }),
+);
+export type PullRequestChangeBreakdown = typeof PullRequestChangeBreakdown.Type;
 
 const MAX_FILES_VIEWED_PRESSES = 500;
 
