@@ -784,16 +784,18 @@ export function PullRequestTimelineTab({
   return (
     <div ref={scrollerRef} className="scrollbar-gutter-both h-full overflow-y-auto px-4 py-5">
       <div className="mx-auto max-w-3xl">
-        <div className="mb-3 flex justify-end">
-          <Button
-            size="xs"
-            variant={newOnly ? "secondary" : "ghost-muted"}
-            aria-pressed={newOnly}
-            onClick={() => setNewOnly((value) => !value)}
-          >
-            What's new
-          </Button>
-        </div>
+        {previousVisit ? (
+          <div className="mb-3 flex justify-end">
+            <Button
+              size="xs"
+              variant={newOnly ? "secondary" : "ghost-muted"}
+              aria-pressed={newOnly}
+              onClick={() => setNewOnly((value) => !value)}
+            >
+              What's new
+            </Button>
+          </div>
+        ) : null}
         <div className="relative">
           <span aria-hidden className="absolute bottom-5 left-[15px] top-1 w-px bg-border/45" />
           {rows.map((row) => {

@@ -62,6 +62,40 @@ const detail: PullRequestDetailView = {
   },
 };
 
+it.each(["first visit", "no review context"])(
+  "does not offer What's new with %s",
+  async (visit) => {
+    const environmentId = EnvironmentId.make("environment");
+    await using screen = await render(
+      <PullRequestReviewContext
+        value={
+          visit === "first visit"
+            ? {
+                environmentId,
+                reference: detail,
+                azure: false,
+                previousVisit: null,
+              }
+            : null
+        }
+      >
+        <PullRequestTimelineTab
+          scrollerRef={() => {}}
+          environmentId={environmentId}
+          reference={detail}
+          detail={detail}
+          order="newest"
+          onOpenCommit={() => {}}
+          onRefresh={() => {}}
+        />
+      </PullRequestReviewContext>,
+    );
+    await expect
+      .element(screen.getByRole("button", { name: "What's new", exact: true }))
+      .not.toBeInTheDocument();
+  },
+);
+
 it("explains an empty What's new timeline and restores activity when the filter is cleared", async () => {
   const environmentId = EnvironmentId.make("environment");
   const activity = "Reviewer approved the pull request with suggestions";
