@@ -161,7 +161,7 @@ describe("terminalUiStateStore actions", () => {
     });
   });
 
-  it("ungroups a terminal into its own group beside its old group", () => {
+  it("ungroups a terminal into its own group", () => {
     const store = useTerminalUiStateStore.getState();
     store.newTerminal(THREAD_REF, "term-a");
     store.splitTerminal(THREAD_REF, "term-b");
@@ -172,8 +172,8 @@ describe("terminalUiStateStore actions", () => {
     expect(readTerminalUiState()).toMatchObject({
       terminalGroups: [
         { id: "group-term-a", terminalIds: ["term-b"] },
-        { id: "group-term-a-2", terminalIds: ["term-a"] },
         { id: "group-term-c", terminalIds: ["term-c"] },
+        { id: "group-term-a-2", terminalIds: ["term-a"] },
       ],
       activeTerminalId: "term-a",
       activeTerminalGroupId: "group-term-a-2",

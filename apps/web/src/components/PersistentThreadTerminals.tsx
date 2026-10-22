@@ -234,10 +234,10 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
     bumpFocusRequestId();
   };
 
-  const moveTerminalToGroup = (terminalId: string, groupId: string | null) => {
+  const moveTerminalToGroup = useStableCallback((terminalId: string, groupId: string | null) => {
     storeMoveTerminalToGroup(threadRef, terminalId, groupId);
     bumpFocusRequestId();
-  };
+  });
 
   const closeTerminal = useStableCallback((terminalId: string) => {
     if (!terminalActions.canWrite()) return;

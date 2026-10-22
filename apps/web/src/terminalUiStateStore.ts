@@ -472,7 +472,7 @@ function moveThreadTerminalToGroup(
     terminalIds: [],
   };
   if (!targetGroup) {
-    terminalGroups.splice(sourceGroupIndex + 1, 0, destinationGroup);
+    terminalGroups.push(destinationGroup);
   }
   destinationGroup.terminalIds.push(terminalId);
   return normalizeThreadTerminalUiState({

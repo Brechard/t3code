@@ -91,6 +91,7 @@ import {
 import { readLocalApi } from "~/localApi";
 import { confirmTerminalClose } from "~/lib/terminalCloseConfirm";
 import { useClientSettings } from "../hooks/useSettings";
+import { useStableCallback } from "../hooks/useStableCallback";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useAttachedTerminalSession } from "../state/terminalSessions";
 import { serverEnvironment } from "../state/server";
@@ -1757,39 +1758,41 @@ export default function ThreadTerminalDrawer({
       }
     });
   };
-  const showTerminalGroupMenu = async (event: ReactMouseEvent, terminalId: string) => {
-    event.preventDefault();
-    const api = readLocalApi();
-    const sourceGroup = resolvedTerminalGroups.find((group) =>
-      group.terminalIds.includes(terminalId),
-    );
-    if (!api || !sourceGroup) return;
-    const targetGroups = resolvedTerminalGroups.filter((group) => group !== sourceGroup);
-    const items: ContextMenuItem[] = [
-      {
-        id: "group-with",
-        label: "Group with",
-        ...(targetGroups.length > 0
-          ? {
-              children: targetGroups.map((group) => ({
-                id: group.id,
-                label: group.terminalIds
-                  .map((id) => terminalLabelById.get(id) ?? getTerminalLabel(id))
-                  .join(", "),
-                disabled: group.terminalIds.length >= MAX_TERMINALS_PER_GROUP,
-              })),
-            }
-          : { disabled: true }),
-      },
-    ];
-    if (sourceGroup.terminalIds.length > 1) {
-      items.push({ id: "ungroup", label: "Move to its own group" });
-    }
-    const clicked = await api.contextMenu.show(items, { x: event.clientX, y: event.clientY });
-    if (clicked) {
-      onMoveTerminalToGroup?.(terminalId, clicked === "ungroup" ? null : clicked);
-    }
-  };
+  const showTerminalGroupMenu = useStableCallback(
+    async (event: ReactMouseEvent, terminalId: string) => {
+      event.preventDefault();
+      const api = readLocalApi();
+      const sourceGroup = resolvedTerminalGroups.find((group) =>
+        group.terminalIds.includes(terminalId),
+      );
+      if (!api || !sourceGroup) return;
+      const targetGroups = resolvedTerminalGroups.filter((group) => group !== sourceGroup);
+      const items: ContextMenuItem[] = [
+        {
+          id: "group-with",
+          label: "Group with",
+          ...(targetGroups.length > 0
+            ? {
+                children: targetGroups.map((group) => ({
+                  id: group.id,
+                  label: group.terminalIds
+                    .map((id) => terminalLabelById.get(id) ?? getTerminalLabel(id))
+                    .join(", "),
+                  disabled: group.terminalIds.length >= MAX_TERMINALS_PER_GROUP,
+                })),
+              }
+            : { disabled: true }),
+        },
+      ];
+      if (sourceGroup.terminalIds.length > 1) {
+        items.push({ id: "ungroup", label: "Move to its own group" });
+      }
+      const clicked = await api.contextMenu.show(items, { x: event.clientX, y: event.clientY });
+      if (clicked) {
+        onMoveTerminalToGroup?.(terminalId, clicked === "ungroup" ? null : clicked);
+      }
+    },
+  );
 
   useLayoutEffect(() => {
     const resizeState = resizeStateRef.current;
