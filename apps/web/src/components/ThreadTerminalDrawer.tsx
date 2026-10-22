@@ -11,6 +11,17 @@ import {
   type TerminalSessionState,
 } from "@t3tools/client-runtime/state/terminal";
 import {
+  type CollisionDetection,
+  DndContext,
+  PointerSensor,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
+import {
   Plus,
   Square,
   SquareSplitHorizontal,
@@ -31,6 +42,8 @@ import {
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import * as Schema from "effect/Schema";
 import {
+  type ComponentProps,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type SetStateAction,
@@ -1170,6 +1183,7 @@ interface ThreadTerminalDrawerProps {
   closeShortcutLabel?: string | undefined;
   onActiveTerminalChange: (terminalId: string) => void;
   onCloseTerminal: (terminalId: string) => void;
+  onMoveTerminalToGroup?: (terminalId: string, groupId: string | null) => void;
   onHeightChange: (height: number) => void;
   onAddTerminalContext: (selection: TerminalContextSelection) => void;
   keybindings: ResolvedKeybindingsConfig;
@@ -1316,6 +1330,84 @@ function TerminalSplitPanes({
   );
 }
 
+const UNGROUP_DROP_TARGET_ID = "terminal-ungroup";
+
+// The ungroup target is the list behind the groups, so a group under the
+// pointer has to win over it.
+const preferTerminalGroupCollision: CollisionDetection = (args) => {
+  const collisions = pointerWithin(args);
+  return collisions.length > 1
+    ? collisions.filter((collision) => collision.id !== UNGROUP_DROP_TARGET_ID)
+    : collisions;
+};
+
+function TerminalSidebarGroupList({
+  onMoveTerminalToGroup,
+  children,
+}: {
+  onMoveTerminalToGroup: ThreadTerminalDrawerProps["onMoveTerminalToGroup"];
+  children: ReactNode;
+}) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={preferTerminalGroupCollision}
+      onDragEnd={({ active, over }) => {
+        if (!over) return;
+        onMoveTerminalToGroup?.(
+          String(active.id),
+          over.id === UNGROUP_DROP_TARGET_ID ? null : String(over.id),
+        );
+      }}
+    >
+      <TerminalSidebarUngroupArea>{children}</TerminalSidebarUngroupArea>
+    </DndContext>
+  );
+}
+
+function TerminalSidebarUngroupArea({ children }: { children: ReactNode }) {
+  const { setNodeRef, isOver, active } = useDroppable({ id: UNGROUP_DROP_TARGET_ID });
+  const sourceGroup = active?.data.current as ThreadTerminalGroup | undefined;
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "min-h-0 flex-1 overflow-y-auto px-1 py-1",
+        isOver &&
+          sourceGroup &&
+          sourceGroup.terminalIds.length > 1 &&
+          "bg-primary/5 ring-1 ring-inset ring-primary/40",
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+function DraggableTerminalRow({
+  terminalId,
+  group,
+  disabled,
+  className,
+  ...props
+}: ComponentProps<"div"> & { terminalId: string; group: ThreadTerminalGroup; disabled: boolean }) {
+  const { listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: terminalId,
+    data: group,
+    disabled,
+  });
+  return (
+    <div
+      {...props}
+      {...listeners}
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform) }}
+      className={cn(className, isDragging && "relative z-10")}
+    />
+  );
+}
+
 function TerminalSidebarGroup({
   terminalGroup,
   activeTerminalId,
@@ -1325,6 +1417,7 @@ function TerminalSidebarGroup({
   canOperateTerminal,
   onActiveTerminalChange,
   onCloseTerminal,
+  onTerminalContextMenu,
 }: {
   terminalGroup: ThreadTerminalGroup;
   activeTerminalId: string;
@@ -1334,7 +1427,13 @@ function TerminalSidebarGroup({
   canOperateTerminal: boolean;
   onActiveTerminalChange: (terminalId: string) => void;
   onCloseTerminal: (terminalId: string) => void;
+  onTerminalContextMenu: ((event: ReactMouseEvent, terminalId: string) => void) | undefined;
 }) {
+  const { setNodeRef, isOver, active } = useDroppable({ id: terminalGroup.id });
+  const isDropTarget =
+    isOver &&
+    !terminalGroup.terminalIds.includes(String(active?.id)) &&
+    terminalGroup.terminalIds.length < MAX_TERMINALS_PER_GROUP;
   const isGroupActive = terminalGroup.terminalIds.includes(activeTerminalId);
   const groupActiveTerminalId = isGroupActive
     ? activeTerminalId
@@ -1353,7 +1452,10 @@ function TerminalSidebarGroup({
       : SquareSplitHorizontal;
 
   return (
-    <div className="pb-0.5">
+    <div
+      ref={setNodeRef}
+      className={cn("pb-0.5", isDropTarget && "rounded-md bg-primary/5 ring-1 ring-primary/50")}
+    >
       {showHeader && (
         <button
           type="button"
@@ -1378,8 +1480,14 @@ function TerminalSidebarGroup({
             isActive && closeShortcutLabel ? ` (${closeShortcutLabel})` : ""
           }`;
           return (
-            <div
+            <DraggableTerminalRow
               key={terminalId}
+              terminalId={terminalId}
+              group={terminalGroup}
+              disabled={!onTerminalContextMenu}
+              onContextMenu={
+                onTerminalContextMenu && ((event) => onTerminalContextMenu(event, terminalId))
+              }
               className={cn(
                 "group/tab flex h-6 w-full items-center gap-0.5 rounded-md pr-2 pl-1.5 text-xs",
                 isActive
@@ -1405,7 +1513,7 @@ function TerminalSidebarGroup({
               >
                 <span className="truncate">{terminalLabel}</span>
               </button>
-            </div>
+            </DraggableTerminalRow>
           );
         })}
       </div>
@@ -1437,6 +1545,7 @@ export default function ThreadTerminalDrawer({
   closeShortcutLabel,
   onActiveTerminalChange,
   onCloseTerminal,
+  onMoveTerminalToGroup,
   onHeightChange,
   onAddTerminalContext,
   keybindings,
@@ -1647,6 +1756,39 @@ export default function ThreadTerminalDrawer({
         onCloseTerminal(terminalId);
       }
     });
+  };
+  const showTerminalGroupMenu = async (event: ReactMouseEvent, terminalId: string) => {
+    event.preventDefault();
+    const api = readLocalApi();
+    const sourceGroup = resolvedTerminalGroups.find((group) =>
+      group.terminalIds.includes(terminalId),
+    );
+    if (!api || !sourceGroup) return;
+    const targetGroups = resolvedTerminalGroups.filter((group) => group !== sourceGroup);
+    const items: ContextMenuItem[] = [
+      {
+        id: "group-with",
+        label: "Group with",
+        ...(targetGroups.length > 0
+          ? {
+              children: targetGroups.map((group) => ({
+                id: group.id,
+                label: group.terminalIds
+                  .map((id) => terminalLabelById.get(id) ?? getTerminalLabel(id))
+                  .join(", "),
+                disabled: group.terminalIds.length >= MAX_TERMINALS_PER_GROUP,
+              })),
+            }
+          : { disabled: true }),
+      },
+    ];
+    if (sourceGroup.terminalIds.length > 1) {
+      items.push({ id: "ungroup", label: "Move to its own group" });
+    }
+    const clicked = await api.contextMenu.show(items, { x: event.clientX, y: event.clientY });
+    if (clicked) {
+      onMoveTerminalToGroup?.(terminalId, clicked === "ungroup" ? null : clicked);
+    }
   };
 
   useLayoutEffect(() => {
@@ -1955,7 +2097,7 @@ export default function ThreadTerminalDrawer({
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-1 py-1">
+              <TerminalSidebarGroupList onMoveTerminalToGroup={onMoveTerminalToGroup}>
                 {resolvedTerminalGroups.map((terminalGroup) => (
                   <TerminalSidebarGroup
                     key={terminalGroup.id}
@@ -1967,9 +2109,10 @@ export default function ThreadTerminalDrawer({
                     canOperateTerminal={canOperateTerminal}
                     onActiveTerminalChange={onActiveTerminalChange}
                     onCloseTerminal={confirmCloseTerminal}
+                    onTerminalContextMenu={onMoveTerminalToGroup && showTerminalGroupMenu}
                   />
                 ))}
-              </div>
+              </TerminalSidebarGroupList>
             </aside>
           )}
         </div>
