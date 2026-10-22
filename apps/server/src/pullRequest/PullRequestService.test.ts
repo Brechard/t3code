@@ -4364,6 +4364,92 @@ it.effect("announces Azure reads, reports, and native actions with the linked PR
   }),
 );
 
+it.effect.each([
+  {
+    provider: "azure-devops",
+    host: "dev.azure.com",
+    repository: "org/project/_git/web",
+    clientRepository: " ORG/PROJECT/_git/WEB ",
+    eventRepository: "ORG/PROJECT/_git/WEB",
+    providerRepository: "web",
+  },
+  {
+    provider: "azure-devops",
+    host: "dev.azure.com",
+    repository: "org/project/_git/web",
+    clientRepository: " WEB ",
+    eventRepository: "WEB",
+    providerRepository: "web",
+  },
+  {
+    provider: "github",
+    host: "github.com",
+    repository: "acme/web",
+    clientRepository: " ACME/WEB ",
+    eventRepository: "acme/web",
+    providerRepository: "acme/web",
+  },
+])("announces $provider completion for the linked repository $clientRepository", (fixture) =>
+  Effect.gen(function* () {
+    const kind = SourceControlProviderKind.make(fixture.provider);
+    const mergedAt = "2026-10-22T00:00:00.000Z";
+    const service = yield* makeService({
+      projects: [
+        project({
+          id: "p1",
+          title: "web",
+          workspaceRoot: "/w",
+          provider: kind,
+          host: fixture.host,
+          repository: fixture.repository,
+        }),
+      ],
+      providers: [
+        fakeProvider(kind, {
+          capabilities: { ...fakeProvider(kind).capabilities, hostActions: true },
+          getChangeRequestSummary: () =>
+            Effect.succeed({ ...changeRequest(1, mergedAt), state: "merged" }),
+          runHostAction: ({ repository }) => {
+            expect(repository).toBe(fixture.providerRepository);
+            return Effect.succeed({ message: "Completed.", url: null });
+          },
+        }),
+      ],
+    });
+    const merges = yield* service.subscribeMerges;
+    const changes = yield* service.subscribeStateChanges;
+    yield* TestClock.setTime(Date.parse(mergedAt));
+    yield* service.runHostAction({
+      projectId: "p1" as ProjectId,
+      host: fixture.host,
+      repository: fixture.clientRepository,
+      number: 1,
+      action: {
+        type: "complete",
+        automatic: false,
+        strategy: "squash",
+        deleteSourceBranch: false,
+        transitionWorkItems: false,
+        message: "",
+        bypassPolicy: false,
+        bypassReason: "",
+        waitForOptionalPolicies: false,
+      },
+    });
+    expect(Option.getOrThrow(yield* Stream.runHead(merges))).toEqual({
+      projectId: "p1",
+      repository: fixture.eventRepository,
+      number: 1,
+      mergedAt,
+    });
+    expect(Option.getOrThrow(yield* Stream.runHead(changes))).toEqual({
+      host: fixture.host,
+      repository: fixture.repository,
+      number: 1,
+    });
+  }),
+);
+
 it.effect("refuses native host actions when the provider did not advertise them", () =>
   Effect.gen(function* () {
     const service = yield* makeService({

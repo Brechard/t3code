@@ -3625,9 +3625,10 @@ export const make = Effect.gen(function* () {
               Effect.catch(() => Effect.succeed(null)),
             );
             if (summary?.state !== "merged") return;
+            const project = yield* requireProject(input);
             yield* PubSub.publish(mergedPullRequests, {
               projectId: ref.projectId,
-              repository: ref.repository,
+              repository: project.repositoryKey !== null ? input.repository.trim() : ref.repository,
               number: ref.number,
               mergedAt: DateTime.formatIso(yield* DateTime.now),
             });
