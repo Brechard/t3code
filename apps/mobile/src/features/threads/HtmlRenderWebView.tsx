@@ -160,11 +160,10 @@ export function HtmlRenderWebView(props: {
         // that only overflows sideways leaves vertical drags to the feed.
         nestedScrollEnabled={props.nested && overflow.y}
         overScrollMode={props.nested ? "never" : "always"}
-        onShouldStartLoadWithRequest={(request) => {
-          if (request.isTopFrame === false) return true;
-          if (openThreadLink(request.url)) return false;
-          return withoutFragment(request.url) === withoutFragment(props.uri);
-        }}
+        onShouldStartLoadWithRequest={(request) =>
+          request.isTopFrame === false ||
+          withoutFragment(request.url) === withoutFragment(props.uri)
+        }
         onOpenWindow={(event) => {
           const url = event.nativeEvent.targetUrl;
           if (openThreadLink(url)) return;
