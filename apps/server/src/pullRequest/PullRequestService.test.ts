@@ -2730,6 +2730,74 @@ it.effect(
     }),
 );
 
+it.effect("notifies linked threads when detail changes draft status in either direction", () =>
+  Effect.gen(function* () {
+    let isDraft = true;
+    let updatedAt = "2026-07-02T00:00:00Z";
+    const reference = { projectId: "p1" as ProjectId, repository: "acme/web", number: 1 };
+    const service = yield* makeService({
+      projects: [project({ id: "p1", title: "web", workspaceRoot: "/a", repository: "acme/web" })],
+      providers: [
+        fakeProvider(SourceControlProviderKind.make("github"), {
+          getChangeRequest: () =>
+            Effect.sync(() => ({ ...hostedChangeRequest("body"), isDraft, updatedAt })),
+        }),
+      ],
+    });
+    const changes = yield* service.subscribeStateChanges;
+    const read = () => service.detail({ ...reference, allowStale: false });
+    yield* read();
+    yield* read();
+    isDraft = false;
+    yield* service.invalidate({ reference });
+    yield* read();
+    yield* read();
+    isDraft = true;
+    yield* service.invalidate({ reference });
+    yield* read();
+
+    isDraft = false;
+    updatedAt = "2026-07-01T00:00:00Z";
+    yield* service.invalidate({ reference });
+    yield* read();
+
+    // A different PR ends collection after all the synchronous notifications above.
+    yield* service.reportState({ reference: { ...reference, number: 2 }, state: "open" });
+    const events = yield* Stream.runCollect(
+      changes.pipe(Stream.takeUntil((event) => event.number === 2, { excludeLast: true })),
+    );
+    assert.deepStrictEqual(events, [
+      { host: "github.com", repository: "acme/web", number: 1 },
+      { host: "github.com", repository: "acme/web", number: 1 },
+      { host: "github.com", repository: "acme/web", number: 1 },
+    ]);
+  }),
+);
+
+it.effect("deduplicates routed PR reports without dropping draft changes", () =>
+  Effect.gen(function* () {
+    const reference = { projectId: "p1" as ProjectId, repository: "acme/web", number: 1 };
+    const service = yield* makeService({
+      projects: [project({ id: "p1", title: "web", workspaceRoot: "/a", repository: "acme/web" })],
+      providers: [fakeProvider(SourceControlProviderKind.make("github"))],
+    });
+    const changes = yield* service.subscribeStateChanges;
+    for (const isDraft of [true, true, false, false, true]) {
+      yield* service.reportState({ reference, state: "open", isDraft });
+    }
+    yield* service.reportState({ reference, state: "open" });
+    yield* service.reportState({ reference, state: "open" });
+    yield* service.reportState({ reference: { ...reference, number: 2 }, state: "open" });
+    const events = yield* Stream.runCollect(
+      changes.pipe(Stream.takeUntil((event) => event.number === 2, { excludeLast: true })),
+    );
+    assert.deepStrictEqual(
+      events.map((event) => event.number),
+      [1, 1, 1, 1],
+    );
+  }),
+);
+
 it.effect("reuses an observed merged state for strict settlement reads", () =>
   Effect.gen(function* () {
     const reference = { projectId: "p1" as ProjectId, repository: "acme/web", number: 1 };
@@ -4249,6 +4317,7 @@ it.effect("keeps a successful detail read if its project disappears before notif
 
 it.effect("announces Azure reads, reports, and native actions with the linked PR identity", () =>
   Effect.gen(function* () {
+    let isDraft = false;
     const kind = SourceControlProviderKind.make("azure-devops");
     const service = yield* makeService({
       projects: [
@@ -4264,22 +4333,29 @@ it.effect("announces Azure reads, reports, and native actions with the linked PR
       providers: [
         fakeProvider(kind, {
           capabilities: { ...fakeProvider(kind).capabilities, hostActions: true },
-          getChangeRequest: () => Effect.succeed(hostedChangeRequest("body")),
+          getChangeRequest: () => Effect.sync(() => ({ ...hostedChangeRequest("body"), isDraft })),
           runHostAction: () => Effect.succeed({ message: "Updated.", url: null }),
         }),
       ],
     });
     const ref = { projectId: "azure" as ProjectId, repository: "web", number: 1 };
-    const announced = yield* (yield* service.subscribeStateChanges).pipe(
-      Stream.take(3),
-      Stream.runCollect,
-      Effect.forkChild({ startImmediately: true }),
-    );
+    const changes = yield* service.subscribeStateChanges;
     yield* service.detail(ref);
-    yield* service.reportState({ reference: ref, state: "closed" });
+    for (const next of [true, false]) {
+      isDraft = next;
+      yield* service.invalidate({ reference: ref });
+      yield* service.detail({ ...ref, allowStale: false });
+    }
+    for (const isDraft of [true, true, false, false, true]) {
+      yield* service.reportState({ reference: ref, state: "open", isDraft });
+    }
     yield* service.runHostAction({ ...ref, action: { type: "retarget", branch: "base" } });
-    expect(yield* Fiber.join(announced)).toEqual(
-      Array.from({ length: 3 }, () => ({
+    yield* service.reportState({ reference: { ...ref, number: 2 }, state: "open" });
+    const events = yield* Stream.runCollect(
+      changes.pipe(Stream.takeUntil((event) => event.number === 2, { excludeLast: true })),
+    );
+    expect(events).toEqual(
+      Array.from({ length: 7 }, () => ({
         host: "dev.azure.com",
         repository: "org/project/_git/web",
         number: 1,

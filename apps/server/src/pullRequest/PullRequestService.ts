@@ -109,7 +109,7 @@ export interface PullRequestMergeEvent extends PullRequestRef {
 
 type PullRequestReading = Pick<
   PullRequestSummary,
-  "provider" | "state" | "updatedAt" | "observedAt"
+  "provider" | "state" | "isDraft" | "updatedAt" | "observedAt"
 >;
 
 function supersedesReading(current: PullRequestReading | undefined, next: PullRequestReading) {
@@ -3047,31 +3047,46 @@ export const make = Effect.gen(function* () {
       detailStates.set(scope, {
         provider: next.provider,
         state: next.state,
+        isDraft: next.isDraft,
         updatedAt: next.updatedAt,
         observedAt: next.observedAt,
       });
-      return current?.state !== next.state ? publishStateChange(ref) : Effect.void;
+      return current?.state !== next.state || current?.isDraft !== next.isDraft
+        ? publishStateChange(ref)
+        : Effect.void;
     });
   // The last state each routed read reported, kept apart from `detailStates`: an unverified report
   // must never outrank a reading this environment made itself.
   const reportedStates = new Map<
     string,
-    { readonly state: PullRequestState; readonly atMs: number }
+    {
+      readonly state: PullRequestState;
+      readonly isDraft: boolean | undefined;
+      readonly atMs: number;
+    }
   >();
-  const reportState: PullRequestService["Service"]["reportState"] = ({ reference, state }) =>
+  const reportState: PullRequestService["Service"]["reportState"] = ({
+    reference,
+    state,
+    isDraft,
+  }) =>
     Effect.all([canonicalRef(reference), Clock.currentTimeMillis]).pipe(
       Effect.flatMap(([ref, nowMs]) =>
         Effect.suspend(() => {
           const scope = refScope(ref);
           const reported = reportedStates.get(scope);
-          if (reported?.state === state && nowMs - reported.atMs < REPORTED_STATE_DEDUPE_MS)
+          if (
+            reported?.state === state &&
+            reported.isDraft === isDraft &&
+            nowMs - reported.atMs < REPORTED_STATE_DEDUPE_MS
+          )
             return Effect.void;
           reportedStates.delete(scope);
           if (reportedStates.size >= REF_EPOCH_CAPACITY) {
             const oldest = reportedStates.keys().next().value;
             if (oldest !== undefined) reportedStates.delete(oldest);
           }
-          reportedStates.set(scope, { state, atMs: nowMs });
+          reportedStates.set(scope, { state, isDraft, atMs: nowMs });
           return publishStateChange(ref);
         }),
       ),
