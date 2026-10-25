@@ -3,18 +3,20 @@ import { AsyncResult, Atom } from "effect/reactivity";
 import * as Linking from "expo-linking";
 import { useEffect } from "react";
 import { Platform } from "react-native";
+import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 import { environmentCatalog } from "../connection/catalog";
 import { environmentPresentations } from "../state/presentation";
 import { publishSubscriptionUsage } from "./publishSubscriptionUsage";
 import { useSubscriptionUsage } from "./useSubscriptionUsage";
 import { buildSubscriptionUsageSnapshot } from "./subscriptionUsageSnapshot";
+import { createWidgetTheme } from "./widgetTheme";
 import { withAndroidWidgetSnapshots } from "./androidSubscriptionUsageSnapshot";
 import { resolveWidgetPreferences } from "./subscriptionWidgetPreferences";
 import { mobilePreferencesAtom } from "../state/preferences";
 
 // Isolate quota changes from the much busier thread/config presentation stream.
 const snapshotAtom = Atom.make((get) => {
-  const presentations = get(environmentPresentations.presentationsAtom);
+  const presentations = get(environmentPresentations.presentationsWithProvidersAtom);
   const snapshot = buildSubscriptionUsageSnapshot(
     presentations,
     Linking.createURL("settings/usage", { queryParams: { tab: "limits" } }),
@@ -32,16 +34,36 @@ const snapshotAtom = Atom.make((get) => {
 }).pipe(Atom.withEquality((a, b) => JSON.stringify(a) === JSON.stringify(b)));
 
 export function SubscriptionUsageCoordinator() {
+  const {
+    themeMode,
+    themeAppearance,
+    themeVariablesByAppearance,
+    isReady: appearanceReady,
+  } = useAppearancePreferences();
   const catalog = useAtomValue(environmentCatalog.catalogValueAtom);
   const snapshot = useAtomValue(snapshotAtom);
   useSubscriptionUsage(catalog.isReady);
+  const androidAppearance = Platform.OS === "android" ? themeAppearance : null;
   useEffect(() => {
-    if (!catalog.isReady || snapshot === null) return;
+    if (!catalog.isReady || !appearanceReady || snapshot === null) return;
     void Promise.resolve()
-      .then(() => publishSubscriptionUsage(snapshot))
+      .then(() =>
+        publishSubscriptionUsage({
+          ...snapshot,
+          theme: createWidgetTheme(themeMode, themeVariablesByAppearance),
+        }),
+      )
       .catch((error: unknown) => {
         console.warn("Could not update subscription usage widget", error);
       });
-  }, [catalog.isReady, snapshot]);
+  }, [
+    catalog.isReady,
+    appearanceReady,
+    snapshot,
+    themeMode,
+    themeVariablesByAppearance,
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Android stores resolved colors; System appearance changes must republish them.
+    androidAppearance,
+  ]);
   return null;
 }

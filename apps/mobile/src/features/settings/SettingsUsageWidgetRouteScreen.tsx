@@ -1,15 +1,17 @@
+import * as Dialog from "../../components/ui/Dialog";
+import { openSettings } from "./settings-navigation";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { useIsFocused, useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import { collectLimitAccounts } from "@t3tools/shared/usageLimits";
 import { AsyncResult } from "effect/reactivity";
 import { requireOptionalNativeModule } from "expo";
 import { useEffect, useState } from "react";
-import { Alert, AppState, Pressable } from "react-native";
+import { AppState, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AppText as Text } from "../../components/AppText";
-import { ControlPillMenu } from "../../components/ControlPillMenu";
-import { ScreenScrollView as ScrollView } from "../../components/ScreenScrollView";
+import { AppText as Text } from "../../components/ui/AppText";
+import { Menu } from "../../components/ui/Menu";
+import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { environmentPresentations } from "../../state/presentation";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import {
@@ -25,7 +27,7 @@ import {
   type SubscriptionWidgetConfiguration,
 } from "../../widgets/subscriptionWidgetPreferences";
 import { SettingsActionRow } from "./components/SettingsActionRow";
-import { SettingsControlRow } from "./components/SettingsControlRow";
+import { ListRowLayout } from "../../components/ui/ListRowLayout";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
@@ -54,36 +56,37 @@ function WidgetMenu<Value extends string>(props: {
   onChange: (value: Value) => void;
 }) {
   return (
-    <SettingsControlRow
+    <ListRowLayout
       icon="slider.horizontal.3"
       label={props.label}
-      subtitle={props.subtitle}
+      description={props.subtitle}
       disabled={props.disabled}
-    >
-      <ControlPillMenu
-        title={props.label}
-        actions={props.options.map((option) => ({
-          ...option,
-          state: option.id === props.value ? "on" : "off",
-        }))}
-        onPressAction={({ nativeEvent }) => {
-          if (props.disabled) return;
-          const option = props.options.find((option) => option.id === nativeEvent.event);
-          if (option) props.onChange(option.id);
-        }}
-      >
-        <Pressable
-          disabled={props.disabled}
-          accessibilityRole="button"
-          accessibilityLabel={props.subtitle ? `${props.subtitle} · ${props.label}` : props.label}
-          className="rounded-full bg-subtle px-3 py-2"
+      accessory={
+        <Menu
+          title={props.label}
+          actions={props.options.map((option) => ({
+            ...option,
+            state: option.id === props.value ? "on" : "off",
+          }))}
+          onPressAction={({ nativeEvent }) => {
+            if (props.disabled) return;
+            const option = props.options.find((option) => option.id === nativeEvent.event);
+            if (option) props.onChange(option.id);
+          }}
         >
-          <Text className="text-sm text-foreground">
-            {props.options.find((option) => option.id === props.value)?.title}
-          </Text>
-        </Pressable>
-      </ControlPillMenu>
-    </SettingsControlRow>
+          <Pressable
+            disabled={props.disabled}
+            accessibilityRole="button"
+            accessibilityLabel={props.subtitle ? `${props.subtitle} · ${props.label}` : props.label}
+            className="rounded-full bg-subtle px-3 py-2"
+          >
+            <Text className="text-sm text-foreground">
+              {props.options.find((option) => option.id === props.value)?.title}
+            </Text>
+          </Pressable>
+        </Menu>
+      }
+    />
   );
 }
 
@@ -94,7 +97,7 @@ export function SettingsUsageWidgetRouteScreen() {
   const focused = useIsFocused();
   const result = useAtomValue(mobilePreferencesAtom);
   const savePreferences = useAtomSet(updateMobilePreferencesAtom, { mode: "promise" });
-  const presentations = useAtomValue(environmentPresentations.presentationsAtom);
+  const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
   const ready = AsyncResult.isSuccess(result) && !result.waiting;
   const preferences = resolveWidgetPreferences(
     AsyncResult.isSuccess(result) ? result.value.subscriptionWidgets : undefined,
@@ -150,7 +153,7 @@ export function SettingsUsageWidgetRouteScreen() {
         else widgets[target] = { ...(widgets[target] ?? latest.defaults), ...patch };
         return { subscriptionWidgets: { ...latest, widgets } };
       },
-    }).catch(() => Alert.alert("Could not save widget settings", "Please try again."));
+    }).catch(() => Dialog.alert("Could not save widget settings", "Please try again."));
   };
   return (
     <SettingsScreen title="Usage widget">
@@ -204,7 +207,7 @@ export function SettingsUsageWidgetRouteScreen() {
             disabled={!native || !ready}
             onPress={() => {
               if (!native?.pinWidget())
-                Alert.alert(
+                Dialog.alert(
                   "Add the widget from your launcher",
                   "Open your home screen's widget gallery and choose Subscription usage.",
                 );
@@ -213,12 +216,7 @@ export function SettingsUsageWidgetRouteScreen() {
           <SettingsActionRow
             icon="chart.bar.xaxis"
             label="Open usage limits"
-            onPress={() =>
-              navigation.navigate("SettingsSheet", {
-                screen: "SettingsContent",
-                params: { screen: "SettingsUsage" },
-              })
-            }
+            onPress={() => openSettings(navigation, "SettingsUsage")}
           />
         </SettingsSection>
         {!exists ? (

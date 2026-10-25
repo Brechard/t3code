@@ -1,16 +1,9 @@
-import { getMaterialColors } from "@expo/ui/jetpack-compose";
+import { createWidgetTheme } from "../../../widgets/widgetTheme";
 import { useIsFocused } from "@react-navigation/native";
 import { useEffect, useMemo, useState } from "react";
-import {
-  Platform,
-  Pressable,
-  ScrollView,
-  useColorScheme,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, useColorScheme, useWindowDimensions, View } from "react-native";
 
-import { AppText as Text } from "../../../components/AppText";
+import { AppText as Text } from "../../../components/ui/AppText";
 import type { AndroidSubscriptionUsageSnapshot } from "../../../widgets/androidSubscriptionUsageSnapshot";
 import { useAppearancePreferences } from "../appearance/AppearancePreferencesProvider";
 
@@ -22,22 +15,18 @@ export function UsageWidgetPreview(props: {
   const { height } = useWindowDimensions();
   const systemScheme = useColorScheme() === "dark" ? "dark" : "light";
   const scheme = configuration.theme === "system" ? systemScheme : configuration.theme;
-  const { systemColorPalettes, themeVariablesByAppearance } = useAppearancePreferences();
-  const variables = themeVariablesByAppearance[scheme];
-  const colors = useMemo(
-    () =>
-      Platform.OS === "android"
-        ? { ...getMaterialColors({ scheme }), ...systemColorPalettes?.[scheme] }
-        : {
-            surface: variables["--color-sheet"],
-            onSurface: variables["--color-foreground"],
-            onSurfaceVariant: variables["--color-foreground-muted"],
-            surfaceVariant: variables["--color-subtle"],
-            primary: variables["--color-primary"],
-            error: variables["--color-danger"],
-          },
-    [scheme, variables, systemColorPalettes],
-  );
+  const { themeVariablesByAppearance } = useAppearancePreferences();
+  const colors = useMemo(() => {
+    const palette = createWidgetTheme("system", themeVariablesByAppearance)[scheme];
+    return {
+      surface: palette.background,
+      onSurface: palette.foreground,
+      onSurfaceVariant: palette.secondary,
+      surfaceVariant: palette.track,
+      primary: palette.accent,
+      error: palette.danger,
+    };
+  }, [scheme, themeVariablesByAppearance]);
   const compact = configuration.density === "compact";
   const used = configuration.percentage === "used";
   const [expanded, setExpanded] = useState(true);

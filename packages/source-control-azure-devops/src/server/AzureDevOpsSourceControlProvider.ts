@@ -1,7 +1,9 @@
+import { SourceControlProviderKind } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { SourceControlProviderError, type ChangeRequest } from "@t3tools/contracts";
 
 import * as AzureDevOpsCli from "./AzureDevOpsCli.ts";
+import type { NormalizedAzureDevOpsPullRequestRecord } from "./azureDevOpsPullRequests.ts";
 import * as SourceControlProvider from "@t3tools/source-control-core/server/SourceControlProvider";
 import {
   combinedAuthOutput,
@@ -39,40 +41,27 @@ function parseAzureAuth(input: SourceControlAuthProbeInput) {
 
 export const discovery = {
   type: "cli",
-  kind: "azure-devops",
+  kind: SourceControlProviderKind.make("azure-devops"),
   label: "Azure DevOps",
   executable: "az",
   versionArgs: ["--version"],
   authArgs: ["account", "show", "--query", "user.name", "-o", "tsv"],
-  // `az` boots a fresh Python interpreter on every invocation, so even `az --version`
-  // takes ~6s on Windows and overruns the default budget, leaving the provider reported
-  // as missing on machines where it is installed. `gh` and `glab` answer in ~0.3s.
+  // `az --version` starts Python and takes ~6s on Windows, exceeding the default probe timeout.
   probeTimeoutMs: 20_000,
   parseAuth: parseAzureAuth,
   installHint:
     "Install the Azure command-line tools (`az`), then enable Azure DevOps support with `az extension add --name azure-devops`.",
 } satisfies SourceControlCliDiscoverySpec;
 
-function toChangeRequest(summary: {
-  readonly number: number;
-  readonly title: string;
-  readonly url: string;
-  readonly baseRefName: string;
-  readonly headRefName: string;
-  readonly state: "open" | "closed" | "merged";
-  readonly isDraft?: boolean;
-  readonly isCrossRepository: boolean;
-  readonly closedAt?: string | null;
-  readonly mergedAt?: string | null;
-  readonly updatedAt: ChangeRequest["updatedAt"];
-}): ChangeRequest {
+function toChangeRequest(summary: NormalizedAzureDevOpsPullRequestRecord): ChangeRequest {
   return {
-    provider: "azure-devops",
+    provider: SourceControlProviderKind.make("azure-devops"),
     number: summary.number,
     title: summary.title,
     url: summary.url,
     baseRefName: summary.baseRefName,
     headRefName: summary.headRefName,
+    ...(summary.headSha !== undefined ? { headSha: summary.headSha } : {}),
     state: summary.state,
     ...(summary.isDraft === true ? { isDraft: true } : {}),
     closedAt: summary.closedAt ?? null,
@@ -86,7 +75,7 @@ export const make = Effect.gen(function* () {
   const azure = yield* AzureDevOpsCli.AzureDevOpsCli;
 
   return SourceControlProvider.SourceControlProvider.of({
-    kind: "azure-devops",
+    kind: SourceControlProviderKind.make("azure-devops"),
     listChangeRequests: (input) => {
       const source = SourceControlProvider.sourceControlRefFromInput(input);
       return azure
@@ -102,7 +91,7 @@ export const make = Effect.gen(function* () {
           Effect.mapError(
             (error) =>
               new SourceControlProviderError({
-                provider: "azure-devops",
+                provider: SourceControlProviderKind.make("azure-devops"),
                 operation: "listChangeRequests",
                 command: error.command,
                 cwd: input.cwd,
@@ -121,7 +110,7 @@ export const make = Effect.gen(function* () {
         Effect.mapError(
           (error) =>
             new SourceControlProviderError({
-              provider: "azure-devops",
+              provider: SourceControlProviderKind.make("azure-devops"),
               operation: "getChangeRequest",
               command: error.command,
               cwd: input.cwd,
@@ -149,7 +138,7 @@ export const make = Effect.gen(function* () {
           Effect.mapError(
             (error) =>
               new SourceControlProviderError({
-                provider: "azure-devops",
+                provider: SourceControlProviderKind.make("azure-devops"),
                 operation: "createChangeRequest",
                 command: error.command,
                 cwd: input.cwd,
@@ -167,7 +156,7 @@ export const make = Effect.gen(function* () {
         Effect.mapError(
           (error) =>
             new SourceControlProviderError({
-              provider: "azure-devops",
+              provider: SourceControlProviderKind.make("azure-devops"),
               operation: "getRepositoryCloneUrls",
               command: error.command,
               cwd: input.cwd,
@@ -184,7 +173,7 @@ export const make = Effect.gen(function* () {
         Effect.mapError(
           (error) =>
             new SourceControlProviderError({
-              provider: "azure-devops",
+              provider: SourceControlProviderKind.make("azure-devops"),
               operation: "createRepository",
               command: error.command,
               cwd: input.cwd,
@@ -201,7 +190,7 @@ export const make = Effect.gen(function* () {
         Effect.mapError(
           (error) =>
             new SourceControlProviderError({
-              provider: "azure-devops",
+              provider: SourceControlProviderKind.make("azure-devops"),
               operation: "getDefaultBranch",
               command: error.command,
               cwd: input.cwd,
@@ -221,7 +210,7 @@ export const make = Effect.gen(function* () {
           Effect.mapError(
             (error) =>
               new SourceControlProviderError({
-                provider: "azure-devops",
+                provider: SourceControlProviderKind.make("azure-devops"),
                 operation: "checkoutChangeRequest",
                 command: error.command,
                 cwd: input.cwd,

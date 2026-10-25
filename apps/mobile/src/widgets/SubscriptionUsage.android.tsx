@@ -30,13 +30,24 @@ export function SubscriptionUsage(
   const snapshot = props.android?.widgets[String(environment.widgetId)] ?? props.android?.defaults;
   const configuration = snapshot?.configuration;
   const compact = configuration?.density === "compact";
+  const mode = configuration?.theme ?? props.theme?.mode;
   const scheme =
-    configuration?.theme === "light" || configuration?.theme === "dark"
-      ? configuration.theme
+    mode === "light" || mode === "dark"
+      ? mode
       : environment.colorScheme === "dark"
         ? "dark"
         : "light";
-  const colors = getMaterialColors({ scheme });
+  const palette = props.theme?.[scheme];
+  const colors = palette
+    ? {
+        surface: palette.background,
+        onSurface: palette.foreground,
+        onSurfaceVariant: palette.secondary,
+        surfaceVariant: palette.track,
+        primary: palette.accent,
+        error: palette.danger,
+      }
+    : getMaterialColors({ scheme });
   // Cached snapshots from older app versions remain readable until publication.
   const groups =
     snapshot?.groups ??
