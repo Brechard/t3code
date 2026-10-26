@@ -954,7 +954,7 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
     (route.params.iterationRange
       ? `${route.params.iterationRange.from}-${route.params.iterationRange.to}`
       : "all");
-  // A reused Android canvas can clear rows after the next comparison's payload arrives.
+  // Remount the native diff when a retained route changes comparison to avoid blank content.
   const nativeDiffKey = `pull-request:${route.params.environmentId}:${route.params.repository}:${route.params.number}:${comparisonKey}`;
   const result = usePullRequestDiff(route.params, terminology);
   const filter = usePullRequestFileFilter(
