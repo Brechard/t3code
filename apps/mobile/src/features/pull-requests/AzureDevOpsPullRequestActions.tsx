@@ -202,7 +202,7 @@ function Actions({ pr, params, children }: ActionsProps) {
       ) : null}
       {result ? <Text>{result.message}</Text> : null}
       {resultUrl ? (
-        <Button label="View result" onPress={() => void Linking.openURL(resultUrl)} />
+        <Button tone="text" label="View result" onPress={() => void Linking.openURL(resultUrl)} />
       ) : null}
     </>
   );
@@ -361,6 +361,7 @@ function AzureActionSheet({
                     </Text>
                     <View className="flex-row flex-wrap gap-2">
                       <PullRequestPermissionButton
+                        tone="text"
                         reason={denied["reviewer-required"]}
                         label={person.required ? "Make optional" : "Make required"}
                         disabled={disabled || !active}
@@ -373,6 +374,7 @@ function AzureActionSheet({
                         }
                       />
                       <PullRequestPermissionButton
+                        tone="text"
                         reason={denied["reviewer-flag"]}
                         label={person.flagged ? "Clear reviewer flag" : "Flag reviewer"}
                         disabled={
@@ -387,6 +389,7 @@ function AzureActionSheet({
                         }
                       />
                       <PullRequestPermissionButton
+                        tone="text"
                         reason={denied["reviewers"]}
                         label="Remove reviewer"
                         disabled={disabled}
@@ -410,6 +413,7 @@ function AzureActionSheet({
                   className={inputClass}
                 />
                 <PullRequestPermissionButton
+                  tone="primary"
                   reason={denied["reviewers"]}
                   label="Add reviewer"
                   disabled={disabled || !reviewer.trim()}
@@ -426,6 +430,7 @@ function AzureActionSheet({
               <View className="gap-3">
                 {pr.labels.map((label) => (
                   <PullRequestPermissionButton
+                    tone="text"
                     reason={denied["labels"]}
                     key={label.name}
                     label={`Remove ${label.name}`}
@@ -441,6 +446,7 @@ function AzureActionSheet({
                   className={inputClass}
                 />
                 <PullRequestPermissionButton
+                  tone="primary"
                   reason={denied["labels"]}
                   label="Add tag"
                   disabled={disabled || !tag.trim()}
@@ -461,6 +467,7 @@ function AzureActionSheet({
                       #{item.id} {item.title} · {item.state}
                     </Text>
                     <PullRequestPermissionButton
+                      tone="text"
                       reason={denied["work-items"]}
                       label="Unlink"
                       disabled={disabled}
@@ -478,6 +485,7 @@ function AzureActionSheet({
                   className={inputClass}
                 />
                 <PullRequestPermissionButton
+                  tone="primary"
                   reason={denied["work-items"]}
                   label="Link work items"
                   disabled={disabled || !items.trim()}
@@ -498,10 +506,12 @@ function AzureActionSheet({
                   <View key={file.url} className="gap-2">
                     <Text>{file.name}</Text>
                     <Button
+                      tone="text"
                       label="Open attachment"
                       onPress={() => void Linking.openURL(file.url)}
                     />
                     <Button
+                      tone="text"
                       label="Copy Markdown link"
                       onPress={() =>
                         copyTextWithHaptic(
@@ -511,6 +521,7 @@ function AzureActionSheet({
                       }
                     />
                     <PullRequestPermissionButton
+                      tone="text"
                       reason={denied["attachment-delete"]}
                       label="Delete attachment"
                       disabled={disabled}
@@ -524,6 +535,7 @@ function AzureActionSheet({
                   </View>
                 ))}
                 <PullRequestPermissionButton
+                  tone="primary"
                   reason={denied["attachment-upload"]}
                   label="Upload PR attachment"
                   disabled={disabled}
@@ -550,6 +562,7 @@ function AzureActionSheet({
                   className={inputClass}
                 />
                 <PullRequestPermissionButton
+                  tone="primary"
                   reason={denied["share"]}
                   label="Share pull request"
                   disabled={disabled || !shareReceivers.trim()}
@@ -574,6 +587,7 @@ function AzureActionSheet({
                     </Text>
                     {policy.url ? (
                       <Button
+                        tone="text"
                         label="View policy"
                         onPress={() => {
                           if (policy.url) void Linking.openURL(policy.url);
@@ -582,6 +596,7 @@ function AzureActionSheet({
                     ) : null}
                     {policy.requeueable ? (
                       <PullRequestPermissionButton
+                        tone="text"
                         reason={denied["requeue-policy"]}
                         label="Requeue"
                         disabled={disabled || !active}
@@ -607,12 +622,14 @@ function AzureActionSheet({
                   className={inputClass}
                 />
                 <PullRequestPermissionButton
+                  tone="text"
                   reason={denied["retarget"]}
                   label="Change target branch"
                   disabled={disabled || !branchActions.retarget}
                   onPress={() => confirm("Change target branch?", branchActions.retarget)}
                 />
                 <PullRequestPermissionButton
+                  tone="text"
                   reason={denied["restart-merge"]}
                   label="Restart merge"
                   disabled={disabled || !active}
@@ -620,6 +637,7 @@ function AzureActionSheet({
                 />
                 {mergePreviewUrl ? (
                   <Button
+                    tone="text"
                     label="View merge changes"
                     onPress={() => void Linking.openURL(mergePreviewUrl)}
                   />
@@ -633,12 +651,14 @@ function AzureActionSheet({
                 />
                 <View className="flex-row gap-2">
                   <PullRequestPermissionButton
+                    tone="text"
                     reason={denied["cherry-pick"]}
                     label="Cherry-pick"
                     disabled={disabled || !branchActions.cherryPick}
                     onPress={() => confirm("Cherry-pick changes?", branchActions.cherryPick)}
                   />
                   <PullRequestPermissionButton
+                    tone="text"
                     reason={denied["revert"]}
                     label="Revert"
                     disabled={disabled || !branchActions.revert}
@@ -711,6 +731,7 @@ function AzureActionSheet({
                   className={inputClass}
                 />
                 <PullRequestPermissionButton
+                  tone="primary"
                   reason={completionBlock}
                   label="Complete with these options"
                   disabled={disabled}
@@ -723,6 +744,7 @@ function AzureActionSheet({
                   }
                 />
                 <PullRequestPermissionButton
+                  tone="text"
                   reason={completionBlock}
                   label="Set auto-complete"
                   disabled={disabled}

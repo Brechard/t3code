@@ -27,6 +27,7 @@ export function AzureBuildRequeueButton({
   const reason = pr.viewerPermissions.deniedActions?.["requeue-policy"];
   return (
     <PullRequestPermissionButton
+      tone="primary"
       reason={reason}
       label={busy ? "Requeueing…" : "Requeue"}
       disabled={busy || !allowed || pr.state !== "open"}
