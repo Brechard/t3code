@@ -430,7 +430,11 @@ it.each(["github", "azure-devops", "gitlab", "bitbucket", "forgejo", "gitcafe"])
         }),
       )
       .toBeVisible();
-    await page.getByRole("button", { name: "More pull request actions" }).click();
+    await page
+      .getByRole("button", {
+        name: provider === "gitlab" ? "More merge request actions" : "More pull request actions",
+      })
+      .click();
     await page.getByRole("menuitem", { name: "Resolve conflicts", exact: true }).click();
     await vi.waitFor(() => {
       const draft = useComposerDraftStore.getState().getComposerDraft(newDraftId);

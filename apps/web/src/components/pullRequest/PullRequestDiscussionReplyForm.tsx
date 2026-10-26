@@ -48,6 +48,8 @@ function ReplyComposer({
   const resolvable = canResolve && resolutionAllowed && !denied.resolve;
   // Read after the reply posts: the discussion may have closed, or access changed, meanwhile.
   const stillResolvable = useRef(resolvable);
+  // A reply can finish after permissions change; the completion handler needs the latest value.
+  // oxlint-disable-next-line t3code/react-effect-budget -- Synchronize the ref after each render.
   useEffect(() => {
     stillResolvable.current = resolvable;
   });

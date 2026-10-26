@@ -96,6 +96,8 @@ function AzureActions({
     openSection.current = value;
     setSectionState(value);
   };
+  // The menu renderer may retain a callback; invalidate its section ref on unmount.
+  // oxlint-disable-next-line t3code/react-effect-budget -- Cleanup must run when the menu unmounts.
   useEffect(
     () => () => {
       openSection.current = null;

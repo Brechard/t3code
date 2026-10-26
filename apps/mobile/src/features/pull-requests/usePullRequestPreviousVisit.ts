@@ -32,11 +32,15 @@ export function usePullRequestPreviousVisit(params: PullRequestParams, activityL
   if (visit?.key !== key && AsyncResult.isSuccess(preferences))
     setVisit({ key, at: preferences.value.pullRequestVisits?.[key] ?? null });
   const ready = activityLoaded && visit?.key === key;
+  // Record the visit after activity loads so the previous timestamp remains available in render.
+  // oxlint-disable-next-line t3code/react-effect-budget -- Synchronizes the visit with saved preferences.
   useEffect(() => {
     if (!ready || seenKey.current === key) return;
     seenKey.current = key;
     save({ transform: visitedNow(key) });
   }, [ready, key, save]);
+  // Persist the visit when the app backgrounds or this review unmounts.
+  // oxlint-disable-next-line t3code/react-effect-budget -- AppState subscriptions need setup and cleanup.
   useEffect(() => {
     const leave = () => {
       if (seenKey.current === key) save({ transform: visitedNow(key) });

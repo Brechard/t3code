@@ -84,7 +84,7 @@ function AzureActionMenu({
 }) {
   const menuAction = (entry: AzureMenuEntry): MenuAction => ({
     id: entry.id,
-    title: entry.reason ? `${entry.title} — ${entry.reason}` : entry.title,
+    title: entry.reason ? `${entry.title}: ${entry.reason}` : entry.title,
     attributes: { disabled: entry.disabled || Boolean(entry.reason) },
   });
   const nativeAction = (entry: AzureMenuEntry) => (
@@ -142,6 +142,8 @@ function Actions({ pr, params, children }: ActionsProps) {
     openSection.current = value;
     setSectionState(value);
   };
+  // The menu renderer may retain a callback; invalidate its section ref on unmount.
+  // oxlint-disable-next-line t3code/react-effect-budget -- Cleanup must run when the menu unmounts.
   useEffect(
     () => () => {
       openSection.current = null;
