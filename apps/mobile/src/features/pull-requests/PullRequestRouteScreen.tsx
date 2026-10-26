@@ -35,7 +35,7 @@ import { IconButton } from "../../components/ui/IconButton";
 import { Button } from "../../components/ui/Button";
 import { usePullRequestReviewDraft } from "./usePullRequestReviewDraft";
 import { usePullRequestFilesViewed } from "./usePullRequestFilesViewed";
-import { usePullRequestComparisonViewedPaths } from "./usePullRequestComparisonViewedPaths";
+import { usePullRequestComparisonState } from "./usePullRequestComparisonState";
 import { usePullRequestPermissions } from "./usePullRequestPermissions";
 import { usePullRequestAction } from "./usePullRequestAction";
 import { annotatePullRequestDiff, reviewPosition } from "./pullRequestDiffComments";
@@ -967,7 +967,8 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
   const parsed = filter.parsed;
   const reviewDraft = usePullRequestReviewDraft(route.params);
   const viewed = usePullRequestFilesViewed(route.params, historical ? null : detail.data);
-  const comparisonViewed = usePullRequestComparisonViewedPaths(route.params);
+  const comparisonState = usePullRequestComparisonState(route.params);
+  const { collapsedIds, setCollapsedIds } = comparisonState;
   const permissions = usePullRequestPermissions(route.params, detail.data);
   const scopeKey = pullRequestReviewKey(route.params);
   const [diffHead, setDiffHead] = useState({ scopeKey, sha: detail.data?.headSha ?? null });
@@ -1006,7 +1007,7 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
   );
   const viewedIds = data.files
     .filter((file) =>
-      historical ? comparisonViewed.isViewed(file.path) : viewed.isViewed(file.path),
+      historical ? comparisonState.isViewed(file.path) : viewed.isViewed(file.path),
     )
     .map((file) => file.id);
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
@@ -1046,7 +1047,6 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
   const focusIndex = focusedRows.length
     ? data.rows.findIndex((row) => row.id === focusedRows[0]?.id)
     : -1;
-  const [collapsedIds, setCollapsedIds] = useState<readonly string[]>(EMPTY_IDS);
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null);
   const nativeView = useRef<NativeReviewDiffViewHandle>(null);
   // Native applies the entry destination before its first viewport. Imperative
@@ -1071,7 +1071,14 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
     void nativeView.current.scrollToFile(file.id, false).catch(() => {
       jumpStarted.current = false;
     });
-  }, [route.params.path, route.params.fileSelectionId, route.params.focus, data.files, navigation]);
+  }, [
+    route.params.path,
+    route.params.fileSelectionId,
+    route.params.focus,
+    data.files,
+    navigation,
+    setCollapsedIds,
+  ]);
   const appliedFilter = useRef(filter.hideTestFiles);
   useEffect(() => {
     if (appliedFilter.current === filter.hideTestFiles) return;
@@ -1315,7 +1322,7 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
                 const file = data.files.find((file) => file.id === event.nativeEvent.fileId);
                 if (!file || (!historical && !viewed.canToggle)) return;
                 const wasViewed = historical
-                  ? comparisonViewed.isViewed(file.path)
+                  ? comparisonState.isViewed(file.path)
                   : viewed.isViewed(file.path);
                 setCollapsedIds((ids) =>
                   wasViewed
@@ -1324,7 +1331,7 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
                       ? ids
                       : [...ids, file.id],
                 );
-                if (historical) comparisonViewed.toggle(file.path);
+                if (historical) comparisonState.toggle(file.path);
                 else void viewed.toggle(file.path);
               }}
               onToggleComment={(event) => {
