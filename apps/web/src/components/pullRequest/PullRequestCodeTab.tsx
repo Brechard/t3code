@@ -1113,7 +1113,7 @@ function PullRequestCodeTab({
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
-        {latestUpdateId !== undefined ? (
+        {commit === null && latestUpdateId !== undefined ? (
           <div className="flex items-center gap-1">
             <Select
               value={updateComparison.comparison.from}
