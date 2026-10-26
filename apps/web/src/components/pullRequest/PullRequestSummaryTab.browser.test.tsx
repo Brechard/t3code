@@ -181,7 +181,9 @@ it("keeps readable system activity separate from the comments filter", async () 
       screen.getByText("Reviewer approved the pull request with suggestions", { exact: true }),
     )
     .toBeVisible();
-  expect(screen.visibleText()).not.toContain("reviewer@example.com");
+  await expect
+    .element(screen.getByText("reviewer@example.com", { exact: true }))
+    .not.toBeInTheDocument();
   await userEvent.click(filterButton(screen));
   await page.getByRole("menuitemradio", { name: "All comments (0)", exact: true }).click();
   await expect
@@ -262,19 +264,19 @@ it("switches Azure discussion filters without losing the parent of a matching re
     await userEvent.click(filterButton(screen));
     await page.getByRole("menuitemradio", { name: new RegExp(`^${label} `) }).click();
   };
-  expect(screen.visibleText()).toContain("Pushed an update");
+  await expect.element(screen.getByText("Pushed an update")).toBeInTheDocument();
   await select("All comments");
-  expect(screen.visibleText()).not.toContain("Pushed an update");
+  await expect.element(screen.getByText("Pushed an update")).not.toBeInTheDocument();
   await select("Active comments");
-  expect(screen.visibleText()).toContain("Original question");
-  expect(screen.visibleText()).toContain("My answer");
-  expect(screen.visibleText()).not.toContain("Finished question");
+  await expect.element(screen.getByText("Original question")).toBeInTheDocument();
+  await expect.element(screen.getByText("My answer")).toBeInTheDocument();
+  await expect.element(screen.getByText("Finished question")).not.toBeInTheDocument();
   await select("Resolved comments");
-  expect(screen.visibleText()).toContain("Finished question");
-  expect(screen.visibleText()).not.toContain("Original question");
+  await expect.element(screen.getByText("Finished question")).toBeInTheDocument();
+  await expect.element(screen.getByText("Original question")).not.toBeInTheDocument();
   await select("My comments/replies");
-  expect(screen.visibleText()).toContain("Original question");
-  expect(screen.visibleText()).toContain("My answer");
+  await expect.element(screen.getByText("Original question")).toBeInTheDocument();
+  await expect.element(screen.getByText("My answer")).toBeInTheDocument();
 });
 
 it("offers Azure What's new only after a visit and shows only later activity", async () => {
@@ -358,21 +360,24 @@ it("keeps an Azure discussion together with the original before its replies", as
     commentCount: 2,
   };
   await using screen = await render(value);
-  const assertDiscussionOrder = () => {
-    expect(screen.visibleText()).not.toContain("Reply to Reviewer");
-    expect(screen.visibleText()).toContain("Could you cover the empty state?");
-    expect(screen.visibleText()).toContain("Added coverage.");
-    expect(screen.visibleText().indexOf("Could you cover the empty state?")).toBeLessThan(
-      screen.visibleText().indexOf("Added coverage."),
-    );
+  const assertDiscussionOrder = async () => {
+    await expect.element(screen.getByText("Reply to Reviewer")).not.toBeInTheDocument();
+    await expect.element(screen.getByText("Could you cover the empty state?")).toBeInTheDocument();
+    await expect.element(screen.getByText("Added coverage.")).toBeInTheDocument();
+    await vi.waitFor(() => {
+      const visibleText = screen.visibleText();
+      expect(visibleText.indexOf("Could you cover the empty state?")).toBeLessThan(
+        visibleText.indexOf("Added coverage."),
+      );
+    });
   };
-  assertDiscussionOrder();
+  await assertDiscussionOrder();
   await page.getByRole("button", { name: "Show oldest comments first" }).click();
-  assertDiscussionOrder();
+  await assertDiscussionOrder();
 
   await screen.rerender(
     tab({ ...value, comments: value.comments.slice(1), commentsTruncated: true }),
   );
-  expect(screen.visibleText()).toContain("Reply to earlier comment");
-  expect(screen.visibleText()).toContain("Original comment isn’t loaded.");
+  await expect.element(screen.getByText("Reply to earlier comment")).toBeInTheDocument();
+  await expect.element(screen.getByText("Original comment isn’t loaded.")).toBeInTheDocument();
 });

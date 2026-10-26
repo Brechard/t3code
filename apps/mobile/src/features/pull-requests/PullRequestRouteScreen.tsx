@@ -482,6 +482,22 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
           },
         ]
       : []),
+    ...(permissions.canEditChangeRequest
+      ? [
+          {
+            accessibilityLabel: "Edit title",
+            icon: "pencil" as const,
+            overflowOnly: true,
+            onPress: () => navigation.navigate("PullRequestEdit", { ...params, field: "title" }),
+          },
+          {
+            accessibilityLabel: "Edit description",
+            icon: "doc.text" as const,
+            overflowOnly: true,
+            onPress: () => navigation.navigate("PullRequestEdit", { ...params, field: "body" }),
+          },
+        ]
+      : []),
     ...(identity
       ? [
           {
@@ -600,6 +616,26 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
                       }
                     >
                       <Toolbar.Label>Add comment</Toolbar.Label>
+                    </Toolbar.MenuAction>
+                  ) : null}
+                  {permissions.canEditChangeRequest ? (
+                    <Toolbar.MenuAction
+                      icon="pencil"
+                      onPress={() =>
+                        navigation.navigate("PullRequestEdit", { ...params, field: "title" })
+                      }
+                    >
+                      <Toolbar.Label>Edit title</Toolbar.Label>
+                    </Toolbar.MenuAction>
+                  ) : null}
+                  {permissions.canEditChangeRequest ? (
+                    <Toolbar.MenuAction
+                      icon="doc.text"
+                      onPress={() =>
+                        navigation.navigate("PullRequestEdit", { ...params, field: "body" })
+                      }
+                    >
+                      <Toolbar.Label>Edit description</Toolbar.Label>
                     </Toolbar.MenuAction>
                   ) : null}
                   {identity ? (
