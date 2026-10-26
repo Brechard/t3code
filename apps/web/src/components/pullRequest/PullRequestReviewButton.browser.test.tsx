@@ -331,6 +331,7 @@ it("uses the requested GitHub verdict on the form's first mount", async () => {
         environmentId={environmentId}
         reference={reference}
         verdicts={githubDetail.capabilities.review.verdicts}
+        term="pull request"
         requestChangesSummaryRequired={false}
         textareaRef={textareaRef}
         pending={pending}

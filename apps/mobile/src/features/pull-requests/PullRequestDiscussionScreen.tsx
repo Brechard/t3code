@@ -12,7 +12,7 @@ import {
   groupPullRequestComments,
   pullRequestThreadStatusLabels as statusLabels,
 } from "@t3tools/client-runtime/pull-request-comment-replies";
-import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
+import { useFocusEffect, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import {
   type AtomCommandResult,
   squashAtomCommandFailure,
@@ -38,6 +38,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { useEnvironmentQuery } from "../../state/query";
 import { PullRequestMarkdown, PullRequestMarkdownRepository } from "./PullRequestMarkdown";
 import { PullRequestAvatar } from "./PullRequestPresentation";
+import { PullRequestCommentFooter } from "./PullRequestReactions";
 import { pullRequestTarget, type PullRequestParams } from "./usePullRequestDiff";
 import { usePullRequestPermissions } from "./usePullRequestPermissions";
 import { pullRequestReviewKey } from "./pullRequestReviewDrafts";
@@ -97,6 +98,15 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [composerHeight, setComposerHeight] = useState(64);
+  // Replies from "Load more" live only here, outside the activity an edit refreshes. After one
+  // is edited, drop the loaded pages so the next load reads the new body instead of the old one.
+  const extraEdited = useRef(false);
+  useFocusEffect(() => {
+    if (!extraEdited.current) return;
+    extraEdited.current = false;
+    setExtra([]);
+    setCursor(undefined);
+  });
   const operation = async (run: () => Promise<AtomCommandResult<unknown, unknown> | undefined>) => {
     if (pending.current) return;
     pending.current = true;
@@ -179,7 +189,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
     "kind" in comment && comment.kind === "issue-comment" ? "issue-comment" : "review-comment";
   const saveComment = (comment: PullRequestThreadComment) =>
     operation(async () => {
-      if (!editing?.body.trim() || !permissions.canEditComment || !ownComment(comment))
+      if (!editing?.body.trim() || !permissions.canEditNativeComment || !ownComment(comment))
         return undefined;
       const response = await updateComment({
         ...target,
@@ -302,7 +312,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
         ) : like && like.count > 0 ? (
           <Text className="text-xs text-foreground-muted">👍 {like.count}</Text>
         ) : null}
-        {ownComment(comment) && permissions.canEditComment ? (
+        {ownComment(comment) && permissions.canEditNativeComment ? (
           <PullRequestPermissionIconButton
             reason={detail.data?.viewerPermissions.deniedActions?.["edit-comment"]}
             accessibilityLabel="Edit comment"
@@ -362,14 +372,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
   const canReply = permissions.canReply && Boolean(thread || discussion);
   const resolveLabel = thread?.isResolved ? "Unresolve" : "Resolve";
   return (
-    <PullRequestMarkdownRepository
-      params={params}
-      value={
-        detail.data?.provider === "github" || detail.data?.provider === "azure-devops"
-          ? detail.data.url
-          : null
-      }
-    >
+    <PullRequestMarkdownRepository params={params} changeRequest={detail.data}>
       <KeyboardAvoidingView automaticOffset behavior="height" className="flex-1 bg-screen">
         <NativeStackScreenOptions
           options={{ title: "Discussion", unstable_headerSubtitle: `#${params.number}` }}
@@ -446,7 +449,7 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
                     actions={detail.data.capabilities.review.threadStatuses.map((value) => ({
                       id: value,
                       title: detail.data?.viewerPermissions.deniedActions?.resolve
-                        ? `${statusLabels[value]} — ${detail.data.viewerPermissions.deniedActions.resolve}`
+                        ? `${statusLabels[value]}: ${detail.data.viewerPermissions.deniedActions.resolve}`
                         : statusLabels[value],
                       state: value === status ? "on" : "off",
                       attributes: {
@@ -484,31 +487,49 @@ function Discussion({ params }: { params: PullRequestParams & { readonly discuss
                     {relativeTime(comment.createdAt)}
                   </Text>
                 </View>
-                {editing?.id === comment.id ? (
-                  <View className="gap-2">
-                    <TextInput
-                      params={params}
-                      accessibilityLabel="Edit comment"
-                      multiline
-                      maxLength={65536}
-                      editable={!busy}
-                      value={editing.body}
-                      onChangeText={(body) => setEditing({ id: comment.id, body })}
-                      className="min-h-24 rounded-xl border border-border-subtle p-3 text-foreground"
-                    />
-                    <View className="flex-row gap-2">
-                      <Button
-                        label="Save comment"
-                        disabled={busy || !editing.body.trim()}
-                        onPress={() => void saveComment(comment)}
-                      />
-                      <Button label="Cancel" disabled={busy} onPress={() => setEditing(null)} />
-                    </View>
-                  </View>
+                {detail.data?.provider === "azure-devops" ? (
+                  <>
+                    {editing?.id === comment.id ? (
+                      <View className="gap-2">
+                        <TextInput
+                          params={params}
+                          accessibilityLabel="Edit comment"
+                          multiline
+                          maxLength={65536}
+                          editable={!busy}
+                          value={editing.body}
+                          onChangeText={(body) => setEditing({ id: comment.id, body })}
+                          className="min-h-24 rounded-xl border border-border-subtle p-3 text-foreground"
+                        />
+                        <View className="flex-row gap-2">
+                          <Button
+                            label="Save comment"
+                            disabled={busy || !editing.body.trim()}
+                            onPress={() => void saveComment(comment)}
+                          />
+                          <Button label="Cancel" disabled={busy} onPress={() => setEditing(null)} />
+                        </View>
+                      </View>
+                    ) : (
+                      <PullRequestMarkdown markdown={comment.body} />
+                    )}
+                    {renderCommentActions(comment)}
+                  </>
                 ) : (
-                  <PullRequestMarkdown markdown={comment.body} />
+                  <>
+                    <PullRequestMarkdown markdown={comment.body} />
+                    <PullRequestCommentFooter
+                      params={params}
+                      comment={{ ...comment, kind: "review-comment" }}
+                      permissions={permissions}
+                      onChanged={activity.refresh}
+                      onEdit={() => {
+                        if (extra.some((loaded) => loaded.id === comment.id))
+                          extraEdited.current = true;
+                      }}
+                    />
+                  </>
                 )}
-                {renderCommentActions(comment)}
               </View>
             ))}
             {nextCursor ? (
