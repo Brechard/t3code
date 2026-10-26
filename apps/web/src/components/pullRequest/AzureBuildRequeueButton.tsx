@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, PullRequestCheck, PullRequestRef } from "@t3tools/contracts";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -23,8 +23,10 @@ export function AzureBuildRequeueButton({
 }) {
   const allowed = useAtomValue(pullRequestEnvironment.runHostAction.permissionAtom(environmentId));
   const run = useAtomCommand(pullRequestEnvironment.runHostAction, { reportFailure: false });
+  const pending = useRef(false);
   const [busy, setBusy] = useState(false);
-  if (!check.requeueEvaluationId) return null;
+  const evaluationId = check.requeueEvaluationId;
+  if (!evaluationId) return null;
   return (
     <PullRequestPermissionButton
       reason={reason}
@@ -32,15 +34,19 @@ export function AzureBuildRequeueButton({
       variant="ghost-muted"
       disabled={!active || !allowed || busy}
       onClick={() => {
-        if (busy || !active || !allowed || reason || !check.requeueEvaluationId) return;
+        if (pending.current || busy || !active || !allowed || reason) return;
+        pending.current = true;
         setBusy(true);
-        void run({
-          environmentId,
-          input: {
-            ...reference,
-            action: { type: "requeue-policy", evaluationId: check.requeueEvaluationId },
-          },
-        })
+        void Promise.resolve()
+          .then(() =>
+            run({
+              environmentId,
+              input: {
+                ...reference,
+                action: { type: "requeue-policy", evaluationId },
+              },
+            }),
+          )
           .then((result) => {
             if (result._tag === "Failure") throw squashAtomCommandFailure(result);
             toastManager.add({ type: "info", title: result.value.message });
@@ -51,7 +57,10 @@ export function AzureBuildRequeueButton({
               title: readableFailure(error, "Could not requeue build validation."),
             }),
           )
-          .finally(() => setBusy(false));
+          .finally(() => {
+            pending.current = false;
+            setBusy(false);
+          });
       }}
     >
       {busy ? "Requeueing…" : "Requeue"}

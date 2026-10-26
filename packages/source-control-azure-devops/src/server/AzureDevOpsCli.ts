@@ -573,17 +573,19 @@ export const make = Effect.gen(function* () {
   });
   const authenticatedIdentity: AzureDevOpsCli["Service"]["authenticatedIdentity"] = (input) =>
     runSdk({ cwd: input.cwd, script: AUTHENTICATED_IDENTITY_SCRIPT }).pipe(
-      Effect.flatMap((output) => decodeAuthenticatedIdentity(output.stdout)),
-      Effect.mapError((cause) =>
-        cause._tag === "AzureDevOpsNativeRequestError"
-          ? cause
-          : new AzureDevOpsCommandFailedError({
-              operation: "execute",
-              command: "az",
-              cwd: input.cwd,
-              argumentCount: 3,
-              cause,
-            }),
+      Effect.flatMap((output) =>
+        decodeAuthenticatedIdentity(output.stdout).pipe(
+          Effect.mapError(
+            (cause) =>
+              new AzureDevOpsCommandFailedError({
+                operation: "execute",
+                command: "az",
+                cwd: input.cwd,
+                argumentCount: 3,
+                cause,
+              }),
+          ),
+        ),
       ),
     );
 

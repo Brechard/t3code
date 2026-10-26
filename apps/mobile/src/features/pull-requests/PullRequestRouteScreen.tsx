@@ -949,15 +949,15 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
     () =>
       annotatePullRequestDiff(
         { ...baseData, files: highlightFiles },
-        staleDiff || commit ? [] : (activity.data?.reviewThreads ?? []),
-        commit ? [] : reviewDraft.draft.comments,
+        staleDiff || historical ? [] : (activity.data?.reviewThreads ?? []),
+        historical ? [] : reviewDraft.draft.comments,
         diffHead.sha ?? undefined,
       ),
     [
       baseData,
       highlightFiles,
       staleDiff,
-      commit,
+      historical,
       activity.data?.reviewThreads,
       reviewDraft.draft.comments,
       diffHead.sha,

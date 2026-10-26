@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { PullRequestCheck, PullRequestDetail } from "@t3tools/contracts";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import * as Dialog from "../../components/ui/Dialog";
 import { composerPullRequests } from "../../state/pull-requests";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -22,8 +22,10 @@ export function AzureBuildRequeueButton({
     composerPullRequests.runHostAction.permissionAtom(target.environmentId),
   );
   const run = useAtomCommand(composerPullRequests.runHostAction, { reportFailure: false });
+  const pending = useRef(false);
   const [busy, setBusy] = useState(false);
-  if (!check.requeueEvaluationId || !pr.capabilities.hostActions) return null;
+  const evaluationId = check.requeueEvaluationId;
+  if (!evaluationId || !pr.capabilities.hostActions) return null;
   const reason = pr.viewerPermissions.deniedActions?.["requeue-policy"];
   return (
     <PullRequestPermissionButton
@@ -32,15 +34,19 @@ export function AzureBuildRequeueButton({
       label={busy ? "Requeueing…" : "Requeue"}
       disabled={busy || !allowed || pr.state !== "open"}
       onPress={() => {
-        if (busy || !allowed || reason || !check.requeueEvaluationId) return;
+        if (pending.current || busy || !allowed || reason || pr.state !== "open") return;
+        pending.current = true;
         setBusy(true);
-        void run({
-          ...target,
-          input: {
-            ...target.input,
-            action: { type: "requeue-policy", evaluationId: check.requeueEvaluationId },
-          },
-        })
+        void Promise.resolve()
+          .then(() =>
+            run({
+              ...target,
+              input: {
+                ...target.input,
+                action: { type: "requeue-policy", evaluationId },
+              },
+            }),
+          )
           .then((result) => {
             if (result._tag === "Failure") throw squashAtomCommandFailure(result);
             Dialog.alert("Azure DevOps", result.value.message);
@@ -51,7 +57,10 @@ export function AzureBuildRequeueButton({
               error instanceof Error ? error.message : "Please try again.",
             ),
           )
-          .finally(() => setBusy(false));
+          .finally(() => {
+            pending.current = false;
+            setBusy(false);
+          });
       }}
     />
   );

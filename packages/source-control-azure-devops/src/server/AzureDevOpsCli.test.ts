@@ -274,6 +274,108 @@ describe("AzureDevOpsCli.layer", () => {
 });
 
 describe("repository-scoped PR updates", () => {
+  it.effect("preserves a missing CLI failure while discovering the SDK runtime", () =>
+    Effect.gen(function* () {
+      const platformCause = PlatformError.systemError({
+        _tag: "NotFound",
+        module: "ChildProcess",
+        method: "spawn",
+        syscall: "spawn",
+        pathOrDescriptor: "az",
+      });
+      const cause = new VcsProcessSpawnError({
+        operation: "AzureDevOpsCli.execute",
+        command: "az",
+        cwd: "/repo",
+        argumentCount: 1,
+        cause: platformCause,
+      });
+      mockRun.mockReturnValueOnce(Effect.fail(cause));
+      const az = yield* AzureDevOpsCli.AzureDevOpsCli;
+      const error = yield* az.authenticatedIdentity({ cwd: "/repo" }).pipe(Effect.flip);
+      expect(error).toBeInstanceOf(AzureDevOpsCli.AzureDevOpsCliUnavailableError);
+      expect(error.cause).toBe(cause);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("preserves a typed authentication failure while discovering the SDK runtime", () =>
+    Effect.gen(function* () {
+      const cause = new VcsProcessExitError({
+        operation: "AzureDevOpsCli.execute",
+        command: "az",
+        cwd: "/repo",
+        argumentCount: 1,
+        exitCode: 1,
+        detail: "Please run az login to setup account.",
+        failureKind: "authentication",
+      });
+      mockRun.mockReturnValueOnce(Effect.fail(cause));
+      const az = yield* AzureDevOpsCli.AzureDevOpsCli;
+      const error = yield* az.authenticatedIdentity({ cwd: "/repo" }).pipe(Effect.flip);
+      expect(error).toBeInstanceOf(AzureDevOpsCli.AzureDevOpsCliAuthenticationError);
+      expect(error.cause).toBe(cause);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("preserves a native SDK refusal while reading authenticated identity", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(processOutput("Python location '/opt/az/bin/python'")),
+      );
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(JSON.stringify({ _t3SdkError: { message: "Access denied" } })),
+        ),
+      );
+      const az = yield* AzureDevOpsCli.AzureDevOpsCli;
+      const error = yield* az.authenticatedIdentity({ cwd: "/repo" }).pipe(Effect.flip);
+      expect(error).toBeInstanceOf(AzureDevOpsCli.AzureDevOpsNativeRequestError);
+      expect(error).toMatchObject({ reason: "permission-denied", cause: "Access denied" });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("preserves a rate limit from the SDK process", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(processOutput("Python location '/opt/az/bin/python'")),
+      );
+      const cause = new VcsProcessExitError({
+        operation: "AzureDevOpsCli.runSdk",
+        command: "/opt/az/bin/python",
+        cwd: "/repo",
+        argumentCount: 3,
+        exitCode: 1,
+        detail: "API rate limit exceeded.",
+        failureKind: "rate-limited",
+      });
+      mockRun.mockReturnValueOnce(Effect.fail(cause));
+      const az = yield* AzureDevOpsCli.AzureDevOpsCli;
+      const error = yield* az.authenticatedIdentity({ cwd: "/repo" }).pipe(Effect.flip);
+      expect(error).toBeInstanceOf(AzureDevOpsCli.AzureDevOpsCliRateLimitError);
+      expect(error.cause).toBe(cause);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("retains identity decode context without exposing malformed output", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(processOutput("Python location '/opt/az/bin/python'")),
+      );
+      mockRun.mockReturnValueOnce(Effect.succeed(processOutput('{"id":"private-invalid"}')));
+      const az = yield* AzureDevOpsCli.AzureDevOpsCli;
+      const error = yield* az.authenticatedIdentity({ cwd: "/repo" }).pipe(Effect.flip);
+      expect(error).toBeInstanceOf(AzureDevOpsCli.AzureDevOpsCommandFailedError);
+      expect(error).toMatchObject({
+        operation: "execute",
+        command: "az",
+        cwd: "/repo",
+        argumentCount: 3,
+      });
+      expect(error.cause).toBeDefined();
+      expect(error.message).not.toContain("private-invalid");
+    }).pipe(Effect.provide(layer)),
+  );
+
   it.effect("uses Azure CLI's Python runtime and preserves the body and repository route", () =>
     Effect.gen(function* () {
       mockRun.mockReturnValueOnce(

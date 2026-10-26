@@ -1144,13 +1144,15 @@ export function PullRequestSummaryTab({
                 ) : (
                   <MenuGroup>
                     <MenuGroupLabel>Show</MenuGroupLabel>
-                    <MenuCheckboxItem
-                      checked={newOnly}
-                      closeOnClick={false}
-                      onCheckedChange={setNewOnly}
-                    >
-                      What's new since your last visit
-                    </MenuCheckboxItem>
+                    {previousVisit && (
+                      <MenuCheckboxItem
+                        checked={newOnly}
+                        closeOnClick={false}
+                        onCheckedChange={setNewOnly}
+                      >
+                        What's new since your last visit
+                      </MenuCheckboxItem>
+                    )}
                     <MenuCheckboxItem
                       checked={commentFilter.bots}
                       closeOnClick={false}

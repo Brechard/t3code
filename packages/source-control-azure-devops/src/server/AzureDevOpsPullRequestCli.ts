@@ -1082,7 +1082,7 @@ const make = Effect.gen(function* () {
         method: input.liked ? "POST" : "DELETE",
       });
     }),
-    createThreads: Effect.fn(function* (input) {
+    createThreads: Effect.fn("AzureDevOpsPullRequestCli.createThreads")(function* (input) {
       const anchored = input.threads.some((thread) => thread.comment !== undefined);
       const latest = anchored ? (yield* api.listIterations(input)).at(-1) : undefined;
       const changes =

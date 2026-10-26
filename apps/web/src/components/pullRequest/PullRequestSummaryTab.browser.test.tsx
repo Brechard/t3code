@@ -10,6 +10,7 @@ vi.mock(import("~/state/use-atom-command"), async (original) => ({
 
 import { act, render as renderUi, type Screen } from "../../../test/render";
 import { PullRequestSummaryTab } from "./PullRequestSummaryTab";
+import { PullRequestReviewContext } from "./PullRequestReviewContext";
 
 const detail: PullRequestDetailView = {
   provider: SourceControlProviderKind.make("github"),
@@ -113,6 +114,47 @@ it("keeps an unsaved description when collapsed and reopened", async () => {
   expect(screen.expanded("Description")).toBe("false");
   await screen.click("Description");
   expect(screen.container.querySelector("textarea")!.value).toBe("Unsaved description");
+});
+
+it("offers the last-visit filter only after a visit and filters old comments", async () => {
+  using _storage = emptyLocalStorage();
+  const withComment: PullRequestDetailView = {
+    ...detail,
+    comments: [
+      {
+        id: "old",
+        kind: "issue-comment",
+        author: detail.author,
+        body: "Earlier feedback",
+        createdAt: "2026-09-01T00:00:00Z",
+        url: null,
+        path: null,
+        reviewState: null,
+      },
+    ],
+    commentCount: 1,
+  };
+  const context = (previousVisit: string | null) => (
+    <PullRequestReviewContext.Provider
+      value={{
+        environmentId: EnvironmentId.make("environment"),
+        reference: withComment,
+        azure: false,
+        previousVisit,
+      }}
+    >
+      {tab(withComment)}
+    </PullRequestReviewContext.Provider>
+  );
+  await using screen = await renderUi(context(null));
+  await userEvent.click(filterButton(screen));
+  await expect
+    .element(page.getByRole("menuitemcheckbox", { name: "What's new since your last visit" }))
+    .not.toBeInTheDocument();
+  await screen.rerender(context("2026-09-02T00:00:00Z"));
+  await expect.element(screen.getByText("Earlier feedback")).toBeInTheDocument();
+  await page.getByRole("menuitemcheckbox", { name: "What's new since your last visit" }).click();
+  await expect.element(screen.getByText("Earlier feedback")).not.toBeInTheDocument();
 });
 
 const filterButton = ({ container }: Screen) =>
