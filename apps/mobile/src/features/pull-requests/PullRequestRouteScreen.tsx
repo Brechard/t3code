@@ -954,6 +954,8 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
     (route.params.iterationRange
       ? `${route.params.iterationRange.from}-${route.params.iterationRange.to}`
       : "all");
+  // A reused Android canvas can clear rows after the next comparison's payload arrives.
+  const nativeDiffKey = `pull-request:${route.params.environmentId}:${route.params.repository}:${route.params.number}:${comparisonKey}`;
   const result = usePullRequestDiff(route.params, terminology);
   const filter = usePullRequestFileFilter(
     result.parsed,
@@ -1289,6 +1291,7 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
         {NativeDiffView && data.rows.length && !seekingFile ? (
           <View className="flex-1" collapsable={false}>
             <NativeDiffView
+              key={nativeDiffKey}
               {...pullRequestDiffInitialPosition(targetFile?.id, focusIndex)}
               nativeViewRef={nativeView}
               refreshing={result.refreshing}
@@ -1350,7 +1353,7 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
               contentWidth={NATIVE_REVIEW_DIFF_CONTENT_WIDTH}
               contentInsetTop={Platform.OS === "ios" ? (staleDiff ? 0 : insets.top) : undefined}
               contentInsetBottom={Platform.OS === "android" ? toolbarHeight : insets.bottom}
-              contentResetKey={`pull-request:${route.params.environmentId}:${route.params.repository}:${route.params.number}:${comparisonKey}`}
+              contentResetKey={nativeDiffKey}
             />
           </View>
         ) : filter.hiddenCount > 0 &&
