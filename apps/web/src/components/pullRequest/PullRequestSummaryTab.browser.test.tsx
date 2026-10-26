@@ -181,9 +181,9 @@ it("keeps readable system activity separate from the comments filter", async () 
       screen.getByText("Reviewer approved the pull request with suggestions", { exact: true }),
     )
     .toBeVisible();
-  await expect
-    .element(screen.getByText("reviewer@example.com", { exact: true }))
-    .not.toBeInTheDocument();
+  await vi.waitFor(() => {
+    expect(screen.visibleText()).not.toContain("reviewer@example.com");
+  });
   await userEvent.click(filterButton(screen));
   await page.getByRole("menuitemradio", { name: "All comments (0)", exact: true }).click();
   await expect
