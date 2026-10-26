@@ -1,6 +1,8 @@
-import type { Discovery } from "@t3tools/client-runtime/relay";
+import { Discovery } from "@t3tools/client-runtime/relay";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { useState } from "react";
 
+import { useRelayEnvironmentDiscovery } from "../../state/environments";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -15,16 +17,20 @@ import { useT3ConnectAccountPage } from "./T3ConnectAccountPages";
 
 export function RemoveT3ConnectEnvironmentDialog({
   environmentLabel,
-  registration,
+  environmentId,
   onCancel,
   onConfirm,
 }: {
   readonly environmentLabel: string | null;
-  readonly registration: Discovery.RelayEnvironmentRegistration;
+  readonly environmentId: EnvironmentId | null;
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
 }) {
   const accountPage = useT3ConnectAccountPage();
+  const discovery = useRelayEnvironmentDiscovery();
+  const registration = environmentId
+    ? Discovery.relayEnvironmentRegistration(discovery, environmentId)
+    : "unknown";
   const [shown, setShown] = useState({ label: environmentLabel, registration });
   if (
     environmentLabel !== null &&

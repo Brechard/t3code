@@ -34,11 +34,7 @@ export interface RelayDiscoveredEnvironment {
 
 export interface RelayEnvironmentDiscoveryState {
   readonly environments: ReadonlyMap<string, RelayDiscoveredEnvironment>;
-  /**
-   * The relay's list for the current account has loaded, so an environment
-   * missing from `environments` is no longer registered rather than not yet
-   * listed. Signed-out, failed, and reset states are not listed.
-   */
+  // Only a loaded account list distinguishes a missing registration from an unknown one.
   readonly listed: boolean;
   readonly refreshing: boolean;
   readonly offline: boolean;

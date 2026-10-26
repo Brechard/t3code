@@ -1,4 +1,3 @@
-import { useRelayEnvironmentDiscovery } from "../../state/environments";
 import { SessionPermissions } from "./SessionPermissions";
 import { ChevronRightIcon, EllipsisIcon } from "lucide-react";
 import { useAtomValue } from "@effect/atom-react";
@@ -18,7 +17,6 @@ import {
   type EnvironmentId,
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
-import { Discovery } from "@t3tools/client-runtime/relay";
 import {
   isAtomCommandInterrupted,
   settlePromise,
@@ -596,7 +594,6 @@ export function ConnectionsSettings() {
 
   // Removing a T3 Connect route preserves account registration; use a separate dialog pointing to
   // deregistration.
-  const relayDiscoveryState = useRelayEnvironmentDiscovery();
   const [pendingT3ConnectRemoval, setPendingT3ConnectRemoval] =
     useState<EnvironmentPresentation | null>(null);
   const handleRemoveSavedBackend = async (environment: EnvironmentPresentation) => {
@@ -1522,14 +1519,7 @@ export function ConnectionsSettings() {
       {hasCloudPublicConfig() ? (
         <RemoveT3ConnectEnvironmentDialog
           environmentLabel={pendingT3ConnectRemoval?.label ?? null}
-          registration={
-            pendingT3ConnectRemoval
-              ? Discovery.relayEnvironmentRegistration(
-                  relayDiscoveryState,
-                  pendingT3ConnectRemoval.environmentId,
-                )
-              : "unknown"
-          }
+          environmentId={pendingT3ConnectRemoval?.environmentId ?? null}
           onCancel={() => setPendingT3ConnectRemoval(null)}
           onConfirm={() => {
             if (!pendingT3ConnectRemoval) return;
