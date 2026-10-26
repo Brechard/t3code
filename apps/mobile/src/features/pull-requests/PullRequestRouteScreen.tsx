@@ -179,6 +179,7 @@ function usePullRequestActivityRows(params: PullRequestParams, filter: ActivityF
   })();
   return {
     rows,
+    previousVisit,
     hiddenCount: filtered?.hiddenCount ?? 0,
     azureCounts: filtered && "counts" in filtered ? filtered.counts : undefined,
     countsTruncated: result.data?.commentsTruncated || result.data?.reviewThreadsTruncated,
@@ -768,6 +769,7 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
                               value={activityFilter}
                               onChange={setActivityFilter}
                               hiddenCount={tabContent.hiddenCount}
+                              previousVisit={tabContent.previousVisit}
                               azureCounts={tabContent.azureCounts}
                               countsTruncated={tabContent.countsTruncated}
                             />

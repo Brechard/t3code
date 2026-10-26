@@ -1134,12 +1134,14 @@ export function PullRequestSummaryTab({
                       }
                     }}
                   >
-                    {azureDevOpsDiscussionFilters.map((item) => (
-                      <MenuRadioItem key={item.id} value={item.id} closeOnClick>
-                        {item.label} ({azureDiscussions.counts[item.id]}
-                        {detail.commentsTruncated || detail.reviewThreadsTruncated ? "+" : ""})
-                      </MenuRadioItem>
-                    ))}
+                    {azureDevOpsDiscussionFilters
+                      .filter((item) => item.id !== "new" || previousVisit)
+                      .map((item) => (
+                        <MenuRadioItem key={item.id} value={item.id} closeOnClick>
+                          {item.label} ({azureDiscussions.counts[item.id]}
+                          {detail.commentsTruncated || detail.reviewThreadsTruncated ? "+" : ""})
+                        </MenuRadioItem>
+                      ))}
                   </MenuRadioGroup>
                 ) : (
                   <MenuGroup>

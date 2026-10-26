@@ -277,6 +277,58 @@ it("switches Azure discussion filters without losing the parent of a matching re
   expect(screen.visibleText()).toContain("My answer");
 });
 
+it("offers Azure What's new only after a visit and shows only later activity", async () => {
+  using _storage = emptyLocalStorage();
+  const azure: PullRequestDetailView = {
+    ...detail,
+    provider: SourceControlProviderKind.make("azure-devops"),
+    comments: [
+      {
+        id: "old",
+        kind: "issue-comment",
+        author: detail.author,
+        body: "Earlier Azure feedback",
+        createdAt: "2026-09-01T00:00:00Z",
+        url: null,
+        path: null,
+        reviewState: null,
+      },
+      {
+        id: "new",
+        kind: "issue-comment",
+        author: detail.author,
+        body: "Later Azure feedback",
+        createdAt: "2026-09-03T00:00:00Z",
+        url: null,
+        path: null,
+        reviewState: null,
+      },
+    ],
+    commentCount: 2,
+  };
+  const context = (previousVisit: string | null) => (
+    <PullRequestReviewContext.Provider
+      value={{
+        environmentId: EnvironmentId.make("environment"),
+        reference: azure,
+        azure: true,
+        previousVisit,
+      }}
+    >
+      {tab(azure)}
+    </PullRequestReviewContext.Provider>
+  );
+  await using screen = await renderUi(context(null));
+  await userEvent.click(filterButton(screen));
+  await expect
+    .element(page.getByRole("menuitemradio", { name: "What's new (2)" }))
+    .not.toBeInTheDocument();
+  await screen.rerender(context("2026-09-02T00:00:00Z"));
+  await page.getByRole("menuitemradio", { name: "What's new (1)" }).click();
+  await expect.element(screen.getByText("Later Azure feedback")).toBeInTheDocument();
+  await expect.element(screen.getByText("Earlier Azure feedback")).not.toBeInTheDocument();
+});
+
 it("keeps an Azure discussion together with the original before its replies", async () => {
   using _storage = emptyLocalStorage();
   const original = {

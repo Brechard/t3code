@@ -12,12 +12,14 @@ export function PullRequestActivityFilters({
   value,
   onChange,
   hiddenCount,
+  previousVisit,
   azureCounts,
   countsTruncated,
 }: {
   readonly value: ActivityFilter;
   readonly onChange: (value: ActivityFilter) => void;
   readonly hiddenCount: number;
+  readonly previousVisit: string | null;
   readonly countsTruncated?: boolean | undefined;
   readonly azureCounts?: Record<AzureDevOpsDiscussionFilter, number> | undefined;
 }) {
@@ -31,11 +33,13 @@ export function PullRequestActivityFilters({
       {azureCounts ? (
         <Menu
           title="Filter comments"
-          actions={azureDevOpsDiscussionFilters.map((item) => ({
-            id: item.id,
-            title: `${item.label} (${azureCounts[item.id]}${countsTruncated ? "+" : ""})`,
-            state: (value.azure ?? "all") === item.id ? "on" : "off",
-          }))}
+          actions={azureDevOpsDiscussionFilters
+            .filter((item) => item.id !== "new" || previousVisit)
+            .map((item) => ({
+              id: item.id,
+              title: `${item.label} (${azureCounts[item.id]}${countsTruncated ? "+" : ""})`,
+              state: (value.azure ?? "all") === item.id ? "on" : "off",
+            }))}
           onPressAction={({ nativeEvent }) => {
             const selected = azureDevOpsDiscussionFilters.find(
               (item) => item.id === nativeEvent.event,
@@ -85,11 +89,15 @@ export function PullRequestActivityFilters({
           <Menu
             title="Show in activity"
             actions={[
-              {
-                id: "newOnly",
-                title: "What’s new since your last visit",
-                state: value.newOnly ? "on" : "off",
-              },
+              ...(previousVisit
+                ? [
+                    {
+                      id: "newOnly",
+                      title: "What’s new since your last visit",
+                      state: value.newOnly ? ("on" as const) : ("off" as const),
+                    },
+                  ]
+                : []),
               { id: "bots", title: "Bot comments", state: value.bots ? "on" : "off" },
               {
                 id: "resolved",
