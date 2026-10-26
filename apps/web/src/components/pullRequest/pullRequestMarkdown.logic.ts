@@ -86,7 +86,7 @@ export function remarkPullRequestAutolinks(options: {
         const child = children[index]!;
         if (child.type === "html") {
           for (const match of (child.value ?? "").matchAll(
-            /<!--[\s\S]*?-->|<(\/)?([a-z][\w:-]*)(?=[\s/>])(?:[^"'<>]|"[^"]*"|'[^']*')*>/giu,
+            /<!--[\s\S]*?(?:-->|$)|<(\/)?([a-z][\w:-]*)(?=[\s/>])(?:[^"'<>]|"[^"]*"|'[^']*')*>/giu,
           )) {
             if (/^(?:a|code|pre|script|style)$/iu.test(match[2] ?? "")) {
               protectedHtmlDepth = Math.max(0, protectedHtmlDepth + (match[1] ? -1 : 1));
