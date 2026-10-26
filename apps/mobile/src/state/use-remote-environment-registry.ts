@@ -7,6 +7,7 @@ import * as Cause from "effect/Cause";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useCallback } from "react";
 
+import { hasCloudPublicConfig } from "../features/cloud/publicConfig";
 import { useConnectionController } from "../features/connection/useConnectionController";
 import { environmentPresentations } from "./presentation";
 import { useWorkspaceConnectionState, useWorkspaceEnvironments } from "./workspace";
@@ -46,6 +47,14 @@ const remoteEnvironmentProjections = createRemoteEnvironmentProjectionAtoms({
   preparedConnectionAtom: environmentSession.preparedConnectionValueAtom,
   serverConfigAtom: serverEnvironment.configValueAtom,
 });
+
+export const environmentConnectedAtom = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make(
+    (get) =>
+      get(remoteEnvironmentProjections.runtimeStateAtom(environmentId))?.connectionState ===
+      "connected",
+  ).pipe(Atom.withLabel(`mobile:environment-connected:${environmentId}`)),
+);
 
 const EMPTY_SAVED_CONNECTION_ATOM = Atom.make<SavedRemoteConnection | null>(null).pipe(
   Atom.withLabel("mobile:saved-connection:empty"),
@@ -185,12 +194,12 @@ export function useRemoteConnections() {
         );
         const openAccount = {
           text: "Open T3 Account",
-          onPress: () => navigation.navigate("SettingsSheet", { screen: "SettingsAuth" }),
+          onPress: () => navigation.navigate("SettingsAuth"),
         };
         Dialog.alert(
           "Remove from this device?",
           `Forget ${environment.environmentLabel} and its cached threads on this device.\n\n${RELAY_REMOVAL_ACCOUNT_NOTE[registration]}`,
-          registration === "unregistered"
+          registration === "unregistered" || !hasCloudPublicConfig()
             ? [{ text: "Cancel", style: "cancel" }, remove]
             : [{ text: "Cancel", style: "cancel" }, openAccount, remove],
         );
