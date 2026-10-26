@@ -6,6 +6,7 @@ import "vite-plus/test/config";
 const reactTests = [
   "src/features/projects/AddProjectScreen.test.ts",
   "src/features/pull-requests/usePullRequestPreviousVisit.test.tsx",
+  "src/features/pull-requests/usePullRequestComparisonViewedPaths.test.tsx",
   "src/lib/useMediaVideoPlayback.test.tsx",
   "src/features/pull-requests/usePullRequestEnvironmentFallback.test.tsx",
   "src/lib/filePreview.test.ts",

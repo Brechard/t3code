@@ -35,6 +35,7 @@ import { IconButton } from "../../components/ui/IconButton";
 import { Button } from "../../components/ui/Button";
 import { usePullRequestReviewDraft } from "./usePullRequestReviewDraft";
 import { usePullRequestFilesViewed } from "./usePullRequestFilesViewed";
+import { usePullRequestComparisonViewedPaths } from "./usePullRequestComparisonViewedPaths";
 import { usePullRequestPermissions } from "./usePullRequestPermissions";
 import { usePullRequestAction } from "./usePullRequestAction";
 import { annotatePullRequestDiff, reviewPosition } from "./pullRequestDiffComments";
@@ -964,7 +965,7 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
   const parsed = filter.parsed;
   const reviewDraft = usePullRequestReviewDraft(route.params);
   const viewed = usePullRequestFilesViewed(route.params, historical ? null : detail.data);
-  const [commitViewedPaths, setCommitViewedPaths] = useState<ReadonlySet<string>>(() => new Set());
+  const comparisonViewed = usePullRequestComparisonViewedPaths(route.params);
   const permissions = usePullRequestPermissions(route.params, detail.data);
   const scopeKey = pullRequestReviewKey(route.params);
   const [diffHead, setDiffHead] = useState({ scopeKey, sha: detail.data?.headSha ?? null });
@@ -1002,7 +1003,9 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
     ],
   );
   const viewedIds = data.files
-    .filter((file) => (historical ? commitViewedPaths.has(file.path) : viewed.isViewed(file.path)))
+    .filter((file) =>
+      historical ? comparisonViewed.isViewed(file.path) : viewed.isViewed(file.path),
+    )
     .map((file) => file.id);
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const selectedRow = data.rows.find((row) => row.id === selectedRowId);
@@ -1309,7 +1312,7 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
                 const file = data.files.find((file) => file.id === event.nativeEvent.fileId);
                 if (!file || (!historical && !viewed.canToggle)) return;
                 const wasViewed = historical
-                  ? commitViewedPaths.has(file.path)
+                  ? comparisonViewed.isViewed(file.path)
                   : viewed.isViewed(file.path);
                 setCollapsedIds((ids) =>
                   wasViewed
@@ -1318,13 +1321,7 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
                       ? ids
                       : [...ids, file.id],
                 );
-                if (historical)
-                  setCommitViewedPaths((current) => {
-                    const next = new Set(current);
-                    if (next.has(file.path)) next.delete(file.path);
-                    else next.add(file.path);
-                    return next;
-                  });
+                if (historical) comparisonViewed.toggle(file.path);
                 else void viewed.toggle(file.path);
               }}
               onToggleComment={(event) => {
