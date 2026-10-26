@@ -88,7 +88,7 @@ function useChangedFiles(input: PullRequestDiffParams) {
     params,
     comparisonHeader: (
       <>
-        {latestUpdateId !== undefined ? (
+        {!params.commit && latestUpdateId !== undefined ? (
           <View className="flex-row gap-2 py-2">
             <Menu
               title="Compare from update"
