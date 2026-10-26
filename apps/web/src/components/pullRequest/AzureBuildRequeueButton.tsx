@@ -31,7 +31,7 @@ export function AzureBuildRequeueButton({
     <PullRequestPermissionButton
       reason={reason}
       size="xs"
-      variant="ghost-muted"
+      variant="default"
       disabled={!active || !allowed || busy}
       onClick={() => {
         if (pending.current || busy || !active || !allowed || reason) return;
