@@ -13,6 +13,12 @@ it("does not call a pending check running when it may still be queued", () => {
   expect(summarizePullRequestChecks([check])).toBe("1 of 1 pending");
 });
 
+it("labels expired build validation explicitly", () => {
+  expect(
+    pullRequestCheckStatusLabel({ status: "action-required", url: null, buildExpired: true }),
+  ).toBe("Expired");
+});
+
 it.each([
   [["success", "skipped"], "All checks passed"],
   [["success", "neutral", "skipped"], "1 of 2 passing"],

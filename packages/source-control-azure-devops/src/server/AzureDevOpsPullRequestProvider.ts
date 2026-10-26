@@ -597,6 +597,7 @@ export const make = Effect.gen(function* () {
                     const latest = items.at(-1);
                     return cli.listChecks({
                       ...target,
+                      pullRequestUrl: pullRequest.url,
                       iterationId:
                         latest && latest.headCommit === pullRequest.headSha ? latest.id : null,
                     });

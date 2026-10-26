@@ -131,6 +131,7 @@ export const PullRequestHostDetails = Schema.Struct({
       status: Schema.String,
       required: Schema.Boolean,
       url: Schema.NullOr(Schema.String),
+      requeueable: Schema.optional(Schema.Boolean),
     }),
   ),
   workItems: Schema.Array(

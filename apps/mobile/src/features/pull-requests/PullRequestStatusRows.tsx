@@ -11,6 +11,8 @@ import { SymbolView } from "../../components/ui/AppSymbol";
 import { Menu } from "../../components/ui/Menu";
 import { PullRequestAvatar } from "./PullRequestPresentation";
 import { PullRequestCardRow } from "./PullRequestControls";
+import { AzureBuildRequeueButton } from "./AzureBuildRequeueButton";
+import { Button } from "../../components/ui/Button";
 import { PullRequestAgentRow } from "./PullRequestAgentRow";
 import { PullRequestGlyph } from "./pullRequestGlyphs";
 import { composerPullRequests } from "../../state/pull-requests";
@@ -148,15 +150,28 @@ export function PullRequestChecksRow(props: RowProps) {
               const status = checkStatus(check);
               const url = check.url;
               return (
-                <PullRequestCardRow
-                  key={`${check.name}:${url}`}
-                  title={check.name}
-                  icon={status.icon}
-                  tint={status.tint}
-                  value={status.label}
-                  detail={check.description ?? undefined}
-                  onPress={url ? () => void Linking.openURL(url) : undefined}
-                />
+                <View key={`${check.name}:${url}`}>
+                  <PullRequestCardRow
+                    title={check.name}
+                    icon={status.icon}
+                    tint={status.tint}
+                    value={status.label}
+                    detail={check.description ?? undefined}
+                    onPress={url ? () => void Linking.openURL(url) : undefined}
+                  />
+                  {check.kind === "azure-build" && (check.requeueEvaluationId || url) ? (
+                    <View className="flex-row flex-wrap gap-2 px-4 pb-2">
+                      <AzureBuildRequeueButton check={check} pr={props.pr} params={props.params} />
+                      {url ? (
+                        <Button
+                          label="Open build"
+                          tone="text"
+                          onPress={() => void Linking.openURL(url)}
+                        />
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
               );
             })}
           {!props.pr.checks.length ? (

@@ -124,10 +124,13 @@ export type PullRequestCheckStatus = typeof PullRequestCheckStatus.Type;
 
 export const PullRequestCheck = Schema.Struct({
   name: TrimmedNonEmptyString,
+  kind: Schema.optional(Schema.Literal("azure-build")),
   status: PullRequestCheckStatus,
   description: Schema.NullOr(Schema.String),
   url: Schema.NullOr(Schema.String),
   required: Schema.optional(Schema.Boolean),
+  requeueEvaluationId: Schema.optional(TrimmedNonEmptyString),
+  buildExpired: Schema.optional(Schema.Boolean),
 });
 export type PullRequestCheck = typeof PullRequestCheck.Type;
 

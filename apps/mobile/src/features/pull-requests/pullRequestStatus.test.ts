@@ -1,6 +1,16 @@
 import type { PullRequestActivity, PullRequestCheck, PullRequestComment } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
-import { pullRequestChecksSummary, pullRequestReviewSummary } from "./pullRequestStatus";
+import {
+  checkStatus,
+  pullRequestChecksSummary,
+  pullRequestReviewSummary,
+} from "./pullRequestStatus";
+
+it("labels expired Azure Build validation", () => {
+  expect(
+    checkStatus({ ...check("action-required"), kind: "azure-build", buildExpired: true }).label,
+  ).toBe("Expired");
+});
 
 const author = { login: "julius", name: null, avatarUrl: null };
 function review(state: string, at: string): PullRequestComment {

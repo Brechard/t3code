@@ -250,11 +250,13 @@ function isWorkflowApprovalCheck(check: Pick<PullRequestCheck, "status" | "url">
 }
 
 export function pullRequestCheckStatusLabel(
-  check: Pick<PullRequestCheck, "status" | "url">,
+  check: Pick<PullRequestCheck, "status" | "url" | "buildExpired">,
 ): string {
-  return isWorkflowApprovalCheck(check)
-    ? "Awaiting approval"
-    : CHECK_STATUS_PRESENTATION[check.status].label;
+  return check.buildExpired
+    ? "Expired"
+    : isWorkflowApprovalCheck(check)
+      ? "Awaiting approval"
+      : CHECK_STATUS_PRESENTATION[check.status].label;
 }
 
 export function PullRequestCheckStatusIcon({ status }: { status: PullRequestCheckStatus }) {

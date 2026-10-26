@@ -1067,6 +1067,81 @@ it.effect.each(["cherry-pick", "revert"] as const)(
     ),
 );
 
+it.effect("refreshes the matching PR detail after requeue succeeds, but not after failure", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      let title = "Before requeue";
+      const reads: number[] = [];
+      let fail = false;
+      const client = {
+        [WS_METHODS.pullRequestsSubscribeRefreshes]: () => Stream.never,
+        [WS_METHODS.pullRequestsDetail]: (input: { number: number }) =>
+          Effect.sync(() => {
+            reads.push(input.number);
+            return { title: input.number === 1 ? title : "Other pull request" };
+          }),
+        [WS_METHODS.pullRequestsRunHostAction]: () =>
+          fail
+            ? Effect.fail(new MutationRefused())
+            : Effect.sync(() => {
+                title = "After requeue";
+                return { message: "Requeued", url: null };
+              }),
+      } as unknown as WsRpcProtocolClient;
+      const { atoms, registry } = yield* makeTestRuntime(client);
+      const target = {
+        environmentId: TARGET.environmentId,
+        input: {
+          projectId: ProjectId.make("project-1"),
+          host: "dev.azure.com",
+          repository: "acme/web",
+          number: 1,
+        },
+      };
+      const detail = atoms.detail(target);
+      const unmount = registry.mount(detail);
+      const otherDetail = atoms.detail({ ...target, input: { ...target.input, number: 2 } });
+      const unmountOther = registry.mount(otherDetail);
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          unmount();
+          unmountOther();
+        }),
+      );
+      expect(
+        (yield* AtomRegistry.getResult(registry, detail, { suspendOnWaiting: true })).title,
+      ).toBe("Before requeue");
+      expect(
+        (yield* AtomRegistry.getResult(registry, otherDetail, { suspendOnWaiting: true })).title,
+      ).toBe("Other pull request");
+      const action = {
+        ...target,
+        input: {
+          ...target.input,
+          action: { type: "requeue-policy" as const, evaluationId: "build-evaluation" },
+        },
+      };
+      expect(
+        AsyncResult.isSuccess(
+          yield* Effect.promise(() => atoms.runHostAction.run(registry, action)),
+        ),
+      ).toBe(true);
+      expect(
+        (yield* AtomRegistry.getResult(registry, detail, { suspendOnWaiting: true })).title,
+      ).toBe("After requeue");
+      expect(reads).toEqual([1, 2, 1]);
+      fail = true;
+      expect(
+        AsyncResult.isFailure(
+          yield* Effect.promise(() => atoms.runHostAction.run(registry, action)),
+        ),
+      ).toBe(true);
+      expect(reads).toEqual([1, 2, 1]);
+      expect((yield* AtomRegistry.getResult(registry, detail)).title).toBe("After requeue");
+    }),
+  ),
+);
+
 it.effect.each(["closed", "draft", "permission", "stack", "method"] as const)(
   "rejects an unsafe quick merge with %s and keeps later actions running",
   (reason) =>

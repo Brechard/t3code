@@ -207,18 +207,32 @@ layer("AzureDevOpsPullRequestCli.layer", (it) => {
         Effect.succeed(
           output(
             JSON.stringify(
-              input.args.includes("show")
-                ? {
-                    pullRequestId: 42,
-                    status: "active",
-                    repository: {
-                      id: "repo",
-                      webUrl: "https://dev.azure.com/a/p/_git/web",
-                      project: { id: "project" },
+              input.args.includes("policy")
+                ? [
+                    {
+                      evaluationId: "evaluation",
+                      status: "running",
+                      configuration: {
+                        id: 7,
+                        type: {
+                          id: "0609b952-1397-4640-95ec-e00a01b2c241",
+                          displayName: "Build",
+                        },
+                      },
                     },
-                    reviewers: [],
-                  }
-                : { value: [] },
+                  ]
+                : input.args.includes("show")
+                  ? {
+                      pullRequestId: 42,
+                      status: "active",
+                      repository: {
+                        id: "repo",
+                        webUrl: "https://dev.azure.com/a/p/_git/web",
+                        project: { id: "project" },
+                      },
+                      reviewers: [],
+                    }
+                  : { value: [] },
             ),
           ),
         ),

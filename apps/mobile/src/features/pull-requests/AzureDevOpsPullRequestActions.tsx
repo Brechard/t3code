@@ -173,6 +173,7 @@ function Actions({ pr, params, children }: ActionsProps) {
   };
   const hostAction = async (action: PullRequestHostAction) => {
     const value = settled(await command({ ...target, input: { ...target.input, action } }));
+    if (action.type === "requeue-policy") query.refresh();
     setResult(value);
     if (openSection.current === null) Dialog.alert("Azure DevOps", value.message);
   };
@@ -577,14 +578,16 @@ function AzureActionSheet({
                         }}
                       />
                     ) : null}
-                    <PullRequestPermissionButton
-                      reason={denied["requeue-policy"]}
-                      label="Requeue"
-                      disabled={disabled || !active}
-                      onPress={() =>
-                        void execute({ type: "requeue-policy", evaluationId: policy.id })
-                      }
-                    />
+                    {policy.requeueable ? (
+                      <PullRequestPermissionButton
+                        reason={denied["requeue-policy"]}
+                        label="Requeue"
+                        disabled={disabled || !active}
+                        onPress={() =>
+                          void execute({ type: "requeue-policy", evaluationId: policy.id })
+                        }
+                      />
+                    ) : null}
                   </View>
                 ))}
                 {details?.policies.length === 0 ? (

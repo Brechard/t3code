@@ -74,7 +74,7 @@ export function checkStatus(check: PullRequestCheck) {
       } as const;
     case "action-required":
       return {
-        label: "Action required",
+        label: check.buildExpired ? "Expired" : "Action required",
         icon: "exclamationmark.circle",
         tint: "accent-warning-foreground",
       } as const;

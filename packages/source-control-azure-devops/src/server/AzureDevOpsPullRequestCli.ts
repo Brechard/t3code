@@ -66,6 +66,7 @@ const refusalDetails = {
   "already-applied-suggestion": "This suggestion is already present in the source file.",
   "reviewer-ineligible":
     "Only an optional reviewer with no vote can decline. Authors cannot decline or flag their own review.",
+  "policy-not-requeueable": "Only a Build policy evaluation on this pull request can be requeued.",
   "draft-vote": "Publish this draft before voting.",
   "draft-completion": "Publish this draft before completing it.",
   "not-completed": "Only a completed pull request can be reverted.",
@@ -97,6 +98,7 @@ export class AzureDevOpsPullRequestReadError extends Schema.TaggedError<AzureDev
         "invalid-suggestion",
         "already-applied-suggestion",
         "reviewer-ineligible",
+        "policy-not-requeueable",
         "draft-vote",
         "draft-completion",
         "not-completed",
@@ -283,6 +285,7 @@ export class AzureDevOpsPullRequestCli extends Context.Service<
       location: AzureDevOpsRepositoryLocation;
       number: number;
       iterationId: number | null;
+      pullRequestUrl: string;
     }) => Effect.Effect<
       {
         checks: ReadonlyArray<PullRequestCheck>;

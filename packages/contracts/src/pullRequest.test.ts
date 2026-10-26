@@ -5,12 +5,28 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   PullRequestComment,
+  PullRequestCheck,
   PullRequestDetail,
   PullRequestListResult,
   pullRequestHostOf,
 } from "./pullRequest.ts";
 
 const decodeDetail = Schema.decodeUnknownSync(Schema.toCodecJson(PullRequestDetail));
+
+it("carries Azure Build check metadata and accepts older check payloads", () => {
+  const codec = Schema.toCodecJson(PullRequestCheck);
+  const decode = Schema.decodeSync(codec);
+  const encode = Schema.encodeSync(codec);
+  const basic = { name: "Validation", status: "pending" as const, description: null, url: null };
+  expect(decode(encode(basic))).toEqual(basic);
+  const build = {
+    ...basic,
+    kind: "azure-build" as const,
+    requeueEvaluationId: "evaluation",
+    buildExpired: true,
+  };
+  expect(decode(encode(build))).toEqual(build);
+});
 
 it("carries reply targets through the comment wire codec and accepts older comments", () => {
   const original: PullRequestComment = {

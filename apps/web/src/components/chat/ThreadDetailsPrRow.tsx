@@ -431,6 +431,9 @@ export function ThreadDetailsPrRow({
               <PullRequestChecksPopover
                 checksState={checksRollup}
                 checks={detail.checks}
+                detail={detail}
+                environmentId={environmentId}
+                reference={reference ?? undefined}
                 variant="count"
                 render={<ThreadDetailsControl part="meta" />}
               />

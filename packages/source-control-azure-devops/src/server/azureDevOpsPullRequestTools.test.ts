@@ -3,7 +3,12 @@ import * as Effect from "effect/Effect";
 import { makeAzureDevOpsPullRequestTools } from "./azureDevOpsPullRequestTools.ts";
 import { AzureDevOpsPullRequestReadError } from "./AzureDevOpsPullRequestCli.ts";
 
-const target = { cwd: "/w", location: { project: "example", repository: "sandbox" }, number: 1352 };
+const target = {
+  cwd: "/w",
+  location: { project: "example", repository: "sandbox" },
+  number: 1352,
+  pullRequestUrl: "https://dev.azure.com/example/project/_git/sandbox/pullrequest/1352",
+};
 const pr = {
   pullRequestId: 1352,
   status: "active",
@@ -32,6 +37,7 @@ const fixture = (
   policySettings?: Record<string, boolean>,
   statuses: ReadonlyArray<Record<string, unknown>> = [],
   policyContext?: Record<string, unknown>,
+  policyRows?: ReadonlyArray<Record<string, unknown>>,
 ) => {
   const commands: ReadonlyArray<string>[] = [];
   const writes: Parameters<Parameters<typeof makeAzureDevOpsPullRequestTools>[0]["write"]>[0][] =
@@ -68,7 +74,7 @@ const fixture = (
                     : input.args.includes("show")
                       ? { ...pr, ...overrides }
                       : input.args.includes("policy")
-                        ? [
+                        ? (policyRows ?? [
                             {
                               evaluationId: "evaluation",
                               status: "approved",
@@ -87,7 +93,7 @@ const fixture = (
                                 ...(policySettings ? { settings: policySettings } : {}),
                               },
                             },
-                          ]
+                          ])
                         : [],
           ),
         };
@@ -185,14 +191,126 @@ it.effect("keeps only the latest status per context for the current update", () 
     }
   }),
 );
-it.effect("describes an expired build without claiming a queued policy is running", () =>
+it.effect("does not treat non-Build policy flags as expired validation", () =>
   Effect.gen(function* () {
     const tools = fixture({}, undefined, undefined, [], { isExpired: true });
     const result = yield* tools.checks({ ...target, iterationId: 1 });
     expect(result.checks[0]).toMatchObject({
       status: "pending",
-      description: "Branch policy: queued (previous build expired; awaiting a new evaluation)",
+      description: "Branch policy: queued",
     });
+  }),
+);
+it.effect("exposes an expired Build policy with its run and requeue evaluation", () =>
+  Effect.gen(function* () {
+    const tools = fixture(
+      {},
+      undefined,
+      undefined,
+      [],
+      { isExpired: true, buildIsNotCurrent: true, buildId: 4195 },
+      [
+        {
+          evaluationId: "build-evaluation",
+          status: "queued",
+          context: { isExpired: true, buildIsNotCurrent: true, buildId: 4195 },
+          configuration: {
+            id: 7,
+            isBlocking: true,
+            type: { id: "0609b952-1397-4640-95ec-e00a01b2c241", displayName: "Build" },
+            settings: { displayName: "Build validation" },
+          },
+        },
+      ],
+    );
+    const result = yield* tools.checks({ ...target, iterationId: 1 });
+    expect(result.checks[0]).toMatchObject({
+      name: "Build validation",
+      kind: "azure-build",
+      status: "action-required",
+      buildExpired: true,
+      url: "https://dev.azure.com/example/project/_build/results?buildId=4195&view=results",
+      requeueEvaluationId: "build-evaluation",
+    });
+  }),
+);
+it.effect("refuses requeue for a foreign or non-Build evaluation", () =>
+  Effect.gen(function* () {
+    const tools = fixture();
+    yield* Effect.flip(
+      tools.run({ ...target, action: { type: "requeue-policy", evaluationId: "other" } }),
+    );
+    yield* Effect.flip(
+      tools.run({ ...target, action: { type: "requeue-policy", evaluationId: "evaluation" } }),
+    );
+    expect(tools.writes).toHaveLength(0);
+  }),
+);
+it.effect("requeues a running Build evaluation through the preview policy PATCH", () =>
+  Effect.gen(function* () {
+    const running = fixture({}, undefined, undefined, [], undefined, [
+      {
+        evaluationId: "running-build",
+        status: "running",
+        configuration: {
+          id: 7,
+          type: { id: "0609b952-1397-4640-95ec-e00a01b2c241", displayName: "Build" },
+        },
+      },
+    ]);
+    yield* running.run({
+      ...target,
+      action: { type: "requeue-policy", evaluationId: "running-build" },
+    });
+    expect(running.writes).toEqual([
+      expect.objectContaining({
+        area: "policy",
+        resource: "evaluations",
+        method: "PATCH",
+        routeParameters: ["project=example", "evaluationId=running-build"],
+      }),
+    ]);
+  }),
+);
+it.effect("keeps queued and active builds pending and omits links without a build id", () =>
+  Effect.gen(function* () {
+    const policy = (status: string, context: Record<string, unknown>) => ({
+      evaluationId: "build-evaluation",
+      status,
+      context,
+      configuration: {
+        id: 7,
+        type: { id: "0609b952-1397-4640-95ec-e00a01b2c241", displayName: "Build" },
+      },
+    });
+    for (const row of [
+      policy("queued", {}),
+      policy("queued", { isExpired: true, buildStatus: "inProgress" }),
+    ]) {
+      const tools = fixture({}, undefined, undefined, [], undefined, [row]);
+      const result = yield* tools.checks({ ...target, iterationId: 1 });
+      expect(result.checks[0]).toMatchObject({ status: "pending", url: null });
+      expect(result.checks[0]?.buildExpired).toBeUndefined();
+      expect(result.checks[0]?.requeueEvaluationId).toBe("build-evaluation");
+      expect(result.checks[0]?.kind).toBe("azure-build");
+    }
+    const approved = fixture({}, undefined, undefined, [], undefined, [
+      policy("approved", { buildId: 4195 }),
+    ]);
+    expect((yield* approved.checks({ ...target, iterationId: 1 })).checks[0]).toMatchObject({
+      status: "success",
+      url: "https://dev.azure.com/example/project/_build/results?buildId=4195&view=results",
+    });
+    expect(
+      (yield* approved.checks({
+        ...target,
+        iterationId: 1,
+        pullRequestUrl:
+          "https://ado.example.test/collection/My%20Project/_git/repo/pullrequest/1352",
+      })).checks[0]?.url,
+    ).toBe(
+      "https://ado.example.test/collection/My%20Project/_build/results?buildId=4195&view=results",
+    );
   }),
 );
 it.effect("retains all native completion options and completes the source commit it read", () =>
@@ -288,10 +406,22 @@ it.effect(
       expect(detail.policies[0]).toMatchObject({
         required: false,
         status: "approved",
+        requeueable: false,
         url: "https://dev.azure.com/example/project/_settings/repositories?repo=repo-id&_a=policiesMid",
       });
       expect(detail.mergePreviewUrl).toContain("preview-sha");
       expect(detail.warnings).toEqual([]);
+      const build = fixture({}, undefined, undefined, [], undefined, [
+        {
+          evaluationId: "build-evaluation",
+          status: "queued",
+          configuration: {
+            id: 7,
+            type: { id: "0609b952-1397-4640-95ec-e00a01b2c241", displayName: "Build" },
+          },
+        },
+      ]);
+      expect((yield* build.details(target)).policies[0]?.requeueable).toBe(true);
     }),
 );
 
@@ -498,7 +628,16 @@ it.effect(
 
 it.effect("addresses caller-supplied route values by their encoded value", () =>
   Effect.gen(function* () {
-    const tools = fixture();
+    const tools = fixture({}, undefined, undefined, [], undefined, [
+      {
+        evaluationId: "../../_apis/x?y",
+        status: "queued",
+        configuration: {
+          id: 7,
+          type: { id: "0609b952-1397-4640-95ec-e00a01b2c241", displayName: "Build" },
+        },
+      },
+    ]);
     yield* tools.run({
       ...target,
       action: { type: "attachment-delete", fileName: "notes#v2?.png" },

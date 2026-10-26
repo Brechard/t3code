@@ -132,6 +132,7 @@ function AzureActions({
   };
   const hostAction = async (action: PullRequestHostAction) => {
     const value = settled(await run({ environmentId, input: { ...reference, action } }));
+    if (action.type === "requeue-policy") query.refresh();
     setResult(value);
     if (openSection.current === null) toastManager.add({ type: "info", title: value.message });
   };
@@ -580,17 +581,19 @@ function AzureActionDialog({
                   <span>
                     {policy.name} · {policy.required ? "Required" : "Optional"} · {policy.status}
                   </span>
-                  <PullRequestPermissionButton
-                    reason={denied["requeue-policy"]}
-                    size="xs"
-                    variant="ghost-muted"
-                    disabled={disabled || !active}
-                    onClick={() =>
-                      void execute({ type: "requeue-policy", evaluationId: policy.id })
-                    }
-                  >
-                    Requeue
-                  </PullRequestPermissionButton>
+                  {policy.requeueable ? (
+                    <PullRequestPermissionButton
+                      reason={denied["requeue-policy"]}
+                      size="xs"
+                      variant="ghost-muted"
+                      disabled={disabled || !active}
+                      onClick={() =>
+                        void execute({ type: "requeue-policy", evaluationId: policy.id })
+                      }
+                    >
+                      Requeue
+                    </PullRequestPermissionButton>
+                  ) : null}
                   {policy.url ? (
                     <a
                       href={policy.url}

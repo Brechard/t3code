@@ -1641,6 +1641,9 @@ export function PullRequestDetailPanel({
                     checksState !== null ? (
                       <PullRequestChecksPopover
                         checks={detail.checks}
+                        detail={detail}
+                        environmentId={environmentId}
+                        reference={reference}
                         stale={checksStale}
                         checksState={checksState}
                         threadRef={threadRef}

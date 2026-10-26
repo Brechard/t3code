@@ -3,6 +3,7 @@ import type {
   EnvironmentId,
   PullRequestCheck,
   PullRequestChecksState,
+  PullRequestDetail,
   PullRequestRef,
   ScopedThreadRef,
 } from "@t3tools/contracts";
@@ -18,6 +19,7 @@ import { ScrollArea } from "../ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import { groupPullRequestChecks } from "./pullRequestDetail.logic";
+import { AzureBuildRequeueButton } from "./AzureBuildRequeueButton";
 import {
   PullRequestCheckStatusIcon,
   pullRequestCheckStatusLabel,
@@ -52,20 +54,34 @@ function LazyChecksBody({
       </p>
     );
   }
-  return <ChecksBody checks={detailQuery.data.checks} threadRef={threadRef} />;
+  return (
+    <ChecksBody
+      checks={detailQuery.data.checks}
+      detail={detailQuery.data}
+      environmentId={environmentId}
+      reference={reference}
+      threadRef={threadRef}
+    />
+  );
 }
 
 function ChecksBody({
   checks,
+  detail,
+  environmentId,
+  reference,
   threadRef,
 }: {
   checks: ReadonlyArray<PullRequestCheck>;
+  detail?: PullRequestDetail | undefined;
+  environmentId?: EnvironmentId | undefined;
+  reference?: PullRequestRef | undefined;
   threadRef: ScopedThreadRef | null;
 }) {
   const openLink = useOpenLink(threadRef);
   const { attention, running, completed } = groupPullRequestChecks(checks);
   const visibleChecks = [...attention, ...running, ...completed];
-  const hasDetails = visibleChecks.some((check) => check.url !== null);
+  const hasActions = visibleChecks.some((check) => check.url !== null || check.requeueEvaluationId);
   if (checks.length === 0) {
     return <p className="text-muted-foreground text-xs">No checks reported</p>;
   }
@@ -74,7 +90,7 @@ function ChecksBody({
       <ul
         className={cn(
           "grid gap-x-2 gap-y-1 pe-3",
-          hasDetails
+          hasActions
             ? "grid-cols-[auto_minmax(0,1fr)_auto_auto]"
             : "grid-cols-[auto_minmax(0,1fr)_auto]",
         )}
@@ -92,21 +108,34 @@ function ChecksBody({
             <span className="justify-self-end whitespace-nowrap text-muted-foreground">
               {pullRequestCheckStatusLabel(check)}
             </span>
-            {check.url === null ? null : (
-              <button
-                type="button"
-                className="text-primary hover:underline"
-                onClick={() => {
-                  if (!check.url) return;
-                  void openLink(check.url).catch((error: unknown) => {
-                    console.error(error);
-                    toastManager.add({ type: "error", title: "Unable to open check details" });
-                  });
-                }}
-              >
-                Details
-              </button>
-            )}
+            {hasActions ? (
+              <span className="flex items-center justify-end gap-2 whitespace-nowrap">
+                {detail?.capabilities.hostActions && environmentId && reference ? (
+                  <AzureBuildRequeueButton
+                    check={check}
+                    environmentId={environmentId}
+                    reference={reference}
+                    active={detail.state === "open"}
+                    reason={detail.viewerPermissions.deniedActions?.["requeue-policy"]}
+                  />
+                ) : null}
+                {check.url === null ? null : (
+                  <button
+                    type="button"
+                    className="text-primary hover:underline"
+                    onClick={() => {
+                      if (!check.url) return;
+                      void openLink(check.url).catch((error: unknown) => {
+                        console.error(error);
+                        toastManager.add({ type: "error", title: "Unable to open check details" });
+                      });
+                    }}
+                  >
+                    {check.kind === "azure-build" ? "Open build" : "Details"}
+                  </button>
+                )}
+              </span>
+            ) : null}
           </li>
         ))}
       </ul>
@@ -117,6 +146,7 @@ function ChecksBody({
 export function PullRequestChecksPopover({
   checksState,
   checks,
+  detail,
   stale = false,
   environmentId,
   reference,
@@ -127,9 +157,10 @@ export function PullRequestChecksPopover({
 }: {
   checksState: PullRequestChecksState;
   checks?: ReadonlyArray<PullRequestCheck>;
+  detail?: PullRequestDetail | undefined;
   stale?: boolean;
-  environmentId?: EnvironmentId;
-  reference?: PullRequestRef;
+  environmentId?: EnvironmentId | undefined;
+  reference?: PullRequestRef | undefined;
   threadRef?: ScopedThreadRef | null;
   variant?: "icon" | "count";
   className?: string;
@@ -190,7 +221,13 @@ export function PullRequestChecksPopover({
             Check details are out of date. Refresh the pull request to update them.
           </p>
         ) : checks !== undefined ? (
-          <ChecksBody checks={checks} threadRef={threadRef} />
+          <ChecksBody
+            checks={checks}
+            detail={detail}
+            environmentId={environmentId}
+            reference={reference}
+            threadRef={threadRef}
+          />
         ) : environmentId !== undefined && reference !== undefined ? (
           <LazyChecksBody
             environmentId={environmentId}

@@ -189,6 +189,61 @@ type Write = (input: {
 }) => Effect.Effect<void, AzureDevOpsPullRequestCliError>;
 
 const MERGE_TYPE_POLICY = "fa4e907d-c16b-4a4c-9dfa-4916e5d171ab";
+const BUILD_POLICY = "0609b952-1397-4640-95ec-e00a01b2c241";
+const isBuildPolicy = (policy: Schema.Schema.Type<typeof Policy>) =>
+  policy.configuration.type.id?.toLowerCase() === BUILD_POLICY;
+const isRunningBuildPolicy = (policy: Schema.Schema.Type<typeof Policy>) => {
+  const buildStatus = policy.context?.buildStatus;
+  return (
+    policy.status === "running" ||
+    (typeof buildStatus === "string" &&
+      ["running", "inprogress"].includes(buildStatus.toLowerCase()))
+  );
+};
+const policyName = (policy: Schema.Schema.Type<typeof Policy>) =>
+  isBuildPolicy(policy) &&
+  typeof policy.configuration.settings?.displayName === "string" &&
+  policy.configuration.settings.displayName.trim()
+    ? policy.configuration.settings.displayName.trim()
+    : policy.configuration.type.displayName;
+
+function buildRunUrl(pullRequestUrl: string, buildId: unknown): string | null {
+  if (typeof buildId !== "number" || !Number.isSafeInteger(buildId) || buildId <= 0) return null;
+  const projectUrl = pullRequestUrl.split("/_git/")[0];
+  if (!projectUrl || projectUrl === pullRequestUrl) return null;
+  return `${projectUrl}/_build/results?buildId=${buildId}&view=results`;
+}
+function policyCheck(
+  item: Schema.Schema.Type<typeof Policy>,
+  pullRequestUrl: string,
+): PullRequestCheck {
+  const build = isBuildPolicy(item);
+  const expired =
+    build &&
+    item.status === "queued" &&
+    (item.context?.isExpired === true || item.context?.buildIsNotCurrent === true) &&
+    !isRunningBuildPolicy(item);
+  return {
+    name: policyName(item),
+    ...(build ? { kind: "azure-build" as const } : {}),
+    required: item.configuration.isBlocking === true,
+    description: expired
+      ? "Build validation expired. Requeue to run it again."
+      : `Branch policy: ${item.status ?? "unknown"}`,
+    url: build ? buildRunUrl(pullRequestUrl, item.context?.buildId) : null,
+    ...(build && item.evaluationId ? { requeueEvaluationId: item.evaluationId } : {}),
+    ...(expired ? { buildExpired: true } : {}),
+    status: expired
+      ? "action-required"
+      : item.status === "approved"
+        ? "success"
+        : item.status === "rejected" || item.status === "broken"
+          ? "failure"
+          : item.status === "notApplicable"
+            ? "skipped"
+            : "pending",
+  };
+}
 const MERGE_TYPE_SETTINGS = {
   noFastForward: "allowNoFastForward",
   squash: "allowSquash",
@@ -358,7 +413,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
   const mergeStrategies = (target: Target) =>
     policies(target).pipe(Effect.map(allowedMergeStrategies));
   const checks = (
-    target: Target & { iterationId: number | null },
+    target: Target & { iterationId: number | null; pullRequestUrl: string },
   ): Effect.Effect<
     {
       checks: ReadonlyArray<PullRequestCheck>;
@@ -393,20 +448,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
       Effect.map(([items, statuses]) => ({
         allowedMergeStrategies: allowedMergeStrategies(items),
         checks: [
-          ...items.map((item) => ({
-            name: item.configuration.type.displayName,
-            required: item.configuration.isBlocking === true,
-            description: `Branch policy: ${item.status ?? "unknown"}${item.status === "queued" && (item.context?.isExpired === true || item.context?.buildIsNotCurrent === true) ? " (previous build expired; awaiting a new evaluation)" : ""}`,
-            url: null,
-            status:
-              item.status === "approved"
-                ? ("success" as const)
-                : item.status === "rejected" || item.status === "broken"
-                  ? ("failure" as const)
-                  : item.status === "notApplicable"
-                    ? ("skipped" as const)
-                    : ("pending" as const),
-          })),
+          ...items.map((item) => policyCheck(item, target.pullRequestUrl)),
           ...currentStatuses(statuses.value, target.iterationId).map((status) => ({
             name: [status.context.genre, status.context.name].filter(Boolean).join(" / "),
             description: status.description ?? null,
@@ -605,9 +647,10 @@ export function makeAzureDevOpsPullRequestTools(deps: {
       policies: checks.map((check) => ({
         id: check.evaluationId,
         configurationId: check.configuration.id,
-        name: check.configuration.type.displayName,
+        name: policyName(check),
         status: check.status ?? "unknown",
         required: check.configuration.isBlocking === true,
+        requeueable: isBuildPolicy(check),
         url: `${pr.repository.webUrl.split("/_git/")[0]}/_settings/repositories?repo=${encodeURIComponent(pr.repository.id)}&_a=policiesMid`,
       })),
       workItems: workItems.map((item) => ({
@@ -651,6 +694,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
         "reviewer-required",
         "restart-merge",
         "apply-suggestion",
+        "requeue-policy",
       ].includes(action.type)
     )
       yield* requireActive();
@@ -1024,7 +1068,18 @@ export function makeAzureDevOpsPullRequestTools(deps: {
           ],
         });
         break;
-      case "requeue-policy":
+      case "requeue-policy": {
+        const evaluation = (yield* policies(input)).find(
+          (policy) => policy.evaluationId === action.evaluationId,
+        );
+        if (!evaluation || !isBuildPolicy(evaluation))
+          return yield* deps.failure({
+            cwd: input.cwd,
+            command: "az",
+            operation: action.type,
+            reason: "policy-not-requeueable",
+            cause: "This evaluation is not a Build policy on the current pull request.",
+          });
         yield* deps.write({
           cwd: input.cwd,
           area: "policy",
@@ -1036,6 +1091,7 @@ export function makeAzureDevOpsPullRequestTools(deps: {
           method: "PATCH",
         });
         break;
+      }
       case "restart-merge":
         yield* patch(input, { mergeStatus: 1 });
         return {

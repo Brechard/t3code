@@ -5,6 +5,7 @@ import {
   type AzureDevOpsDiscussionFilter,
 } from "@t3tools/client-runtime/azure-devops-discussion-filter";
 import { PullRequestReviewContext } from "./PullRequestReviewContext";
+import { AzureBuildRequeueButton } from "./AzureBuildRequeueButton";
 import { pullRequestThreadStatusLabels } from "@t3tools/client-runtime/pull-request-comment-replies";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import {
@@ -1047,6 +1048,7 @@ export function PullRequestSummaryTab({
           detail.checks.map((check, index) => {
             const finding = { kind: "check", check } as const;
             const failing = check.status === "failure" || check.status === "cancelled";
+            const buildUrl = check.kind === "azure-build" ? check.url : null;
             return (
               <div
                 key={`${index}:${check.name}:${check.url ?? ""}`}
@@ -1084,6 +1086,20 @@ export function PullRequestSummaryTab({
                     {pendingFinding === pullRequestFindingKey(finding)
                       ? "Preparing..."
                       : fixCheckLabel}
+                  </Button>
+                ) : null}
+                {detail.capabilities.hostActions ? (
+                  <AzureBuildRequeueButton
+                    check={check}
+                    environmentId={environmentId}
+                    reference={reference}
+                    active={detail.state === "open"}
+                    reason={detail.viewerPermissions.deniedActions?.["requeue-policy"]}
+                  />
+                ) : null}
+                {buildUrl ? (
+                  <Button size="xs" variant="ghost" onClick={() => openCheck(buildUrl)}>
+                    Open build
                   </Button>
                 ) : null}
               </div>

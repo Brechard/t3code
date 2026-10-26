@@ -434,6 +434,17 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       label: "environment-data:pull-requests:run-host-action",
       tag: WS_METHODS.pullRequestsRunHostAction,
       execute: (input) => routedRequest(WS_METHODS.pullRequestsRunHostAction, input),
+      onSuccess: ({ environmentId, input }, registry) =>
+        Effect.sync(() => {
+          if (input.action.type !== "requeue-policy") return;
+          const reference = {
+            projectId: input.projectId,
+            ...(input.host === undefined ? {} : { host: input.host }),
+            repository: input.repository,
+            number: input.number,
+          };
+          registry.refresh(detail({ environmentId, input: reference }));
+        }),
       scheduler: commandScheduler,
       concurrency: {
         mode: "serial",
