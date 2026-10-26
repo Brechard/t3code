@@ -149,10 +149,12 @@ describe.each([
 
 describe.each([
   ["> first\n> then #12", "first\nthen "],
+  ["> first\n> second \n> then #12", "first\nsecond\nthen "],
+  ["a\u0000 #12", "a\uFFFD "],
   ["> &#10;\n> then #12", "\n\nthen "],
   ["> first\n> > then #12", "then "],
   ["- first\n  then #12", "first\nthen "],
-  ["first\r\nthen #12", "first\nthen "],
+  ["first\r\nthen #12", "first\r\nthen "],
   ["> &amp; \\*first\\*\n> then #12", "& *first*\nthen "],
 ])("source positions: %s", (markdown, prose) => {
   it("retains parsed display text around the linked reference", () => {
@@ -175,4 +177,42 @@ describe.each([
       ],
     });
   });
+});
+
+describe.each(["hello&#65;@user", "#12&#65;"])("entity boundary: %s", (markdown) => {
+  it("does not introduce a reference boundary", () => {
+    expect(links(markdown)).toEqual([]);
+  });
+});
+
+it("ignores tag-like strings inside HTML attributes", () => {
+  expect(links('See <span title="<a>">literal</span> then #12')).toEqual([
+    ["#12", "https://github.com/team/repo/issues/12", "reference"],
+  ]);
+});
+
+describe.each([String.raw`\@`, "&#64;"])("unauthored split mention: %s", (prefix) => {
+  it("preserves the HTML node when an earlier reference is linked", () => {
+    const id = azureIds[0]!;
+    const markdown = `#12 ${prefix}<${id}>`;
+    const tree = unified().use(remarkParse).parse(markdown);
+    const paragraph = tree.children[0] as Node;
+    const originalHtml = structuredClone(paragraph.children?.at(-1));
+    const autolinks = changeRequestReferenceAutolinker({
+      provider: "azure-devops",
+      url: "https://dev.azure.com/acme/platform/_git/t3code/pullrequest/17",
+    })!;
+    remarkPullRequestAutolinks({ autolinks })(tree as never, { value: markdown });
+    expect(paragraph.children?.at(-1)).toEqual(originalHtml);
+    expect(links(markdown, autolinks)).toEqual([
+      ["#12", "https://dev.azure.com/acme/platform/_workitems/edit/12", "reference"],
+    ]);
+  });
+});
+
+it("distinguishes repeated authored, escaped and entity-generated references in a container", () => {
+  expect(links("> &num;12 #12 \\#12 \n> then #12 &copy;")).toEqual([
+    ["#12", "https://github.com/team/repo/issues/12", "reference"],
+    ["#12", "https://github.com/team/repo/issues/12", "reference"],
+  ]);
 });

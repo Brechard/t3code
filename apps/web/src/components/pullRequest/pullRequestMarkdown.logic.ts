@@ -27,12 +27,43 @@ const AUTOLINK_IGNORED_TYPES = new Set([
 
 const MARKDOWN_TEXT_ESCAPE = /\\([!-/:-@[-`{-~])|&(?:#\d{1,7}|#x[\da-f]{1,6}|[a-z][\da-z]*);/giu;
 
-function decodeText(text: string) {
-  // Text-node source contains only Markdown escapes and character references to decode.
-  return text.replace(
+function authoredLinks(
+  value: string,
+  source: string | undefined,
+  links: ReadonlyArray<ReferenceAutolink>,
+) {
+  if (source === undefined || links.length === 0) return links;
+  const excluded: { start: number; end: number }[] = [];
+  let delta = 0;
+  const decodedSource = source.replace(
     MARKDOWN_TEXT_ESCAPE,
-    (match, escaped: string | undefined) => escaped ?? decodeHTMLStrict(match),
+    (match, escaped: string | undefined, offset: number) => {
+      const decoded = escaped ?? decodeHTMLStrict(match);
+      if (decoded !== match) {
+        const start = offset + delta;
+        excluded.push({ start, end: start + decoded.length });
+        delta += decoded.length - match.length;
+      }
+      return decoded;
+    },
   );
+  if (excluded.length === 0) return links;
+  let valueOffset = 0;
+  let sourceOffset = 0;
+  let rangeIndex = 0;
+  return links.filter((link) => {
+    // Container prefixes and trimmed whitespace shift offsets, but preserve reference occurrences.
+    const occurrences = value.slice(valueOffset, link.index).split(link.text).length;
+    let start = sourceOffset;
+    for (let index = 0; index < occurrences; index++) {
+      start = decodedSource.indexOf(link.text, sourceOffset);
+      if (start === -1) return false;
+      sourceOffset = start + link.text.length;
+    }
+    valueOffset = link.index + link.text.length;
+    while (excluded[rangeIndex] !== undefined && excluded[rangeIndex]!.end <= start) rangeIndex++;
+    return excluded[rangeIndex] === undefined || excluded[rangeIndex]!.start >= sourceOffset;
+  });
 }
 
 export function remarkPullRequestAutolinks(options: {
@@ -40,25 +71,12 @@ export function remarkPullRequestAutolinks(options: {
 }) {
   return (tree: MarkdownNode, file?: { value: unknown }) => {
     const source = typeof file?.value === "string" ? file.value : undefined;
-    const textOf = (node: MarkdownNode) => {
+    const sourceOf = (node: MarkdownNode) => {
       const start = node.position?.start.offset;
       const end = node.position?.end.offset;
-      if (source === undefined || start === undefined || end === undefined) return node.value ?? "";
-      const raw = source.slice(start, end);
-      if (node.type !== "text") return raw;
-      const lines = node.value!.split("\n");
-      let lineIndex = 0;
-      // Positions span container prefixes; the parser's text identifies each line's actual content.
-      return raw
-        .split(/\r\n?|\n/u)
-        .map((line) => {
-          const decoded = decodeText(line);
-          const lineCount = decoded.split("\n").length;
-          const content = lines.slice(lineIndex, lineIndex + lineCount).join("\n");
-          lineIndex += lineCount;
-          return decoded.endsWith(content) ? line.slice(decoded.length - content.length) : line;
-        })
-        .join("\n");
+      return source !== undefined && start !== undefined && end !== undefined
+        ? source.slice(start, end)
+        : undefined;
     };
     const visit = (node: MarkdownNode): void => {
       const children = node.children;
@@ -67,10 +85,12 @@ export function remarkPullRequestAutolinks(options: {
       for (let index = 0; index < children.length; index += 1) {
         const child = children[index]!;
         if (child.type === "html") {
-          for (const match of textOf(child).matchAll(
-            /<(\/)?(?:a|code|pre|script|style)(?=[\s>])[^>]*>/giu,
+          for (const match of (child.value ?? "").matchAll(
+            /<!--[\s\S]*?-->|<(\/)?([a-z][\w:-]*)(?=[\s/>])(?:[^"'<>]|"[^"]*"|'[^']*')*>/giu,
           )) {
-            protectedHtmlDepth = Math.max(0, protectedHtmlDepth + (match[1] ? -1 : 1));
+            if (/^(?:a|code|pre|script|style)$/iu.test(match[2] ?? "")) {
+              protectedHtmlDepth = Math.max(0, protectedHtmlDepth + (match[1] ? -1 : 1));
+            }
           }
           continue;
         }
@@ -80,40 +100,33 @@ export function remarkPullRequestAutolinks(options: {
           visit(child);
           continue;
         }
-        let value = textOf(child);
+        let value = child.value;
+        let raw = sourceOf(child);
         let consumed = 1;
         const next = children[index + 1];
         if (next?.type === "html") {
-          const combined = value + textOf(next);
+          const combined = value + (next.value ?? "");
+          const followingSource = sourceOf(next);
+          const combinedSource =
+            raw !== undefined && followingSource !== undefined ? raw + followingSource : undefined;
           if (
-            options
-              .autolinks(combined)
-              .some(
-                (link) =>
-                  link.index < value.length && link.index + link.text.length === combined.length,
-              )
+            authoredLinks(combined, combinedSource, options.autolinks(combined)).some(
+              (link) =>
+                link.index < value.length && link.index + link.text.length === combined.length,
+            )
           ) {
             value = combined;
+            raw = combinedSource;
             consumed = 2;
           }
         }
-        // Keep source offsets while hiding character references from the provider matcher.
-        const searchable =
-          source === undefined
-            ? value
-            : value.replace(MARKDOWN_TEXT_ESCAPE, (match, escaped: string | undefined) =>
-                escaped === undefined && decodeHTMLStrict(match) !== match
-                  ? " ".repeat(match.length)
-                  : match,
-              );
-        const links = options.autolinks(searchable);
-        const plainText = (text: string) => (source === undefined ? text : decodeText(text));
+        const links = authoredLinks(value, raw, options.autolinks(value));
         if (links.length === 0) continue;
         const replacements: MarkdownNode[] = [];
         let start = 0;
         for (const link of links) {
           if (start < link.index) {
-            replacements.push({ type: "text", value: plainText(value.slice(start, link.index)) });
+            replacements.push({ type: "text", value: value.slice(start, link.index) });
           }
           replacements.push({
             type: "link",
@@ -123,8 +136,7 @@ export function remarkPullRequestAutolinks(options: {
           });
           start = link.index + link.text.length;
         }
-        if (start < value.length)
-          replacements.push({ type: "text", value: plainText(value.slice(start)) });
+        if (start < value.length) replacements.push({ type: "text", value: value.slice(start) });
         children.splice(index, consumed, ...replacements);
         index += replacements.length - 1;
       }
