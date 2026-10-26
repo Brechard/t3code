@@ -1,4 +1,4 @@
-import { afterEach, assert, expect, it, vi } from "@effect/vitest";
+import { afterEach, beforeEach, assert, expect, it, vi } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
@@ -12,14 +12,14 @@ import * as AzureDevOpsPullRequestProvider from "./AzureDevOpsPullRequestProvide
 const mockedIdentity = vi.fn<AzureDevOpsCli.AzureDevOpsCli["Service"]["authenticatedIdentity"]>();
 
 const mockedExecute = vi.fn<AzureDevOpsCli.AzureDevOpsCli["Service"]["execute"]>();
+const mockedContext = vi.fn<AzureDevOpsCli.AzureDevOpsCli["Service"]["pullRequestContext"]>();
 
 const layer = it.layer(
   AzureDevOpsPullRequestCli.layer.pipe(
     Layer.provide(
       Layer.mock(AzureDevOpsCli.AzureDevOpsCli)({
         execute: mockedExecute,
-        pullRequestContext: () =>
-          Effect.succeed(output(JSON.stringify({ credentialKey: "test-pat", permissions: {} }))),
+        pullRequestContext: mockedContext,
         authenticatedIdentity: mockedIdentity,
       }),
     ),
@@ -113,11 +113,113 @@ function changeEntries(count: number): ReadonlyArray<Record<string, unknown>> {
   });
 }
 
+beforeEach(() => {
+  mockedContext.mockReturnValue(
+    Effect.succeed(output(JSON.stringify({ credentialKey: "test-pat", permissions: {} }))),
+  );
+});
+
 afterEach(() => {
   mockedExecute.mockReset();
+  mockedContext.mockReset();
 });
 
 layer("AzureDevOpsPullRequestCli.layer", (it) => {
+  it.effect(
+    "refuses an anchored batch with no latest iteration before posting its general comment",
+    () =>
+      Effect.gen(function* () {
+        mockedExecute.mockReturnValue(Effect.succeed(output(JSON.stringify({ value: [] }))));
+        const cli = yield* AzureDevOpsPullRequestCli.AzureDevOpsPullRequestCli;
+        const error = yield* cli
+          .createThreads({
+            cwd: "/w",
+            location: { project: "platform", repository: "web" },
+            number: 42,
+            threads: [
+              { body: "General comment" },
+              {
+                body: "Anchored comment",
+                comment: {
+                  body: "Anchored comment",
+                  path: "file.ts",
+                  position: { kind: "added", newLine: 7 },
+                },
+              },
+            ],
+          })
+          .pipe(Effect.match({ onFailure: (failure) => failure, onSuccess: () => null }));
+        expect(error).toMatchObject({
+          _tag: "AzureDevOpsPullRequestReadError",
+          reason: "review-position-unavailable",
+        });
+        expect(
+          mockedExecute.mock.calls.filter(([input]) => input.args.includes("POST")),
+        ).toHaveLength(0);
+      }),
+  );
+
+  it.effect("preserves typed CLI and native context failures for permissions and visits", () =>
+    Effect.gen(function* () {
+      const cli = yield* AzureDevOpsPullRequestCli.AzureDevOpsPullRequestCli;
+      const input = { cwd: "/w", location: { project: "platform", repository: "web" }, number: 42 };
+      const fields = {
+        operation: "execute" as const,
+        command: "az" as const,
+        cwd: "/w",
+        argumentCount: 1,
+        cause: "fixture",
+      };
+      const failures = [
+        new AzureDevOpsCli.AzureDevOpsCliUnavailableError(fields),
+        new AzureDevOpsCli.AzureDevOpsCliAuthenticationError(fields),
+        new AzureDevOpsCli.AzureDevOpsCliRateLimitError(fields),
+        new AzureDevOpsCli.AzureDevOpsNativeRequestError({
+          ...fields,
+          reason: "permission-denied",
+        }),
+      ];
+      for (const failure of failures) {
+        mockedContext.mockReturnValueOnce(Effect.fail(failure));
+        expect(yield* Effect.flip(cli.readAccess(input))).toBe(failure);
+        mockedContext.mockReturnValueOnce(Effect.fail(failure));
+        expect(yield* Effect.flip(cli.readVisit(input))).toBe(failure);
+      }
+    }),
+  );
+
+  it.effect("labels malformed permission, visit, and viewed-state payloads as read errors", () =>
+    Effect.gen(function* () {
+      const cli = yield* AzureDevOpsPullRequestCli.AzureDevOpsPullRequestCli;
+      const input = { cwd: "/w", location: { project: "platform", repository: "web" }, number: 42 };
+      mockedContext.mockReturnValueOnce(Effect.succeed(output("{}")));
+      expect(yield* Effect.flip(cli.readAccess(input))).toMatchObject({
+        _tag: "AzureDevOpsPullRequestReadError",
+        operation: "read permissions",
+      });
+      mockedContext.mockReturnValueOnce(Effect.succeed(output("invalid json")));
+      expect(yield* Effect.flip(cli.readVisit(input))).toMatchObject({
+        _tag: "AzureDevOpsPullRequestReadError",
+        operation: "read viewed files",
+      });
+      mockedContext.mockReturnValueOnce(
+        Effect.succeed(
+          output(
+            JSON.stringify({
+              dataProviders: {
+                "ms.vss-code-web.pr-detail-visit-data-provider": { visit: { viewedState: "{}" } },
+              },
+            }),
+          ),
+        ),
+      );
+      expect(yield* Effect.flip(cli.readVisit(input))).toMatchObject({
+        _tag: "AzureDevOpsPullRequestReadError",
+        operation: "read viewed files",
+      });
+    }),
+  );
+
   it.effect("retains Azure line ranges, deleted-side anchors, and whole-file discussions", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

@@ -891,15 +891,18 @@ const make = Effect.gen(function* () {
           operation: "permissions",
         })
         .pipe(
-          Effect.flatMap((output) => decodeAccess(output.stdout)),
-          Effect.mapError(
-            (cause) =>
-              new AzureDevOpsPullRequestReadError({
-                cwd: input.cwd,
-                command: "az",
-                operation: "read permissions",
-                cause,
-              }),
+          Effect.flatMap((output) =>
+            decodeAccess(output.stdout).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new AzureDevOpsPullRequestReadError({
+                    cwd: input.cwd,
+                    command: "az",
+                    operation: "read permissions",
+                    cause,
+                  }),
+              ),
+            ),
           ),
         );
     }),
@@ -912,13 +915,34 @@ const make = Effect.gen(function* () {
           operation: "visit",
         })
         .pipe(
-          Effect.flatMap((output) => decodeVisit(output.stdout)),
+          Effect.flatMap((output) =>
+            decodeVisit(output.stdout).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new AzureDevOpsPullRequestReadError({
+                    cwd: input.cwd,
+                    command: "az",
+                    operation: "read viewed files",
+                    cause,
+                  }),
+              ),
+            ),
+          ),
           Effect.flatMap((data) => {
             const value =
               data.dataProviders?.["ms.vss-code-web.pr-detail-visit-data-provider"]?.visit
                 ?.viewedState;
             return value
               ? decodeViewedState(value).pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new AzureDevOpsPullRequestReadError({
+                        cwd: input.cwd,
+                        command: "az",
+                        operation: "read viewed files",
+                        cause,
+                      }),
+                  ),
                   Effect.map((state) => ({
                     hashes: Array.isArray(state.hashes)
                       ? {}
@@ -928,15 +952,6 @@ const make = Effect.gen(function* () {
                 )
               : Effect.succeed({ hashes: {}, denied: data.denied ?? false });
           }),
-          Effect.mapError(
-            (cause) =>
-              new AzureDevOpsPullRequestReadError({
-                cwd: input.cwd,
-                command: "az",
-                operation: "read viewed files",
-                cause,
-              }),
-          ),
         );
     }),
     listReviewerCandidates: tools.reviewerCandidates,
@@ -1092,7 +1107,7 @@ const make = Effect.gen(function* () {
       const bodies: string[] = [];
       for (const { body, comment } of input.threads) {
         const change = changes.find((change) => change.path === comment?.path.replace(/^\//, ""));
-        if (latest && comment && change?.changeTrackingId === undefined) {
+        if (comment && (latest === undefined || change?.changeTrackingId === undefined)) {
           return yield* new AzureDevOpsPullRequestReadError({
             cwd: input.cwd,
             command: "az",
