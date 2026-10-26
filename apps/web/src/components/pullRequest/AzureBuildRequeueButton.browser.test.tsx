@@ -44,16 +44,20 @@ vi.mock(import("../ui/toast"), async (original) => {
 import { AzureBuildRequeueButton } from "./AzureBuildRequeueButton";
 import { PullRequestChecksPopover } from "./PullRequestChecksPopover";
 
+function setup({ allowed = true } = {}) {
+  state.permission = Atom.make(allowed);
+  state.run.mockReset();
+  state.toast.mockReset();
+}
+
 it.each([undefined, "requeue", "restart"] as const)(
   "submits one %s action with correct intent and permits retry",
   async (buildAction) => {
+    setup();
     const label = buildAction === "restart" ? "Restart build" : "Requeue";
     const busyLabel = buildAction === "restart" ? "Restarting…" : "Requeueing…";
-    state.permission = Atom.make(true);
     const registry = AtomRegistry.make();
     using _registry = { [Symbol.dispose]: () => registry.dispose() };
-    state.run.mockReset();
-    state.toast.mockReset();
     let reject!: (error: Error) => void;
     state.run.mockReturnValueOnce(new Promise((_, rejectPromise) => (reject = rejectPromise)));
     state.run.mockResolvedValue({ _tag: "Success", value: { message: "Build queued" } });
@@ -140,9 +144,7 @@ it.each([
     reason: "Permission denied",
   },
 ])("hides Requeue for $name", async ({ evaluationId, active, allowed, reason }) => {
-  state.permission = Atom.make(allowed);
-  state.run.mockReset();
-  state.toast.mockReset();
+  setup({ allowed });
   const registry = AtomRegistry.make();
   using _registry = { [Symbol.dispose]: () => registry.dispose() };
   await using _screen = await render(
@@ -176,11 +178,9 @@ it.each([
 it.each(["requeue", "restart"] as const)(
   "keeps an in-flight %s through popover row reorder, build URL change and availability loss",
   async (buildAction) => {
+    setup();
     const label = buildAction === "restart" ? "Restart build" : "Requeue";
     const busyLabel = buildAction === "restart" ? "Restarting…" : "Requeueing…";
-    state.permission = Atom.make(true);
-    state.run.mockReset();
-    state.toast.mockReset();
     const registry = AtomRegistry.make();
     using _registry = { [Symbol.dispose]: () => registry.dispose() };
     let resolve!: (value: unknown) => void;
