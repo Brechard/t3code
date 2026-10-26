@@ -38,6 +38,9 @@ const fixture = (
   statuses: ReadonlyArray<Record<string, unknown>> = [],
   policyContext?: Record<string, unknown>,
   policyRows?: ReadonlyArray<Record<string, unknown>>,
+  buildState: { status?: unknown; error?: AzureDevOpsPullRequestReadError } = {
+    status: "completed",
+  },
 ) => {
   const commands: ReadonlyArray<string>[] = [];
   const writes: Parameters<Parameters<typeof makeAzureDevOpsPullRequestTools>[0]["write"]>[0][] =
@@ -57,8 +60,9 @@ const fixture = (
     subscriptions: () => Effect.succeed({ stdout: JSON.stringify({ value: [] }) }),
     identity: () => Effect.succeed({ id: "reader", login: "reader@example.com", name: "Reader" }),
     execute: (input) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
         commands.push(input.args);
+        if (input.args[0] === "pipelines" && buildState.error) return yield* buildState.error;
         return {
           stdout: JSON.stringify(
             input.args.includes("Subscriptions") ||
@@ -71,30 +75,32 @@ const fixture = (
                   ? { value: pr.labels }
                   : input.args.includes("pullRequestReviewers")
                     ? { value: pr.reviewers }
-                    : input.args.includes("show")
-                      ? { ...pr, ...overrides }
-                      : input.args.includes("policy")
-                        ? (policyRows ?? [
-                            {
-                              evaluationId: "evaluation",
-                              status: "approved",
-                              ...(policyContext
-                                ? { status: "queued", context: policyContext }
-                                : {}),
-                              configuration: {
-                                id: 7,
-                                isBlocking: policySettings !== undefined,
-                                type: {
-                                  displayName: "Validation",
-                                  ...(policySettings
-                                    ? { id: "fa4e907d-c16b-4a4c-9dfa-4916e5d171ab" }
-                                    : {}),
+                    : input.args[0] === "pipelines"
+                      ? { status: buildState.status }
+                      : input.args.includes("show")
+                        ? { ...pr, ...overrides }
+                        : input.args.includes("policy")
+                          ? (policyRows ?? [
+                              {
+                                evaluationId: "evaluation",
+                                status: "approved",
+                                ...(policyContext
+                                  ? { status: "queued", context: policyContext }
+                                  : {}),
+                                configuration: {
+                                  id: 7,
+                                  isBlocking: policySettings !== undefined,
+                                  type: {
+                                    displayName: "Validation",
+                                    ...(policySettings
+                                      ? { id: "fa4e907d-c16b-4a4c-9dfa-4916e5d171ab" }
+                                      : {}),
+                                  },
+                                  ...(policySettings ? { settings: policySettings } : {}),
                                 },
-                                ...(policySettings ? { settings: policySettings } : {}),
                               },
-                            },
-                          ])
-                        : [],
+                            ])
+                          : [],
           ),
         };
       }),
@@ -201,6 +207,287 @@ it.effect("does not treat non-Build policy flags as expired validation", () =>
     });
   }),
 );
+const buildPolicy = (context: Record<string, unknown> = {}, status = "queued") => ({
+  evaluationId: "build-evaluation",
+  status,
+  context,
+  configuration: {
+    id: 7,
+    type: { id: "0609b952-1397-4640-95ec-e00a01b2c241", displayName: "Build" },
+    settings: { manualQueueOnly: true },
+  },
+});
+
+it.effect(
+  "exposes restart in both metadata surfaces for queued builds without context buildStatus",
+  () =>
+    Effect.gen(function* () {
+      const tools = fixture(
+        {},
+        undefined,
+        undefined,
+        [],
+        undefined,
+        [
+          buildPolicy({
+            buildId: 4239,
+            buildStartedUtc: "2026-10-26T20:26:01.2215193Z",
+            isExpired: true,
+            buildIsNotCurrent: false,
+          }),
+        ],
+        { status: "notStarted" },
+      );
+      const checks = yield* tools.checks({ ...target, iterationId: 1 });
+      expect(checks.checks[0]).toMatchObject({
+        requeueEvaluationId: "build-evaluation",
+        buildAction: "restart",
+        status: "pending",
+      });
+      expect(checks.checks[0]?.buildExpired).toBeUndefined();
+      expect(checks.checks[0]?.url).toContain("buildId=4239");
+      expect((yield* tools.details(target)).policies[0]).toMatchObject({
+        requeueable: true,
+        buildAction: "restart",
+      });
+    }),
+);
+
+it.effect("exposes restart for running builds in policy menu metadata", () =>
+  Effect.gen(function* () {
+    const tools = fixture(
+      {},
+      undefined,
+      undefined,
+      [],
+      undefined,
+      [buildPolicy({ buildId: 4239 }, "running")],
+      { status: "inProgress" },
+    );
+    expect((yield* tools.details(target)).policies[0]).toMatchObject({
+      requeueable: true,
+      buildAction: "restart",
+    });
+  }),
+);
+
+it.effect("rechecks build state and refuses stale requeue before PATCH", () =>
+  Effect.gen(function* () {
+    const state = { status: "completed" };
+    const tools = fixture(
+      {},
+      undefined,
+      undefined,
+      [],
+      undefined,
+      [buildPolicy({ buildId: 4239 })],
+      state,
+    );
+    expect(
+      (yield* tools.checks({ ...target, iterationId: 1 })).checks[0]?.requeueEvaluationId,
+    ).toBe("build-evaluation");
+    for (const status of ["notStarted", "inProgress"]) {
+      state.status = status;
+      const error = yield* Effect.flip(
+        tools.run({
+          ...target,
+          action: { type: "requeue-policy", evaluationId: "build-evaluation" },
+        }),
+      );
+      expect(error).toMatchObject({ reason: "policy-not-requeueable" });
+      expect(tools.writes).toHaveLength(0);
+      yield* tools.run({
+        ...target,
+        action: { type: "requeue-policy", evaluationId: "build-evaluation", restart: true },
+      });
+      expect(tools.writes).toHaveLength(1);
+      tools.writes.length = 0;
+    }
+  }),
+);
+
+it.effect(
+  "tracks actual build transitions without treating expired queued policies as queued builds",
+  () =>
+    Effect.gen(function* () {
+      const state = { status: "notStarted" };
+      const tools = fixture(
+        {},
+        undefined,
+        undefined,
+        [],
+        undefined,
+        [buildPolicy({ buildId: 4239, isExpired: true })],
+        state,
+      );
+      for (const status of [
+        "notStarted",
+        "inProgress",
+        "cancelling",
+        "postponed",
+        "none",
+        "futureState",
+        "completed",
+      ]) {
+        state.status = status;
+        const available = ["completed", "notStarted", "inProgress"].includes(status);
+        const buildAction = status === "completed" ? "requeue" : available ? "restart" : undefined;
+        const check = (yield* tools.checks({ ...target, iterationId: 1 })).checks[0];
+        expect(check?.policyEvaluationId).toBe("build-evaluation");
+        expect(!!check?.requeueEvaluationId).toBe(available);
+        expect(check?.status).toBe(status === "completed" ? "action-required" : "pending");
+        expect(check?.buildAction).toBe(buildAction);
+        expect(check?.buildExpired).toBe(status === "completed" ? true : undefined);
+        expect((yield* tools.details(target)).policies[0]?.requeueable).toBe(available);
+        if (!available) {
+          yield* Effect.flip(
+            tools.run({
+              ...target,
+              action: { type: "requeue-policy", evaluationId: "build-evaluation" },
+            }),
+          );
+        }
+      }
+      expect(tools.writes).toHaveLength(0);
+    }),
+);
+
+it.effect("permits never-run manual validation but hides unknown or inactive policies", () =>
+  Effect.gen(function* () {
+    const manual = fixture({}, undefined, undefined, [], undefined, [buildPolicy()]);
+    expect(
+      (yield* manual.checks({ ...target, iterationId: 1 })).checks[0]?.requeueEvaluationId,
+    ).toBe("build-evaluation");
+    expect((yield* manual.details(target)).policies[0]?.requeueable).toBe(true);
+    yield* manual.run({
+      ...target,
+      action: { type: "requeue-policy", evaluationId: "build-evaluation" },
+    });
+    expect(manual.writes).toHaveLength(1);
+    expect(manual.commands.filter((args) => args[0] === "pipelines")).toHaveLength(0);
+    for (const status of ["notApplicable", "unknown"]) {
+      const tools = fixture({}, undefined, undefined, [], undefined, [
+        buildPolicy({ buildId: 4239 }, status),
+      ]);
+      expect(
+        (yield* tools.checks({ ...target, iterationId: 1 })).checks[0]?.requeueEvaluationId,
+      ).toBeUndefined();
+      yield* Effect.flip(
+        tools.run({
+          ...target,
+          action: { type: "requeue-policy", evaluationId: "build-evaluation" },
+        }),
+      );
+      expect(tools.writes).toHaveLength(0);
+    }
+    const closed = fixture({ status: "completed" }, undefined, undefined, [], undefined, [
+      buildPolicy({ buildId: 4239 }),
+    ]);
+    expect((yield* closed.details(target)).policies[0]?.requeueable).toBe(false);
+    expect(
+      yield* Effect.flip(
+        closed.run({
+          ...target,
+          action: { type: "requeue-policy", evaluationId: "build-evaluation" },
+        }),
+      ),
+    ).toMatchObject({ reason: "inactive" });
+    expect(closed.commands.filter((args) => args[0] === "pipelines")).toHaveLength(0);
+    expect(closed.writes).toHaveLength(0);
+  }),
+);
+
+it.effect(
+  "keeps PR metadata readable on build read failure but propagates the typed action error",
+  () =>
+    Effect.gen(function* () {
+      const error = new AzureDevOpsPullRequestReadError({
+        cwd: target.cwd,
+        command: "az",
+        operation: "build read",
+        reason: "permission-denied",
+        cause: "denied",
+      });
+      const tools = fixture(
+        {},
+        undefined,
+        undefined,
+        [],
+        undefined,
+        [buildPolicy({ buildId: 4239 })],
+        { error },
+      );
+      const check = (yield* tools.checks({ ...target, iterationId: 1 })).checks[0];
+      expect(check?.policyEvaluationId).toBe("build-evaluation");
+      expect(check?.requeueEvaluationId).toBeUndefined();
+      expect(check?.url).toContain("buildId=4239");
+      const details = yield* tools.details(target);
+      expect(details.policies[0]?.requeueable).toBe(false);
+      expect(details.warnings).toContain("Build requeue availability could not be read.");
+      expect(
+        yield* Effect.flip(
+          tools.run({
+            ...target,
+            action: { type: "requeue-policy", evaluationId: "build-evaluation" },
+          }),
+        ),
+      ).toBe(error);
+      expect(tools.writes).toHaveLength(0);
+    }),
+);
+
+it.effect("hides unreadable build responses and rejects their actions without PATCH", () =>
+  Effect.gen(function* () {
+    const tools = fixture(
+      {},
+      undefined,
+      undefined,
+      [],
+      undefined,
+      [buildPolicy({ buildId: 4239 })],
+      { status: null },
+    );
+    const check = (yield* tools.checks({ ...target, iterationId: 1 })).checks[0];
+    expect(check?.policyEvaluationId).toBe("build-evaluation");
+    expect(check?.requeueEvaluationId).toBeUndefined();
+    expect((yield* tools.details(target)).policies[0]?.requeueable).toBe(false);
+    expect(
+      yield* Effect.flip(
+        tools.run({
+          ...target,
+          action: { type: "requeue-policy", evaluationId: "build-evaluation" },
+        }),
+      ),
+    ).toBeInstanceOf(AzureDevOpsPullRequestReadError);
+    expect(tools.writes).toHaveLength(0);
+  }),
+);
+
+it.effect("deduplicates build reads and never reads builds for non-Build policies", () =>
+  Effect.gen(function* () {
+    const rows = [
+      buildPolicy({ buildId: 4239 }),
+      { ...buildPolicy({ buildId: 4239 }), evaluationId: "second" },
+    ];
+    const tools = fixture({}, undefined, undefined, [], undefined, rows);
+    yield* tools.checks({ ...target, iterationId: 1 });
+    expect(tools.commands.filter((args) => args[0] === "pipelines")).toEqual([
+      ["pipelines", "build", "show", "--detect", "true", "--project", "example", "--id", "4239"],
+    ]);
+    yield* tools.details(target);
+    expect(tools.commands.filter((args) => args[0] === "pipelines")).toHaveLength(2);
+    const other = fixture({}, undefined, undefined, [], undefined, [
+      {
+        ...buildPolicy({ buildId: 4239 }),
+        configuration: { id: 7, type: { id: "other", displayName: "Other" } },
+      },
+    ]);
+    yield* other.checks({ ...target, iterationId: 1 });
+    yield* other.details(target);
+    expect(other.commands.filter((args) => args[0] === "pipelines")).toHaveLength(0);
+  }),
+);
+
 it.effect("exposes an expired Build policy with its run and requeue evaluation", () =>
   Effect.gen(function* () {
     const tools = fixture(
@@ -246,28 +533,29 @@ it.effect("refuses requeue for a foreign or non-Build evaluation", () =>
     expect(tools.writes).toHaveLength(0);
   }),
 );
-it.effect("requeues a running Build evaluation through the preview policy PATCH", () =>
+it.effect("requeues a completed Build evaluation through the preview policy PATCH", () =>
   Effect.gen(function* () {
-    const running = fixture({}, undefined, undefined, [], undefined, [
+    const completed = fixture({}, undefined, undefined, [], undefined, [
       {
-        evaluationId: "running-build",
-        status: "running",
+        evaluationId: "finished-build",
+        status: "approved",
+        context: { buildId: 4239 },
         configuration: {
           id: 7,
           type: { id: "0609b952-1397-4640-95ec-e00a01b2c241", displayName: "Build" },
         },
       },
     ]);
-    yield* running.run({
+    yield* completed.run({
       ...target,
-      action: { type: "requeue-policy", evaluationId: "running-build" },
+      action: { type: "requeue-policy", evaluationId: "finished-build" },
     });
-    expect(running.writes).toEqual([
+    expect(completed.writes).toEqual([
       expect.objectContaining({
         area: "policy",
         resource: "evaluations",
         method: "PATCH",
-        routeParameters: ["project=example", "evaluationId=running-build"],
+        routeParameters: ["project=example", "evaluationId=finished-build"],
       }),
     ]);
   }),
@@ -291,7 +579,7 @@ it.effect("keeps queued and active builds pending and omits links without a buil
       const result = yield* tools.checks({ ...target, iterationId: 1 });
       expect(result.checks[0]).toMatchObject({ status: "pending", url: null });
       expect(result.checks[0]?.buildExpired).toBeUndefined();
-      expect(result.checks[0]?.requeueEvaluationId).toBe("build-evaluation");
+      expect(result.checks[0]?.requeueEvaluationId).toBeUndefined();
       expect(result.checks[0]?.kind).toBe("azure-build");
     }
     const approved = fixture({}, undefined, undefined, [], undefined, [
@@ -418,6 +706,7 @@ it.effect(
           configuration: {
             id: 7,
             type: { id: "0609b952-1397-4640-95ec-e00a01b2c241", displayName: "Build" },
+            settings: { manualQueueOnly: true },
           },
         },
       ]);
@@ -631,7 +920,8 @@ it.effect("addresses caller-supplied route values by their encoded value", () =>
     const tools = fixture({}, undefined, undefined, [], undefined, [
       {
         evaluationId: "../../_apis/x?y",
-        status: "queued",
+        status: "approved",
+        context: { buildId: 4239 },
         configuration: {
           id: 7,
           type: { id: "0609b952-1397-4640-95ec-e00a01b2c241", displayName: "Build" },

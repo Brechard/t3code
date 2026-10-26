@@ -66,7 +66,8 @@ const refusalDetails = {
   "already-applied-suggestion": "This suggestion is already present in the source file.",
   "reviewer-ineligible":
     "Only an optional reviewer with no vote can decline. Authors cannot decline or flag their own review.",
-  "policy-not-requeueable": "Only a Build policy evaluation on this pull request can be requeued.",
+  "policy-not-requeueable":
+    "This Build policy cannot currently be requeued. Refresh the pull request.",
   "draft-vote": "Publish this draft before voting.",
   "draft-completion": "Publish this draft before completing it.",
   "not-completed": "Only a completed pull request can be reverted.",

@@ -118,6 +118,8 @@ export const PullRequestCheckStatus = Schema.Literals([
 ]);
 export type PullRequestCheckStatus = typeof PullRequestCheckStatus.Type;
 
+export const AzureBuildAction = Schema.Literals(["requeue", "restart"]);
+
 export const PullRequestCheck = Schema.Struct({
   name: TrimmedNonEmptyString,
   kind: Schema.optional(Schema.Literal("azure-build")),
@@ -125,6 +127,8 @@ export const PullRequestCheck = Schema.Struct({
   description: Schema.NullOr(Schema.String),
   url: Schema.NullOr(Schema.String),
   required: Schema.optional(Schema.Boolean),
+  buildAction: Schema.optional(AzureBuildAction),
+  policyEvaluationId: Schema.optional(TrimmedNonEmptyString),
   requeueEvaluationId: Schema.optional(TrimmedNonEmptyString),
   buildExpired: Schema.optional(Schema.Boolean),
 });

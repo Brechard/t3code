@@ -81,7 +81,9 @@ function ChecksBody({
   const openLink = useOpenLink(threadRef);
   const { attention, running, completed } = groupPullRequestChecks(checks);
   const visibleChecks = [...attention, ...running, ...completed];
-  const hasActions = visibleChecks.some((check) => check.url !== null || check.requeueEvaluationId);
+  const hasActions = visibleChecks.some(
+    (check) => check.url !== null || check.requeueEvaluationId || check.policyEvaluationId,
+  );
   if (checks.length === 0) {
     return <p className="text-muted-foreground text-xs">No checks reported</p>;
   }
@@ -95,54 +97,56 @@ function ChecksBody({
             : "grid-cols-[auto_minmax(0,1fr)_auto]",
         )}
       >
-        {visibleChecks.map(
-          (check, index) => (
-            /* oxlint-disable react/no-array-index-key -- Check names can repeat; these status rows have no local state. */ <li
-              key={`${index}:${check.name}`}
-              className="col-span-full grid grid-cols-subgrid items-center text-xs"
-            >
-              <PullRequestCheckStatusIcon status={check.status} />
-              <Tooltip>
-                <TooltipTrigger render={<span className="min-w-0 truncate">{check.name}</span>} />
-                <TooltipPopup side="top">{check.description ?? check.name}</TooltipPopup>
-              </Tooltip>
-              <span className="justify-self-end whitespace-nowrap text-muted-foreground">
-                {pullRequestCheckStatusLabel(check)}
-              </span>
-              {hasActions ? (
-                <span className="flex items-center justify-end gap-2 whitespace-nowrap">
-                  {detail?.capabilities.hostActions && environmentId && reference ? (
-                    <AzureBuildRequeueButton
-                      check={check}
-                      environmentId={environmentId}
-                      reference={reference}
-                      active={detail.state === "open"}
-                      reason={detail.viewerPermissions.deniedActions?.["requeue-policy"]}
-                    />
-                  ) : null}
-                  {check.url === null ? null : (
-                    <button
-                      type="button"
-                      className="text-primary hover:underline"
-                      onClick={() => {
-                        if (!check.url) return;
-                        void openLink(check.url).catch((error: unknown) => {
-                          console.error(error);
-                          toastManager.add({
-                            type: "error",
-                            title: "Unable to open check details",
-                          });
+        {visibleChecks.map((check, index) => (
+          /* Legacy checks have no stable identity and names can repeat. */ <li
+            key={
+              check.kind === "azure-build" && check.policyEvaluationId
+                ? `azure-build:${check.policyEvaluationId}`
+                : `${index}:${check.name}`
+            }
+            className="col-span-full grid grid-cols-subgrid items-center text-xs"
+          >
+            <PullRequestCheckStatusIcon status={check.status} />
+            <Tooltip>
+              <TooltipTrigger render={<span className="min-w-0 truncate">{check.name}</span>} />
+              <TooltipPopup side="top">{check.description ?? check.name}</TooltipPopup>
+            </Tooltip>
+            <span className="justify-self-end whitespace-nowrap text-muted-foreground">
+              {pullRequestCheckStatusLabel(check)}
+            </span>
+            {hasActions ? (
+              <span className="flex items-center justify-end gap-2 whitespace-nowrap">
+                {detail?.capabilities.hostActions && environmentId && reference ? (
+                  <AzureBuildRequeueButton
+                    check={check}
+                    environmentId={environmentId}
+                    reference={reference}
+                    active={detail.state === "open"}
+                    reason={detail.viewerPermissions.deniedActions?.["requeue-policy"]}
+                  />
+                ) : null}
+                {check.url === null ? null : (
+                  <button
+                    type="button"
+                    className="text-primary hover:underline"
+                    onClick={() => {
+                      if (!check.url) return;
+                      void openLink(check.url).catch((error: unknown) => {
+                        console.error(error);
+                        toastManager.add({
+                          type: "error",
+                          title: "Unable to open check details",
                         });
-                      }}
-                    >
-                      {check.kind === "azure-build" ? "Open build" : "Details"}
-                    </button>
-                  )}
-                </span>
-              ) : null}
-            </li>
-          ) /* oxlint-enable react/no-array-index-key */,
-        )}
+                      });
+                    }}
+                  >
+                    {check.kind === "azure-build" ? "Open build" : "Details"}
+                  </button>
+                )}
+              </span>
+            ) : null}
+          </li>
+        ))}
       </ul>
     </ScrollArea>
   );

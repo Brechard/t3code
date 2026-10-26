@@ -23,27 +23,38 @@ export function AzureBuildRequeueButton({
   );
   const run = useAtomCommand(composerPullRequests.runHostAction, { reportFailure: false });
   const pending = useRef(false);
-  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<PullRequestCheck["buildAction"]>();
+  const busy = busyAction !== undefined;
+  const restart = (busyAction ?? check.buildAction) === "restart";
   const evaluationId = check.requeueEvaluationId;
-  if (!evaluationId || !pr.capabilities.hostActions) return null;
   const reason = pr.viewerPermissions.deniedActions?.["requeue-policy"];
+  if (
+    !busy &&
+    (!evaluationId || !pr.capabilities.hostActions || !allowed || reason || pr.state !== "open")
+  )
+    return null;
   return (
     <PullRequestPermissionButton
       tone="primary"
       reason={reason}
-      label={busy ? "Requeueing…" : "Requeue"}
+      label={restart ? (busy ? "Restarting…" : "Restart build") : busy ? "Requeueing…" : "Requeue"}
       disabled={busy || !allowed || pr.state !== "open"}
       onPress={() => {
-        if (pending.current || busy || !allowed || reason || pr.state !== "open") return;
+        if (!evaluationId || pending.current || busy || !allowed || reason || pr.state !== "open")
+          return;
         pending.current = true;
-        setBusy(true);
+        setBusyAction(check.buildAction ?? "requeue");
         void Promise.resolve()
           .then(() =>
             run({
               ...target,
               input: {
                 ...target.input,
-                action: { type: "requeue-policy", evaluationId },
+                action: {
+                  type: "requeue-policy",
+                  evaluationId,
+                  ...(restart ? { restart: true } : {}),
+                },
               },
             }),
           )
@@ -59,7 +70,7 @@ export function AzureBuildRequeueButton({
           )
           .finally(() => {
             pending.current = false;
-            setBusy(false);
+            setBusyAction(undefined);
           });
       }}
     />

@@ -24,9 +24,11 @@ export function AzureBuildRequeueButton({
   const allowed = useAtomValue(pullRequestEnvironment.runHostAction.permissionAtom(environmentId));
   const run = useAtomCommand(pullRequestEnvironment.runHostAction, { reportFailure: false });
   const pending = useRef(false);
-  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<PullRequestCheck["buildAction"]>();
+  const busy = busyAction !== undefined;
+  const restart = (busyAction ?? check.buildAction) === "restart";
   const evaluationId = check.requeueEvaluationId;
-  if (!evaluationId) return null;
+  if (!busy && (!evaluationId || !active || !allowed || reason)) return null;
   return (
     <PullRequestPermissionButton
       reason={reason}
@@ -34,16 +36,20 @@ export function AzureBuildRequeueButton({
       variant="default"
       disabled={!active || !allowed || busy}
       onClick={() => {
-        if (pending.current || busy || !active || !allowed || reason) return;
+        if (!evaluationId || pending.current || busy || !active || !allowed || reason) return;
         pending.current = true;
-        setBusy(true);
+        setBusyAction(check.buildAction ?? "requeue");
         void Promise.resolve()
           .then(() =>
             run({
               environmentId,
               input: {
                 ...reference,
-                action: { type: "requeue-policy", evaluationId },
+                action: {
+                  type: "requeue-policy",
+                  evaluationId,
+                  ...(restart ? { restart: true } : {}),
+                },
               },
             }),
           )
@@ -59,11 +65,11 @@ export function AzureBuildRequeueButton({
           )
           .finally(() => {
             pending.current = false;
-            setBusy(false);
+            setBusyAction(undefined);
           });
       }}
     >
-      {busy ? "Requeueing…" : "Requeue"}
+      {restart ? (busy ? "Restarting…" : "Restart build") : busy ? "Requeueing…" : "Requeue"}
     </PullRequestPermissionButton>
   );
 }

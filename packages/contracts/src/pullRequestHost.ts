@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 import { PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
-import { PullRequestRef } from "./pullRequest.ts";
+import { AzureBuildAction, PullRequestRef } from "./pullRequest.ts";
 
 export const AzureDevOpsReviewVote = Schema.Literals([
   "approve",
@@ -77,7 +77,11 @@ export const PullRequestHostAction = Schema.Union([
     waitForOptionalPolicies: Schema.Boolean,
   }),
   Schema.Struct({ type: Schema.Literal("restart-merge") }),
-  Schema.Struct({ type: Schema.Literal("requeue-policy"), evaluationId: TrimmedNonEmptyString }),
+  Schema.Struct({
+    type: Schema.Literal("requeue-policy"),
+    evaluationId: TrimmedNonEmptyString,
+    restart: Schema.optional(Schema.Boolean),
+  }),
   Schema.Struct({
     type: Schema.Literal("cherry-pick"),
     targetBranch: BranchName,
@@ -131,6 +135,7 @@ export const PullRequestHostDetails = Schema.Struct({
       status: Schema.String,
       required: Schema.Boolean,
       url: Schema.NullOr(Schema.String),
+      buildAction: Schema.optional(AzureBuildAction),
       requeueable: Schema.optional(Schema.Boolean),
     }),
   ),

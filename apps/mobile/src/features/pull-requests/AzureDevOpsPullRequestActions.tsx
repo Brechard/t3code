@@ -262,6 +262,7 @@ function Actions({ pr, params, children }: ActionsProps) {
         loading={query.isPending}
         denied={denied}
         disabled={disabled}
+        allowed={allowed}
         feedback={feedback}
         operate={operate}
         hostAction={hostAction}
@@ -280,6 +281,7 @@ function AzureActionSheet({
   loading,
   denied,
   disabled,
+  allowed,
   feedback,
   operate,
   hostAction,
@@ -292,6 +294,7 @@ function AzureActionSheet({
   loading: boolean;
   denied: Readonly<Record<string, string | undefined>>;
   disabled: boolean;
+  allowed: boolean;
   feedback: ReactNode;
   operate: (run: () => Promise<unknown>) => Promise<void>;
   hostAction: (action: PullRequestHostAction) => Promise<void>;
@@ -309,8 +312,16 @@ function AzureActionSheet({
   const [completion, setCompletion] = useState(emptyAzureCompletionDraft);
   const [shareReceivers, setShareReceivers] = useState("");
   const [shareMessage, setShareMessage] = useState("");
+  const [pendingBuild, setPendingBuild] = useState<Extract<
+    PullRequestHostAction,
+    { type: "requeue-policy" }
+  > | null>(null);
+  const execute = (action: PullRequestHostAction) =>
+    operate(() => {
+      if (action.type === "requeue-policy") setPendingBuild(action);
+      return hostAction(action).finally(() => setPendingBuild(null));
+    });
   if (section === null) return null;
-  const execute = (action: PullRequestHostAction) => operate(() => hostAction(action));
   const active = pr.state === "open";
   const allowedStrategies = details?.allowedMergeStrategies;
   const options = azureCompletionOptions(completion, allowedStrategies, pr.autoMergeMethod);
@@ -594,14 +605,27 @@ function AzureActionSheet({
                         }}
                       />
                     ) : null}
-                    {policy.requeueable ? (
+                    {pendingBuild?.evaluationId === policy.id ||
+                    (policy.requeueable && active && allowed && !denied["requeue-policy"]) ? (
                       <PullRequestPermissionButton
                         tone="text"
                         reason={denied["requeue-policy"]}
-                        label="Requeue"
+                        label={
+                          pendingBuild?.evaluationId === policy.id
+                            ? pendingBuild.restart
+                              ? "Restarting…"
+                              : "Requeueing…"
+                            : policy.buildAction === "restart"
+                              ? "Restart build"
+                              : "Requeue"
+                        }
                         disabled={disabled || !active}
                         onPress={() =>
-                          void execute({ type: "requeue-policy", evaluationId: policy.id })
+                          void execute({
+                            type: "requeue-policy",
+                            evaluationId: policy.id,
+                            ...(policy.buildAction === "restart" ? { restart: true } : {}),
+                          })
                         }
                       />
                     ) : null}

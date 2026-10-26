@@ -313,7 +313,8 @@ layer("AzureDevOpsPullRequestCli.layer", (it) => {
                 ? [
                     {
                       evaluationId: "evaluation",
-                      status: "running",
+                      status: "approved",
+                      context: { buildId: 4239 },
                       configuration: {
                         id: 7,
                         type: {
@@ -323,18 +324,20 @@ layer("AzureDevOpsPullRequestCli.layer", (it) => {
                       },
                     },
                   ]
-                : input.args.includes("show")
-                  ? {
-                      pullRequestId: 42,
-                      status: "active",
-                      repository: {
-                        id: "repo",
-                        webUrl: "https://dev.azure.com/a/p/_git/web",
-                        project: { id: "project" },
-                      },
-                      reviewers: [],
-                    }
-                  : { value: [] },
+                : input.args[0] === "pipelines"
+                  ? { status: "completed" }
+                  : input.args.includes("show")
+                    ? {
+                        pullRequestId: 42,
+                        status: "active",
+                        repository: {
+                          id: "repo",
+                          webUrl: "https://dev.azure.com/a/p/_git/web",
+                          project: { id: "project" },
+                        },
+                        reviewers: [],
+                      }
+                    : { value: [] },
             ),
           ),
         ),

@@ -160,7 +160,13 @@ export function PullRequestChecksRow(props: RowProps) {
               const status = checkStatus(check);
               const url = check.url;
               return (
-                <View key={`${check.name}:${url}`}>
+                <View
+                  key={
+                    check.kind === "azure-build" && check.policyEvaluationId
+                      ? `azure-build:${check.policyEvaluationId}`
+                      : `${check.name}:${url}`
+                  }
+                >
                   <PullRequestCardRow
                     title={check.name}
                     icon={status.icon}
@@ -169,7 +175,8 @@ export function PullRequestChecksRow(props: RowProps) {
                     detail={check.description ?? undefined}
                     onPress={url ? () => void Linking.openURL(url) : undefined}
                   />
-                  {check.kind === "azure-build" && (check.requeueEvaluationId || url) ? (
+                  {check.kind === "azure-build" &&
+                  (check.policyEvaluationId || check.requeueEvaluationId || url) ? (
                     <View className="flex-row flex-wrap gap-2 px-4 pb-2">
                       <AzureBuildRequeueButton check={check} pr={props.pr} params={props.params} />
                       {url ? (

@@ -22,10 +22,23 @@ it("carries Azure Build check metadata and accepts older check payloads", () => 
   const build = {
     ...basic,
     kind: "azure-build" as const,
+    policyEvaluationId: "evaluation",
     requeueEvaluationId: "evaluation",
     buildExpired: true,
+    buildAction: "requeue" as const,
   };
   expect(decode(encode(build))).toEqual(build);
+  const unavailable = { ...basic, kind: "azure-build" as const, policyEvaluationId: "evaluation" };
+  expect(decode(encode(unavailable))).toEqual(unavailable);
+});
+
+it("round-trips optional restart intent and accepts completed-only legacy actions", () => {
+  const codec = Schema.toCodecJson(PullRequestHostAction);
+  const decode = Schema.decodeSync(codec);
+  const encode = Schema.encodeSync(codec);
+  const action = { type: "requeue-policy" as const, evaluationId: "evaluation" };
+  expect(decode(encode(action))).toEqual(action);
+  expect(decode(encode({ ...action, restart: true }))).toEqual({ ...action, restart: true });
 });
 
 it("carries reply targets through the comment wire codec and accepts older comments", () => {

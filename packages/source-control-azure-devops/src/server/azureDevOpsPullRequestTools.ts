@@ -140,6 +140,7 @@ const decoders = {
   favorites: decodeJsonResult(Schema.Struct({ value: Schema.Array(Favorite) })),
   labels: decodeJsonResult(Schema.Struct({ value: Schema.Array(Label) })),
   policies: decodeJsonResult(Schema.Array(Policy)),
+  build: decodeJsonResult(Schema.Struct({ status: Schema.String })),
   attachment: decodeJsonResult(Attachment),
   user: decodeJsonResult(Schema.Struct({ id: Schema.String })),
   attachments: decodeJsonResult(Schema.Struct({ value: Schema.Array(Attachment) })),
@@ -192,13 +193,27 @@ const MERGE_TYPE_POLICY = "fa4e907d-c16b-4a4c-9dfa-4916e5d171ab";
 const BUILD_POLICY = "0609b952-1397-4640-95ec-e00a01b2c241";
 const isBuildPolicy = (policy: Schema.Schema.Type<typeof Policy>) =>
   policy.configuration.type.id?.toLowerCase() === BUILD_POLICY;
-const isRunningBuildPolicy = (policy: Schema.Schema.Type<typeof Policy>) => {
-  const buildStatus = policy.context?.buildStatus;
-  return (
-    policy.status === "running" ||
-    (typeof buildStatus === "string" &&
-      ["running", "inprogress"].includes(buildStatus.toLowerCase()))
-  );
+const policyBuildId = (policy: Schema.Schema.Type<typeof Policy>) => {
+  const id = policy.context?.buildId;
+  return typeof id === "number" && Number.isSafeInteger(id) && id > 0 ? id : null;
+};
+const policyBuildAction = (policy: Schema.Schema.Type<typeof Policy>, buildStatus?: string) => {
+  if (
+    !isBuildPolicy(policy) ||
+    !policy.evaluationId ||
+    !["queued", "running", "approved", "rejected", "broken"].includes(policy.status ?? "")
+  )
+    return undefined;
+  if (policy.context?.buildId != null) {
+    if (policyBuildId(policy) === null) return undefined;
+    if (buildStatus === "notStarted" || buildStatus === "inProgress") return "restart" as const;
+    return buildStatus === "completed" ? ("requeue" as const) : undefined;
+  }
+  return policy.status === "queued" &&
+    policy.configuration.settings?.manualQueueOnly === true &&
+    policy.context?.buildStatus == null
+    ? ("requeue" as const)
+    : undefined;
 };
 const policyName = (policy: Schema.Schema.Type<typeof Policy>) =>
   isBuildPolicy(policy) &&
@@ -216,32 +231,35 @@ function buildRunUrl(pullRequestUrl: string, buildId: unknown): string | null {
 function policyCheck(
   item: Schema.Schema.Type<typeof Policy>,
   pullRequestUrl: string,
+  buildAction: PullRequestCheck["buildAction"],
 ): PullRequestCheck {
   const build = isBuildPolicy(item);
   const expired =
     build &&
     item.status === "queued" &&
     (item.context?.isExpired === true || item.context?.buildIsNotCurrent === true) &&
-    !isRunningBuildPolicy(item);
+    buildAction === "requeue";
   return {
     name: policyName(item),
-    ...(build ? { kind: "azure-build" as const } : {}),
+    ...(build ? { kind: "azure-build" as const, policyEvaluationId: item.evaluationId } : {}),
     required: item.configuration.isBlocking === true,
     description: expired
       ? "Build validation expired. Requeue to run it again."
       : `Branch policy: ${item.status ?? "unknown"}`,
     url: build ? buildRunUrl(pullRequestUrl, item.context?.buildId) : null,
-    ...(build && item.evaluationId ? { requeueEvaluationId: item.evaluationId } : {}),
+    ...(buildAction ? { requeueEvaluationId: item.evaluationId, buildAction } : {}),
     ...(expired ? { buildExpired: true } : {}),
     status: expired
       ? "action-required"
-      : item.status === "approved"
-        ? "success"
-        : item.status === "rejected" || item.status === "broken"
-          ? "failure"
-          : item.status === "notApplicable"
-            ? "skipped"
-            : "pending",
+      : buildAction === "restart"
+        ? "pending"
+        : item.status === "approved"
+          ? "success"
+          : item.status === "rejected" || item.status === "broken"
+            ? "failure"
+            : item.status === "notApplicable"
+              ? "skipped"
+              : "pending",
   };
 }
 const MERGE_TYPE_SETTINGS = {
@@ -410,6 +428,67 @@ export function makeAzureDevOpsPullRequestTools(deps: {
       ["repos", "pr", "policy", "list", "--detect", "true", "--id", String(target.number)],
       decoders.policies,
     );
+  const buildStatus = Effect.fn("AzureDevOpsPullRequestTools.buildStatus")(function* (
+    target: Target,
+    buildId: number,
+  ) {
+    return (yield* read(
+      target,
+      [
+        "pipelines",
+        "build",
+        "show",
+        "--detect",
+        "true",
+        "--project",
+        target.location.project,
+        "--id",
+        String(buildId),
+      ],
+      decoders.build,
+    )).status;
+  });
+  const requeueablePolicies = Effect.fn("AzureDevOpsPullRequestTools.requeueablePolicies")(
+    function* (target: Target, items: ReadonlyArray<Schema.Schema.Type<typeof Policy>>) {
+      const ids = [
+        ...new Set(
+          items.filter(isBuildPolicy).flatMap((item) => {
+            const id = policyBuildId(item);
+            return id === null ? [] : [id];
+          }),
+        ),
+      ];
+      const states = new Map(
+        yield* Effect.forEach(
+          ids,
+          (id) =>
+            buildStatus(target, id).pipe(
+              Effect.result,
+              Effect.map((result) => [id, result] as const),
+            ),
+          { concurrency: 3 },
+        ),
+      );
+      const failures = [...states.values()].filter(Result.isFailure);
+      for (const result of failures)
+        yield* Effect.logWarning("Build requeue availability could not be read.").pipe(
+          Effect.annotateLogs({ errorTag: result.failure._tag }),
+        );
+      return {
+        evaluations: new Map(
+          items.flatMap((item) => {
+            const state = states.get(policyBuildId(item) ?? -1);
+            const action = policyBuildAction(
+              item,
+              state && Result.isSuccess(state) ? state.success : undefined,
+            );
+            return action ? [[item.evaluationId, action] as const] : [];
+          }),
+        ),
+        incomplete: failures.length > 0,
+      };
+    },
+  );
   const mergeStrategies = (target: Target) =>
     policies(target).pipe(Effect.map(allowedMergeStrategies));
   const checks = (
@@ -445,25 +524,36 @@ export function makeAzureDevOpsPullRequestTools(deps: {
       ],
       { concurrency: 2 },
     ).pipe(
-      Effect.map(([items, statuses]) => ({
-        allowedMergeStrategies: allowedMergeStrategies(items),
-        checks: [
-          ...items.map((item) => policyCheck(item, target.pullRequestUrl)),
-          ...currentStatuses(statuses.value, target.iterationId).map((status) => ({
-            name: [status.context.genre, status.context.name].filter(Boolean).join(" / "),
-            description: status.description ?? null,
-            url: status.targetUrl ?? null,
-            status:
-              status.state === "succeeded"
-                ? ("success" as const)
-                : status.state === "failed" || status.state === "error"
-                  ? ("failure" as const)
-                  : status.state === "notApplicable"
-                    ? ("skipped" as const)
-                    : ("pending" as const),
-          })),
-        ],
-      })),
+      Effect.flatMap(
+        Effect.fn("AzureDevOpsPullRequestTools.checks")(function* ([items, statuses]) {
+          const available = yield* requeueablePolicies(target, items);
+          return {
+            allowedMergeStrategies: allowedMergeStrategies(items),
+            checks: [
+              ...items.map((item) =>
+                policyCheck(
+                  item,
+                  target.pullRequestUrl,
+                  available.evaluations.get(item.evaluationId),
+                ),
+              ),
+              ...currentStatuses(statuses.value, target.iterationId).map((status) => ({
+                name: [status.context.genre, status.context.name].filter(Boolean).join(" / "),
+                description: status.description ?? null,
+                url: status.targetUrl ?? null,
+                status:
+                  status.state === "succeeded"
+                    ? ("success" as const)
+                    : status.state === "failed" || status.state === "error"
+                      ? ("failure" as const)
+                      : status.state === "notApplicable"
+                        ? ("skipped" as const)
+                        : ("pending" as const),
+              })),
+            ],
+          };
+        }),
+      ),
     );
   const subscription = (
     target: Target,
@@ -617,6 +707,8 @@ export function makeAzureDevOpsPullRequestTools(deps: {
       ],
       { concurrency: 3 },
     );
+    const available = yield* requeueablePolicies(target, pr.status === "active" ? checks : []);
+    if (available.incomplete) warnings.push("Build requeue availability could not be read.");
     const stringField = (item: Schema.Schema.Type<typeof WorkItem>, field: string) =>
       typeof item.fields?.[field] === "string" ? String(item.fields[field]) : "";
     return {
@@ -650,7 +742,10 @@ export function makeAzureDevOpsPullRequestTools(deps: {
         name: policyName(check),
         status: check.status ?? "unknown",
         required: check.configuration.isBlocking === true,
-        requeueable: isBuildPolicy(check),
+        requeueable: available.evaluations.has(check.evaluationId),
+        ...(available.evaluations.get(check.evaluationId)
+          ? { buildAction: available.evaluations.get(check.evaluationId) }
+          : {}),
         url: `${pr.repository.webUrl.split("/_git/")[0]}/_settings/repositories?repo=${encodeURIComponent(pr.repository.id)}&_a=policiesMid`,
       })),
       workItems: workItems.map((item) => ({
@@ -1072,13 +1167,19 @@ export function makeAzureDevOpsPullRequestTools(deps: {
         const evaluation = (yield* policies(input)).find(
           (policy) => policy.evaluationId === action.evaluationId,
         );
-        if (!evaluation || !isBuildPolicy(evaluation))
+        const id = evaluation ? policyBuildId(evaluation) : null;
+        const status =
+          evaluation && isBuildPolicy(evaluation) && id !== null
+            ? yield* buildStatus(input, id)
+            : undefined;
+        const buildAction = evaluation ? policyBuildAction(evaluation, status) : undefined;
+        if (!buildAction || (buildAction === "restart" && action.restart !== true))
           return yield* deps.failure({
             cwd: input.cwd,
             command: "az",
             operation: action.type,
             reason: "policy-not-requeueable",
-            cause: "This evaluation is not a Build policy on the current pull request.",
+            cause: "This Build policy cannot currently be requeued. Refresh the pull request.",
           });
         yield* deps.write({
           cwd: input.cwd,

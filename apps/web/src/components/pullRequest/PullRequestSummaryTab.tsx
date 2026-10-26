@@ -1045,9 +1045,13 @@ export function PullRequestSummaryTab({
             const failing = check.status === "failure" || check.status === "cancelled";
             const buildUrl = check.kind === "azure-build" ? check.url : null;
             return (
-              /* oxlint-disable react/no-array-index-key -- Host check names can repeat; rows have no local state. */
+              /* Legacy checks have no stable identity and names and URLs can repeat. */
               <div
-                key={`${index}:${check.name}:${check.url ?? ""}`}
+                key={
+                  check.kind === "azure-build" && check.policyEvaluationId
+                    ? `azure-build:${check.policyEvaluationId}`
+                    : `${index}:${check.name}:${check.url ?? ""}`
+                }
                 className="group flex items-center gap-2 rounded-md pr-1 hover:bg-accent/60"
               >
                 <button
