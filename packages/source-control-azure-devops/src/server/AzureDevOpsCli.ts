@@ -18,6 +18,7 @@ import {
   TrimmedNonEmptyString,
   type SourceControlRepositoryVisibility,
   type VcsError,
+  type VcsProcessExitFailureKind,
 } from "@t3tools/contracts";
 
 import * as SourceControlHost from "@t3tools/source-control-core/server/SourceControlHost";
@@ -423,7 +424,18 @@ function decodeAzureDevOpsJson<S extends Schema.Top>(
   );
 }
 
-/** @public Service construction is part of the canonical Effect module API. */
+const classifyAzFailure = (stderr: string): VcsProcessExitFailureKind | null => {
+  const normalized = stderr.toLowerCase();
+  if (normalized.includes("az devops login") || /please run '?az login'?/.test(normalized)) {
+    return "authentication";
+  }
+  return normalized.includes("pull request") &&
+    (normalized.includes("not found") || normalized.includes("does not exist"))
+    ? "not-found"
+    : null;
+};
+
+/** @public */
 export const make = Effect.gen(function* () {
   const { process } = yield* SourceControlHost.SourceControlHost;
 
@@ -434,6 +446,8 @@ export const make = Effect.gen(function* () {
         command: "az",
         args: input.args,
         cwd: input.cwd,
+        classifyFailure: classifyAzFailure,
+        notFoundDetail: "Pull request not found.",
         timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         ...(input.maxOutputBytes === undefined ? {} : { maxOutputBytes: input.maxOutputBytes }),
       })
@@ -583,18 +597,19 @@ export const make = Effect.gen(function* () {
     patchPullRequest,
     authenticatedIdentity,
     resolveIdentities,
-    pullRequestContext: (input) =>
-      encodeSdkRequest(input).pipe(
+    pullRequestContext: Effect.fn("AzureDevOpsCli.pullRequestContext")(function (input) {
+      return encodeSdkRequest(input).pipe(
         Effect.orDie,
         Effect.flatMap((stdin) =>
           runSdk({ cwd: input.cwd, script: PULL_REQUEST_CONTEXT_SCRIPT, stdin }),
         ),
-      ),
+      );
+    }),
     notificationSubscriptions,
     uploadAttachment,
     execute,
-    listPullRequests: (input) =>
-      executeJson({
+    listPullRequests: Effect.fn("AzureDevOpsCli.listPullRequests")(function (input) {
+      return executeJson({
         cwd: input.cwd,
         args: [
           "repos",
@@ -632,9 +647,10 @@ export const make = Effect.gen(function* () {
                 }),
               ),
         ),
-      ),
-    getPullRequest: (input) =>
-      executeJson({
+      );
+    }),
+    getPullRequest: Effect.fn("AzureDevOpsCli.getPullRequest")(function (input) {
+      return executeJson({
         cwd: input.cwd,
         args: [
           "repos",
@@ -666,9 +682,10 @@ export const make = Effect.gen(function* () {
             }),
           ),
         ),
-      ),
-    getRepositoryCloneUrls: (input) =>
-      executeJson({
+      );
+    }),
+    getRepositoryCloneUrls: Effect.fn("AzureDevOpsCli.getRepositoryCloneUrls")(function (input) {
+      return executeJson({
         cwd: input.cwd,
         args: ["repos", "show", "--detect", "true", "--repository", input.repository],
       }).pipe(
@@ -682,13 +699,11 @@ export const make = Effect.gen(function* () {
           ),
         ),
         Effect.map(normalizeRepositoryCloneUrls),
-      ),
-    createRepository: (input) => {
+      );
+    }),
+    createRepository: Effect.fn("AzureDevOpsCli.createRepository")(function (input) {
       const repository = parseRepositorySpecifier(input.repository);
-      // Azure Repos access is governed by project/organization permissions.
-      // `az repos create` does not expose a per-repository visibility flag, so
-      // the generic source-control visibility input is intentionally not
-      // translated into CLI args for this provider.
+      // Project/organization permissions control visibility; `az repos create` has no flag.
       return executeJson({
         cwd: input.cwd,
         args: [
@@ -707,9 +722,9 @@ export const make = Effect.gen(function* () {
         ),
         Effect.map(normalizeRepositoryCloneUrls),
       );
-    },
-    createPullRequest: (input) =>
-      execute({
+    }),
+    createPullRequest: Effect.fn("AzureDevOpsCli.createPullRequest")(function (input) {
+      return execute({
         cwd: input.cwd,
         args: [
           "repos",
@@ -727,9 +742,10 @@ export const make = Effect.gen(function* () {
           "--description",
           `@${input.bodyFile}`,
         ],
-      }).pipe(Effect.asVoid),
-    getDefaultBranch: (input) =>
-      executeJson({
+      }).pipe(Effect.asVoid);
+    }),
+    getDefaultBranch: Effect.fn("AzureDevOpsCli.getDefaultBranch")(function (input) {
+      return executeJson({
         cwd: input.cwd,
         args: ["repos", "show", "--detect", "true"],
       }).pipe(
@@ -738,9 +754,10 @@ export const make = Effect.gen(function* () {
           decodeAzureDevOpsJson(raw, RawAzureDevOpsRepositorySchema, "getDefaultBranch", input.cwd),
         ),
         Effect.map((repo) => normalizeDefaultBranch(repo.defaultBranch)),
-      ),
-    checkoutPullRequest: (input) =>
-      execute({
+      );
+    }),
+    checkoutPullRequest: Effect.fn("AzureDevOpsCli.checkoutPullRequest")(function (input) {
+      return execute({
         cwd: input.cwd,
         args: [
           "repos",
@@ -754,7 +771,8 @@ export const make = Effect.gen(function* () {
           "--remote-name",
           input.remoteName ?? "origin",
         ],
-      }).pipe(Effect.asVoid),
+      }).pipe(Effect.asVoid);
+    }),
   });
 });
 

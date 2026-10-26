@@ -1,4 +1,8 @@
 import { useContext } from "react";
+import {
+  capitalizeTerm,
+  sourceControlClients,
+} from "@t3tools/client-runtime/source-control-clients";
 import { PullRequestReviewContext } from "./PullRequestReviewContext";
 import { useAtomCommand } from "~/state/use-atom-command";
 import {
@@ -44,7 +48,7 @@ import {
   type PullRequestTimelineEvent,
   type PullRequestTimelineThread,
 } from "./pullRequestDetail.logic";
-import { canEditPullRequestComment } from "./pullRequestEditing.logic";
+import { canEditPullRequestComment } from "@t3tools/client-runtime/pull-request-editing";
 import { PullRequestMarkdown, PullRequestMarkdownContext } from "./PullRequestMarkdown";
 import { PullRequestMoreReplies } from "./PullRequestMoreReplies";
 import { PullRequestCommentReply } from "./PullRequestCommentReply";
@@ -180,7 +184,7 @@ function OpenOnHostButton({ url, onOpen }: { url: string | null; onOpen: (url: s
     <Button
       size="icon-xs"
       variant="ghost-muted"
-      className="-mr-1 -mt-1 shrink-0"
+      className="-mr-1 shrink-0"
       aria-label="Open activity on host"
       onClick={() => onOpen(url)}
     >
@@ -215,8 +219,6 @@ function ConversationCard({
   });
 
   const save = async (body: string) => {
-    // A review's own summary is not a kind any host rewrites, which is why `editable` is never
-    // one; the check is here because the comment's own type still allows it.
     if (editable === null || saving || editable.kind === "review") return;
     setSaving(true);
     const result = await updateComment({
@@ -235,7 +237,7 @@ function ConversationCard({
   return (
     <article className="group py-2">
       <div className="px-2">
-        <div className="flex min-w-0 flex-wrap items-start gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
               <ActorName actor={event.actor} />
@@ -467,7 +469,7 @@ function ReviewThreadEvent({
     <div className="group relative mb-5 pl-12 [contain-intrinsic-block-size:48px] [content-visibility:auto]">
       <ActorTimelineMarker
         actors={event.actor ? [event.actor] : []}
-        className="top-6"
+        className="top-4"
         fallback={<MessageSquareIcon className="size-3.5" />}
         muted={!expanded}
       />
@@ -583,23 +585,24 @@ function CommitEvent({
   );
 }
 
-function LifecycleEvent({ event }: { event: PullRequestTimelineEvent }) {
+function LifecycleEvent({ event, term }: { event: PullRequestTimelineEvent; term: string }) {
+  const title = capitalizeTerm(term);
   const presentation =
     event.kind === "activity"
       ? { icon: <PullRequestActivityIcon kind={event.activityKind} />, label: event.title }
       : event.kind === "opened"
         ? {
             icon: <PullRequestGlyph.pullRequest className="size-3.5" />,
-            label: "Pull request opened",
+            label: `${title} opened`,
           }
         : event.kind === "merged"
           ? {
               icon: <PullRequestGlyph.merged className="size-3.5" />,
-              label: "Pull request merged",
+              label: `${title} merged`,
             }
           : {
               icon: <PullRequestGlyph.closed className="size-3.5" />,
-              label: "Pull request closed",
+              label: `${title} closed`,
             };
 
   return (
@@ -640,7 +643,7 @@ function ReviewVerdictEvent({
         className="top-6"
         fallback={<PullRequestReviewOutcomeIcon outcome={outcome} />}
       />
-      <div className="flex min-w-0 flex-wrap items-start gap-2 py-1.5">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 py-1.5">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
             <ActorName actor={event.actor} />
@@ -726,6 +729,7 @@ export function PullRequestTimelineTab({
   const events = buildPullRequestTimeline(
     detail.provider === "azure-devops" ? { ...detail, reviewThreads: [] } : detail,
   );
+  const term = sourceControlClients.get(detail.provider).changeRequest.singular;
   const previousVisit = useContext(PullRequestReviewContext)?.previousVisit;
   const [newOnly, setNewOnly] = useState(false);
   const newestCommitAt = newestPullRequestCommitAt(detail.commits);
@@ -848,7 +852,7 @@ export function PullRequestTimelineTab({
                 />
               );
             }
-            return <LifecycleEvent key={event.id} event={event} />;
+            return <LifecycleEvent key={event.id} event={event} term={term} />;
           })}
         </div>
 

@@ -25,11 +25,7 @@ import {
   summarizePullRequestChecks,
 } from "./pullRequestPresentation";
 
-/**
- * Mounted by the popup, so the read starts when somebody opens it rather than once per row of a
- * listing — the detail read is a request per pull request, and a page of them at rest would be a
- * hundred.
- */
+// Fetch only on open to avoid per-row requests.
 function LazyChecksBody({
   environmentId,
   reference,
@@ -70,47 +66,51 @@ function ChecksBody({
     return <p className="text-muted-foreground text-xs">No checks reported</p>;
   }
   return (
-    <ScrollArea className="-me-3 w-auto max-h-64">
-      <ul
-        className={cn(
-          "grid gap-x-2 gap-y-1 pe-3",
-          hasDetails
-            ? "grid-cols-[auto_minmax(0,1fr)_auto_auto]"
-            : "grid-cols-[auto_minmax(0,1fr)_auto]",
-        )}
-      >
-        {visibleChecks.map((check, index) => (
-          <li
-            key={`${index}:${check.name}`}
-            className="col-span-full grid grid-cols-subgrid items-center text-xs"
-          >
-            <PullRequestCheckStatusIcon status={check.status} />
-            <Tooltip>
-              <TooltipTrigger render={<span className="min-w-0 truncate">{check.name}</span>} />
-              <TooltipPopup side="top">{check.description ?? check.name}</TooltipPopup>
-            </Tooltip>
-            <span className="justify-self-end whitespace-nowrap text-muted-foreground">
-              {pullRequestCheckStatusLabel(check)}
-            </span>
-            {check.url === null ? null : (
-              <button
-                type="button"
-                className="text-primary hover:underline"
-                onClick={() => {
-                  if (!check.url) return;
-                  void openLink(check.url).catch((error: unknown) => {
-                    console.error(error);
-                    toastManager.add({ type: "error", title: "Unable to open check details" });
-                  });
-                }}
+    <>
+      <ScrollArea className="-me-3 w-auto max-h-64">
+        <ul
+          className={cn(
+            "grid gap-x-2 gap-y-1 pe-3",
+            hasDetails
+              ? "grid-cols-[auto_minmax(0,1fr)_auto_auto]"
+              : "grid-cols-[auto_minmax(0,1fr)_auto]",
+          )}
+        >
+          {visibleChecks.map(
+            (check, index) => (
+              /* oxlint-disable react/no-array-index-key -- Check names can repeat; these status rows have no local state. */ <li
+                key={`${index}:${check.name}`}
+                className="col-span-full grid grid-cols-subgrid items-center text-xs"
               >
-                Details
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
-    </ScrollArea>
+                <PullRequestCheckStatusIcon status={check.status} />
+                <Tooltip>
+                  <TooltipTrigger render={<span className="min-w-0 truncate">{check.name}</span>} />
+                  <TooltipPopup side="top">{check.description ?? check.name}</TooltipPopup>
+                </Tooltip>
+                <span className="justify-self-end whitespace-nowrap text-muted-foreground">
+                  {pullRequestCheckStatusLabel(check)}
+                </span>
+                {check.url === null ? null : (
+                  <button
+                    type="button"
+                    className="text-primary hover:underline"
+                    onClick={() => {
+                      if (!check.url) return;
+                      void openLink(check.url).catch((error: unknown) => {
+                        console.error(error);
+                        toastManager.add({ type: "error", title: "Unable to open check details" });
+                      });
+                    }}
+                  >
+                    Details
+                  </button>
+                )}
+              </li>
+            ) /* oxlint-enable react/no-array-index-key */,
+          )}
+        </ul>
+      </ScrollArea>
+    </>
   );
 }
 
@@ -146,9 +146,6 @@ export function PullRequestChecksPopover({
   const summary = checks === undefined || stale ? null : summarizePullRequestChecks(checks);
   return (
     <Popover>
-      {/* A listing row is itself a button, so the trigger renders as a span: a nested button is
-          not valid inside one. The click is stopped here so opening the checks does not also
-          select the row it sits on. */}
       <PopoverTrigger
         nativeButton={variant === "count"}
         aria-label={

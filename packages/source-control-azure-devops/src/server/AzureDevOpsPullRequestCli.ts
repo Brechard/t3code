@@ -242,31 +242,17 @@ const encodeNewThreadBody = Schema.encodeSync(
   ),
 );
 const PULL_REQUEST_LIST_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
-/**
- * A full page of change entries is two thousand files, each carrying its path, its url and
- * several object ids, which is past the megabyte a read is given by default.
- */
+/** A 2,000-file page exceeds the default 1 MiB output budget. */
 const CHANGE_ENTRIES_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
-/**
- * Four times the megabyte of file the other hosts hand over, because Azure has no route that
- * serves the bytes themselves: the file arrives inside a JSON envelope, escaped if it is text and
- * base64 if it is not, and both are larger than the file they carry.
- */
+/** JSON escaping and base64 can exceed the decoded file's size. */
 const ITEM_CONTENT_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
-/**
- * Neither route pages, so each answers with the whole of it at once and grows with how
- * long the review ran rather than with how large the change is.
- */
+/** Review history is unpaged and independent of diff size. */
 const REVIEW_HISTORY_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 
-/** Azure's own ceiling for one page of an iteration's changes. */
+/** Azure's iteration-change page limit. */
 const CHANGE_ENTRIES_PER_PAGE = 2000;
 
-/**
- * Where following the pages stops, counted in the entries Azure was asked to skip rather than in
- * the files that survived decoding: a page can be entirely folders and other entries a review has
- * nothing to show for, and bounding on what was kept would follow such a change forever.
- */
+/** Count raw entries, including folders and malformed rows. */
 const MAX_CHANGE_ENTRIES = 10_000;
 
 export interface AzureDevOpsIterationChanges {
@@ -330,6 +316,8 @@ export class AzureDevOpsPullRequestCli extends Context.Service<
       readonly involvement: PullRequestInvolvement;
       readonly viewer: string;
       readonly limit: number;
+      /** Matched by `--creator`, which takes the email a row shows as its login. */
+      readonly author?: string | undefined;
       /**
        * Where to carry on from. Azure has no date filter for a pull request listing, so the only
        * part of a cursor it can use is how many rows have already been handed over.
@@ -471,10 +459,7 @@ export class AzureDevOpsPullRequestCli extends Context.Service<
       readonly number: number;
     }) => Effect.Effect<ReadonlyArray<AzureDevOpsIteration>, AzureDevOpsPullRequestCliError>;
 
-    /**
-     * What one iteration changed, against the merge base rather than against the previous push,
-     * which is the whole of the pull request rather than the latest slice of it.
-     */
+    /** Changes cover the whole PR from its merge base. */
     readonly listIterationChanges: (input: {
       readonly compareTo?: number;
       readonly cwd: string;
@@ -483,10 +468,6 @@ export class AzureDevOpsPullRequestCli extends Context.Service<
       readonly iterationId: number;
     }) => Effect.Effect<AzureDevOpsIterationChanges, AzureDevOpsPullRequestCliError>;
 
-    /**
-     * One file's text at one commit. Azure has no diff route that carries content, so both sides
-     * of every changed file are read this way and the patch is made from them here.
-     */
     readonly readItemContent: (input: {
       readonly cwd: string;
       readonly location: AzureDevOpsRepositoryLocation;
@@ -508,10 +489,6 @@ export class AzureDevOpsPullRequestCli extends Context.Service<
       readonly body?: string | undefined;
     }) => Effect.Effect<void, AzureDevOpsPullRequestCliError>;
 
-    /**
-     * `az repos pr reviewer` is the whole of what Azure offers here: it adds and removes named
-     * identities, and has no counterpart that says who could be named.
-     */
     readonly setPullRequestReviewers: (input: {
       readonly cwd: string;
       readonly number: number;
@@ -582,16 +559,11 @@ function actionArgs(
   }
 }
 
-/**
- * The dash is the whole point — these are argv, and a value that looks like a
- * flag stops being a value.
- */
 function isReviewerName(value: string): boolean {
   const name = value.trim();
   return name.length > 0 && !name.startsWith("-");
 }
 
-/** @public Service construction is part of the canonical Effect module API. */
 const decodeAccess = Schema.decodeEffect(
   Schema.fromJsonString(
     Schema.Struct({
@@ -633,7 +605,7 @@ const make = Effect.gen(function* () {
   const azure = yield* AzureDevOpsCli.AzureDevOpsCli;
   const fileSystem = yield* FileSystem.FileSystem;
 
-  // The remote takes three shapes and only `az` knows how to read all of them.
+  // Let `az` parse all three remote formats.
   const detectArgs = ["--detect", "true"] as const;
 
   const executeJson = (input: {
@@ -775,11 +747,7 @@ const make = Effect.gen(function* () {
       }),
     );
 
-  /**
-   * Azure names its own items with a leading slash, which the repository paths carried around
-   * here have had taken off so they match the patch and the viewed mark. Put it back on the way
-   * out, because the items route is documented in Azure's own spelling.
-   */
+  /** Azure's items route requires a leading slash. */
   const toItemPath = (path: string) => (path.startsWith("/") ? path : `/${path}`);
 
   const repositoryRoute = (location: AzureDevOpsRepositoryLocation): ReadonlyArray<string> => [
@@ -795,16 +763,14 @@ const make = Effect.gen(function* () {
     `pullRequestId=${input.number}`,
   ];
 
-  /**
-   * Azure pages by raw offset. Keep reading when malformed rows leave the decoded page short, and
-   * retain the raw count so the next public cursor skips every row this walk consumed.
-   */
+  /** Decoding can shorten a non-final page; advance by raw rows. */
   const listPullRequestPage = (input: {
     readonly cwd: string;
     readonly repository: string;
     readonly state: PullRequestListState;
     readonly involvement: PullRequestInvolvement;
     readonly viewer: string;
+    readonly author?: string | undefined;
     readonly limit: number;
     readonly skip: number;
     readonly cursorAdvance: number;
@@ -831,6 +797,9 @@ const make = Effect.gen(function* () {
         input.repository,
         ...statusArgs(input.state),
         ...involvementArgs(input),
+        ...(input.author === undefined || input.involvement === "authored"
+          ? []
+          : ["--creator", input.author]),
         "--include-links",
         ...(input.skip === 0 ? [] : ["--skip", String(input.skip)]),
         "--top",
@@ -910,8 +879,8 @@ const make = Effect.gen(function* () {
   });
 
   const api: AzureDevOpsPullRequestCli["Service"] = AzureDevOpsPullRequestCli.of({
-    readAccess: (input) =>
-      azure
+    readAccess: Effect.fn("AzureDevOpsPullRequestCli.readAccess")(function (input) {
+      return azure
         .pullRequestContext({
           ...input,
           project: input.location.project,
@@ -929,9 +898,10 @@ const make = Effect.gen(function* () {
                 cause,
               }),
           ),
-        ),
-    readVisit: (input) =>
-      azure
+        );
+    }),
+    readVisit: Effect.fn("AzureDevOpsPullRequestCli.readVisit")(function (input) {
+      return azure
         .pullRequestContext({
           ...input,
           project: input.location.project,
@@ -964,7 +934,8 @@ const make = Effect.gen(function* () {
                 cause,
               }),
           ),
-        ),
+        );
+    }),
     listReviewerCandidates: tools.reviewerCandidates,
     listLabelCandidates: tools.labelCandidates,
     listChecks: tools.checks,
@@ -972,24 +943,27 @@ const make = Effect.gen(function* () {
     setLabels: tools.setLabels,
     getHostDetails: tools.details,
     runHostAction: tools.run,
-    getViewer: (input) =>
-      azure.authenticatedIdentity(input).pipe(Effect.map((identity) => identity.login)),
+    getViewer: Effect.fn("AzureDevOpsPullRequestCli.getViewer")(function (input) {
+      return azure.authenticatedIdentity(input).pipe(Effect.map((identity) => identity.login));
+    }),
 
-    listPullRequests: (input) =>
-      listPullRequestPage({
+    listPullRequests: Effect.fn("AzureDevOpsPullRequestCli.listPullRequests")(function (input) {
+      return listPullRequestPage({
         cwd: input.cwd,
         repository: input.repository,
         state: input.state,
         involvement: input.involvement,
         viewer: input.viewer,
+        author: input.author,
         limit: input.limit,
         skip: input.cursor?.delivered ?? 0,
         cursorAdvance: 0,
         items: [],
-      }),
+      });
+    }),
 
-    getPullRequest: (input) =>
-      executeJson({
+    getPullRequest: Effect.fn("AzureDevOpsPullRequestCli.getPullRequest")(function (input) {
+      return executeJson({
         cwd: input.cwd,
         args: ["repos", "pr", "show", ...detectArgs, "--id", String(input.number)],
       }).pipe(
@@ -1017,10 +991,11 @@ const make = Effect.gen(function* () {
               : Effect.succeed(decoded.success);
           },
         ),
-      ),
+      );
+    }),
 
-    readDiscussion: (input) =>
-      invoke({
+    readDiscussion: Effect.fn("AzureDevOpsPullRequestCli.readDiscussion")(function (input) {
+      return invoke({
         cwd: input.cwd,
         operation: "readDiscussion",
         queryParameters:
@@ -1031,9 +1006,10 @@ const make = Effect.gen(function* () {
         routeParameters: pullRequestRoute(input),
         maxOutputBytes: REVIEW_HISTORY_MAX_OUTPUT_BYTES,
         decode: (raw) => decodeDiscussionJson(raw, input.viewer, input.iterationId),
-      }),
-    listCommits: (input) =>
-      invoke({
+      });
+    }),
+    listCommits: Effect.fn("AzureDevOpsPullRequestCli.listCommits")(function (input) {
+      return invoke({
         cwd: input.cwd,
         operation: "listCommits",
         resource: "pullRequestCommits",
@@ -1041,7 +1017,8 @@ const make = Effect.gen(function* () {
         queryParameters: ["$top=1000"],
         maxOutputBytes: REVIEW_HISTORY_MAX_OUTPUT_BYTES,
         decode: decodeCommitsJson,
-      }),
+      });
+    }),
     getCommitScope: Effect.fn("AzureDevOpsPullRequestCli.getCommitScope")(function* (input) {
       const commit = yield* invoke({
         cwd: input.cwd,
@@ -1079,18 +1056,19 @@ const make = Effect.gen(function* () {
         changes,
       };
     }),
-    listThreads: (input) =>
-      invoke({
+    listThreads: Effect.fn("AzureDevOpsPullRequestCli.listThreads")(function (input) {
+      return invoke({
         cwd: input.cwd,
         operation: "listThreads",
         resource: "pullRequestThreads",
         routeParameters: pullRequestRoute(input),
         maxOutputBytes: REVIEW_HISTORY_MAX_OUTPUT_BYTES,
         decode: (raw) => decodeThreadsJson(raw, input.viewer),
-      }),
+      });
+    }),
 
-    setCommentLike: (input) =>
-      write({
+    setCommentLike: Effect.fn("AzureDevOpsPullRequestCli.setCommentLike")(function (input) {
+      return write({
         cwd: input.cwd,
         resource: "pullRequestCommentLikes",
         routeParameters: [
@@ -1099,7 +1077,8 @@ const make = Effect.gen(function* () {
           `commentId=${input.commentId}`,
         ],
         method: input.liked ? "POST" : "DELETE",
-      }),
+      });
+    }),
     createThreads: Effect.fn(function* (input) {
       const anchored = input.threads.some((thread) => thread.comment !== undefined);
       const latest = anchored ? (yield* api.listIterations(input)).at(-1) : undefined;
@@ -1172,16 +1151,17 @@ const make = Effect.gen(function* () {
           body,
         });
     }),
-    replyToThread: (input) =>
-      write({
+    replyToThread: Effect.fn("AzureDevOpsPullRequestCli.replyToThread")(function (input) {
+      return write({
         cwd: input.cwd,
         resource: "pullRequestThreadComments",
         routeParameters: [...pullRequestRoute(input), `threadId=${input.threadId}`],
         method: "POST",
         body: encodeReplyBody({ content: input.body, parentCommentId: 1, commentType: 1 }),
-      }),
-    updateComment: (input) =>
-      write({
+      });
+    }),
+    updateComment: Effect.fn("AzureDevOpsPullRequestCli.updateComment")(function (input) {
+      return write({
         cwd: input.cwd,
         resource: "pullRequestThreadComments",
         routeParameters: [
@@ -1191,9 +1171,10 @@ const make = Effect.gen(function* () {
         ],
         method: "PATCH",
         body: encodeCommentBody({ content: input.body }),
-      }),
-    deleteComment: (input) =>
-      write({
+      });
+    }),
+    deleteComment: Effect.fn("AzureDevOpsPullRequestCli.deleteComment")(function (input) {
+      return write({
         cwd: input.cwd,
         resource: "pullRequestThreadComments",
         routeParameters: [
@@ -1202,61 +1183,66 @@ const make = Effect.gen(function* () {
           `commentId=${input.commentId}`,
         ],
         method: "DELETE",
-      }),
-    setThreadStatus: (input) =>
-      write({
+      });
+    }),
+    setThreadStatus: Effect.fn("AzureDevOpsPullRequestCli.setThreadStatus")(function (input) {
+      return write({
         cwd: input.cwd,
         resource: "pullRequestThreads",
         routeParameters: [...pullRequestRoute(input), `threadId=${input.threadId}`],
         method: "PATCH",
         body: encodeStatusBody({ status: input.status }),
-      }),
+      });
+    }),
 
-    listIterations: (input) =>
-      invoke({
+    listIterations: Effect.fn("AzureDevOpsPullRequestCli.listIterations")(function (input) {
+      return invoke({
         cwd: input.cwd,
         operation: "listIterations",
         resource: "pullRequestIterations",
         routeParameters: pullRequestRoute(input),
         maxOutputBytes: REVIEW_HISTORY_MAX_OUTPUT_BYTES,
         decode: decodeIterationsJson,
-      }),
+      });
+    }),
 
-    listIterationChanges: (input) => {
-      const page = (skip: number) =>
-        invoke({
-          cwd: input.cwd,
-          operation: "listIterationChanges",
-          resource: "pullRequestIterationChanges",
-          routeParameters: [...pullRequestRoute(input), `iterationId=${input.iterationId}`],
-          // Azure pages this route at 1000 entries by default; this is its own maximum per page,
-          // and it names where the next page starts rather than answering with the whole change.
-          queryParameters: [
-            `$top=${CHANGE_ENTRIES_PER_PAGE}`,
-            `$skip=${skip}`,
-            ...(input.compareTo === undefined ? [] : [`$compareTo=${input.compareTo}`]),
-          ],
-          maxOutputBytes: CHANGE_ENTRIES_MAX_OUTPUT_BYTES,
-          decode: decodeIterationChangesJson,
-        });
-      const from = (
-        skip: number,
-        collected: ReadonlyArray<AzureDevOpsChangeEntry>,
-      ): Effect.Effect<AzureDevOpsIterationChanges, AzureDevOpsPullRequestCliError> =>
-        page(skip).pipe(
-          Effect.flatMap((answer) => {
-            const changes = [...collected, ...answer.changes];
-            if (answer.nextSkip === null) return Effect.succeed({ changes, truncated: false });
-            return answer.nextSkip <= skip || answer.nextSkip >= MAX_CHANGE_ENTRIES
-              ? Effect.succeed({ changes, truncated: true })
-              : from(answer.nextSkip, changes);
-          }),
-        );
-      return from(0, []);
-    },
+    listIterationChanges: Effect.fn("AzureDevOpsPullRequestCli.listIterationChanges")(
+      function (input) {
+        const page = (skip: number) =>
+          invoke({
+            cwd: input.cwd,
+            operation: "listIterationChanges",
+            resource: "pullRequestIterationChanges",
+            routeParameters: [...pullRequestRoute(input), `iterationId=${input.iterationId}`],
+            // Azure pages this route at 1000 entries by default; this is its own maximum per page,
+            // and it names where the next page starts rather than answering with the whole change.
+            queryParameters: [
+              `$top=${CHANGE_ENTRIES_PER_PAGE}`,
+              `$skip=${skip}`,
+              ...(input.compareTo === undefined ? [] : [`$compareTo=${input.compareTo}`]),
+            ],
+            maxOutputBytes: CHANGE_ENTRIES_MAX_OUTPUT_BYTES,
+            decode: decodeIterationChangesJson,
+          });
+        const from = (
+          skip: number,
+          collected: ReadonlyArray<AzureDevOpsChangeEntry>,
+        ): Effect.Effect<AzureDevOpsIterationChanges, AzureDevOpsPullRequestCliError> =>
+          page(skip).pipe(
+            Effect.flatMap((answer) => {
+              const changes = [...collected, ...answer.changes];
+              if (answer.nextSkip === null) return Effect.succeed({ changes, truncated: false });
+              return answer.nextSkip <= skip || answer.nextSkip >= MAX_CHANGE_ENTRIES
+                ? Effect.succeed({ changes, truncated: true })
+                : from(answer.nextSkip, changes);
+            }),
+          );
+        return from(0, []);
+      },
+    ),
 
-    readItemContent: (input) =>
-      invoke({
+    readItemContent: Effect.fn("AzureDevOpsPullRequestCli.readItemContent")(function (input) {
+      return invoke({
         cwd: input.cwd,
         operation: "readItemContent",
         resource: "items",
@@ -1266,45 +1252,68 @@ const make = Effect.gen(function* () {
           "versionDescriptor.versionType=commit",
           `versionDescriptor.version=${input.commit}`,
           "includeContent=true",
-          // Azure leaves `contentMetadata` out unless this is asked for, and with it goes its own
-          // word on whether the file is binary, which is the only reliable one, since a binary
-          // file arrives encoded rather than as the bytes it is on the host.
+          // Encoded content cannot identify binaries; request Azure's binary flag.
           "includeContentMetadata=true",
-          // Without this Azure answers with the file's own bytes rather than with a JSON
-          // envelope, and `az devops invoke` refuses anything it cannot parse as JSON.
+          // `az devops invoke` requires JSON; otherwise Azure returns raw file bytes.
           "$format=json",
         ],
         maxOutputBytes: ITEM_CONTENT_MAX_OUTPUT_BYTES,
         decode: decodeItemContentJson,
-      }),
+      });
+    }),
 
-    setPullRequestReviewers: (input) =>
-      input.reviewers.some((reviewer) => !isReviewerName(reviewer))
-        ? Effect.fail(new AzureDevOpsReviewerNameError({ command: "az", cwd: input.cwd }))
-        : azure
-            .execute({
-              cwd: input.cwd,
-              args: [
-                "repos",
-                "pr",
-                "reviewer",
-                input.requested ? "add" : "remove",
-                ...detectArgs,
-                "--id",
-                String(input.number),
-                // One `--reviewers` takes them all, because az reads the flag as a list and a
-                // second one would replace the first rather than add to it.
-                "--reviewers",
-                ...input.reviewers,
-                "--only-show-errors",
-                "--output",
-                "json",
-              ],
-            })
-            .pipe(Effect.asVoid),
+    setPullRequestReviewers: Effect.fn("AzureDevOpsPullRequestCli.setPullRequestReviewers")(
+      function* (input) {
+        if (input.reviewers.some((reviewer) => !isReviewerName(reviewer))) {
+          return yield* new AzureDevOpsReviewerNameError({ command: "az", cwd: input.cwd });
+        }
+        return yield* azure
+          .execute({
+            cwd: input.cwd,
+            args: [
+              "repos",
+              "pr",
+              "reviewer",
+              input.requested ? "add" : "remove",
+              ...detectArgs,
+              "--id",
+              String(input.number),
+              // Repeating `--reviewers` replaces the earlier list.
+              "--reviewers",
+              ...input.reviewers,
+              "--only-show-errors",
+              "--output",
+              "json",
+            ],
+          })
+          .pipe(Effect.asVoid);
+      },
+    ),
 
-    runPullRequestAction: (input) =>
-      azure
+    runPullRequestAction: Effect.fn("AzureDevOpsPullRequestCli.runPullRequestAction")(
+      function (input) {
+        return azure
+          .execute({
+            cwd: input.cwd,
+            args: [
+              "repos",
+              "pr",
+              "update",
+              ...detectArgs,
+              "--id",
+              String(input.number),
+              ...actionArgs(input.action, input.mergeMethod),
+              "--only-show-errors",
+              "--output",
+              "json",
+            ],
+          })
+          .pipe(Effect.asVoid);
+      },
+    ),
+
+    updatePullRequest: Effect.fn("AzureDevOpsPullRequestCli.updatePullRequest")(function (input) {
+      return azure
         .execute({
           cwd: input.cwd,
           args: [
@@ -1314,28 +1323,7 @@ const make = Effect.gen(function* () {
             ...detectArgs,
             "--id",
             String(input.number),
-            ...actionArgs(input.action, input.mergeMethod),
-            "--only-show-errors",
-            "--output",
-            "json",
-          ],
-        })
-        .pipe(Effect.asVoid),
-
-    updatePullRequest: (input) =>
-      azure
-        .execute({
-          cwd: input.cwd,
-          args: [
-            "repos",
-            "pr",
-            "update",
-            ...detectArgs,
-            "--id",
-            String(input.number),
-            // One argument rather than a flag and a value beside it: a description usually opens
-            // with a bullet, and az reads a dash in the next argv slot as a flag of its own.
-            // `--description` also takes several strings, and this keeps the whole text as one.
+            // One argv entry preserves leading dashes and multi-string descriptions.
             ...(input.title === undefined ? [] : [`--title=${input.title}`]),
             ...(input.body === undefined ? [] : [`--description=${input.body}`]),
             "--only-show-errors",
@@ -1343,7 +1331,8 @@ const make = Effect.gen(function* () {
             "json",
           ],
         })
-        .pipe(Effect.asVoid),
+        .pipe(Effect.asVoid);
+    }),
   });
   return api;
 });

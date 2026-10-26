@@ -2,6 +2,7 @@ import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import * as Dialog from "../../components/ui/Dialog";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import type { PullRequestDetail, PullRequestMergeMethod } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
 import { useRef, useState } from "react";
@@ -20,6 +21,7 @@ import {
   mergeUnavailableReason,
   MERGE_CONFLICT_REASON,
   MERGE_METHODS,
+  pullRequestActionLabel,
 } from "./pullRequestActions";
 import { pullRequestStackMerge, singlePullRequestMergeAllowed } from "./pullRequestStack";
 import { pullRequestTarget, type PullRequestParams } from "./usePullRequestDiff";
@@ -74,6 +76,7 @@ function PullRequestPublishControl({
 
 function PullRequestMergeActions(props: PullRequestMergeControlsProps) {
   const { pr, stack } = props;
+  const terminology = sourceControlClients.get(pr.provider).changeRequest;
   const target = pullRequestTarget(props.params);
   const permissions = usePullRequestPermissions(props.params, pr);
   const preferences = useAtomValue(mobilePreferencesAtom);
@@ -94,7 +97,7 @@ function PullRequestMergeActions(props: PullRequestMergeControlsProps) {
     : methods.includes("squash")
       ? "squash"
       : methods[0];
-  const scope = stack.stack ? pullRequestStackMerge(stack.stack, pr.number) : null;
+  const scope = stack.stack ? pullRequestStackMerge(stack.stack, pr.number, terminology) : null;
   const canMergeSingle = singlePullRequestMergeAllowed({
     supportsStackActions: stack.supportsStackActions,
     hasStack: stack.stack !== null,
@@ -106,7 +109,7 @@ function PullRequestMergeActions(props: PullRequestMergeControlsProps) {
     pr.viewerPermissions.deniedActions?.merge ??
     (!permissions.connected
       ? "Reconnect to merge."
-      : mergeUnavailableReason(pr, permissions.canWrite)) ??
+      : mergeUnavailableReason(pr, permissions.canWrite, terminology)) ??
     (stack.stack
       ? !stack.supportsStackActions
         ? "This environment can display stacks but cannot merge them."
@@ -159,7 +162,7 @@ function PullRequestMergeActions(props: PullRequestMergeControlsProps) {
                     !canPerformPullRequestAction(fresh, "merge") ||
                     !allowedMergeMethods(fresh).includes(method)
                   )
-                    throw new Error("The pull request changed. Refresh before merging.");
+                    throw new Error(`The ${terminology.singular} changed. Refresh before merging.`);
                   return method;
                 },
               }
@@ -187,7 +190,7 @@ function PullRequestMergeActions(props: PullRequestMergeControlsProps) {
       action === "merge"
         ? scope && scope.layers.length > 1
           ? `Merge ${scope.layers.length} stack layers?`
-          : "Merge pull request?"
+          : `${pullRequestActionLabel("merge", terminology)}?`
         : action === "enable-auto-merge"
           ? "Enable auto-merge?"
           : "Disable auto-merge?";
@@ -197,7 +200,7 @@ function PullRequestMergeActions(props: PullRequestMergeControlsProps) {
         : action === "enable-auto-merge"
           ? `Merge #${pr.number} using ${method} when its requirements are met. This may happen immediately.`
           : action === "disable-auto-merge"
-            ? "Stop the provider from automatically merging this pull request."
+            ? `Stop the provider from automatically merging this ${terminology.singular}.`
             : `Merge #${pr.number} into ${pr.baseBranch} using ${method}.`;
     Dialog.alert(title, message, [
       { text: "Cancel", style: "cancel" },

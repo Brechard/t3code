@@ -1,3 +1,5 @@
+import { NativeScrollView } from "../../native/NativeScrollViewMarker";
+import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { AnimatedLegendList } from "@legendapp/list/reanimated";
 import {
   StackActions,
@@ -76,8 +78,11 @@ function useChangedFiles(input: PullRequestDiffParams) {
     ? { ...currentParams, iterationRange: range }
     : { ...currentParams, ...(commit && !pickedComparison ? { commit } : {}) };
 
-  const diff = usePullRequestDiff(params);
   const detail = useEnvironmentQuery(composerPullRequests.detail(pullRequestTarget(params)));
+  const terminology = sourceControlClients.get(
+    (detail.data ?? params.initialSummary)?.provider,
+  ).changeRequest;
+  const diff = usePullRequestDiff(params, terminology);
   // Historical diffs don't share the current pull request's file counts or viewed state.
   const pr = params.commit || params.iterationRange ? null : detail.data;
   const viewed = usePullRequestFilesViewed(params, pr);
@@ -135,6 +140,7 @@ function useChangedFiles(input: PullRequestDiffParams) {
     filter,
     viewed,
     pr,
+    terminology,
     parsed,
     loading: diff.isPending && parsed.kind === "empty" && !diff.error,
   };
@@ -338,7 +344,7 @@ export function usePullRequestFilesSection(input: PullRequestParams) {
     refresh: diff.refresh,
     header: (
       <>
-        <PullRequestReadStatus pending={false} error={diff.error} />
+        <PullRequestReadStatus pending={false} error={diff.error} terminology={files.terminology} />
         {files.comparisonHeader}
         {loading ? (
           <View
@@ -512,6 +518,7 @@ export function PullRequestFilesSheet({ route }: StaticScreenProps<PullRequestDi
       </Toolbar>
       <ScreenContent>
         <AnimatedLegendList
+          renderScrollComponent={Platform.OS === "ios" ? NativeScrollView : undefined}
           className="flex-1"
           data={parsed.kind === "files" ? groupByDirectory(parsed.files, collapsed) : []}
           keyExtractor={(item) => item.key}
@@ -551,7 +558,11 @@ export function PullRequestFilesSheet({ route }: StaticScreenProps<PullRequestDi
           estimatedItemSize={64}
           ListHeaderComponent={
             <>
-              <PullRequestReadStatus pending={false} error={diff.error} />
+              <PullRequestReadStatus
+                pending={false}
+                error={diff.error}
+                terminology={files.terminology}
+              />
               {files.comparisonHeader}
               {parsed.kind === "files" ? (
                 <View className="flex-row items-center gap-2 py-2">

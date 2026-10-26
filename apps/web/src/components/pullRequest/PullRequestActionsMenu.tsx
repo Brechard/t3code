@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import type { ChangeRequestTerminology } from "@t3tools/client-runtime/source-control-clients";
 import type {
   EnvironmentId,
   PullRequestAction,
@@ -54,6 +55,7 @@ export function PullRequestActionsMenu({
   reference,
   pullRequestKey,
   detail,
+  terminology,
   linkThreadRef,
   onThreadPickerOpenChange,
   refreshing,
@@ -96,6 +98,7 @@ export function PullRequestActionsMenu({
   reference: PullRequestRef;
   pullRequestKey: string;
   detail: PullRequestDetail;
+  terminology: ChangeRequestTerminology;
   linkThreadRef: ScopedThreadRef | null;
   onThreadPickerOpenChange: (open: boolean) => void;
   refreshing: boolean;
@@ -154,7 +157,9 @@ export function PullRequestActionsMenu({
                   render={
                     <Button
                       aria-label={
-                        refreshing ? "Refreshing pull request" : "More pull request actions"
+                        refreshing
+                          ? `Refreshing ${terminology.singular}`
+                          : `More ${terminology.singular} actions`
                       }
                       size="icon-xs"
                       variant="ghost-muted"
@@ -173,7 +178,9 @@ export function PullRequestActionsMenu({
               }
             />
             <TooltipPopup>
-              {refreshing ? "Refreshing pull request" : "More pull request actions"}
+              {refreshing
+                ? `Refreshing ${terminology.singular}`
+                : `More ${terminology.singular} actions`}
             </TooltipPopup>
           </Tooltip>
           <MenuPopup align="end" side="bottom">

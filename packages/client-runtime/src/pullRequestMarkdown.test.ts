@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { reusePullRequestIdentities, splitPullRequestBody } from "./pullRequestMarkdown.ts";
+import {
+  changeRequestReferenceAutolinker,
+  reusePullRequestIdentities,
+  splitPullRequestBody,
+} from "./pullRequestMarkdown.ts";
 
 describe("pull request mention identities", () => {
   it("preserves the reference across activity refreshes with unchanged names", () => {
@@ -13,6 +17,21 @@ describe("pull request mention identities", () => {
     for (const next of [{ alice: "Alicia" }, { alice: "Alice", bob: "Bob" }, {}]) {
       expect(reusePullRequestIdentities(previous, next)).toBe(next);
     }
+  });
+});
+
+it("uses Azure identity names when autolinking review mentions", () => {
+  const id = "01234567-89ab-cdef-0123-456789abcdef";
+  const autolink = changeRequestReferenceAutolinker(
+    {
+      provider: "azure-devops",
+      url: "https://dev.azure.com/acme/platform/_git/t3code/pullrequest/17",
+    },
+    { [id]: "Alice" },
+  );
+  expect(autolink?.(`Thanks @<${id}>`)[0]).toMatchObject({
+    label: "@Alice",
+    url: `https://dev.azure.com/acme/platform/_settings/people?userId=${id}`,
   });
 });
 
@@ -135,5 +154,22 @@ describe("media on custom hosts", () => {
     expect(splitPullRequestBody(body)).toEqual([
       { id: "markdown:0", kind: "markdown", text: body },
     ]);
+  });
+});
+
+describe("change request reference autolinks", () => {
+  const urls = (provider: string, url: string, text: string) =>
+    changeRequestReferenceAutolinker({ provider, url })?.(text).map((link) => link.url) ?? null;
+
+  it("links references against the change request's own repository", () => {
+    expect(urls("github", "https://ghe.example.com/acme/web/pull/7", "Fixes #5")).toEqual([
+      "https://ghe.example.com/acme/web/issues/5",
+    ]);
+  });
+
+  // regression: the mobile review guide linked every host's `#5` with GitHub's grammar
+  it("links nothing on a host whose grammar is not applied", () => {
+    expect(urls("gitlab", "https://gitlab.com/group/project/-/merge_requests/7", "#5")).toBeNull();
+    expect(urls("forgejo", "https://codeberg.org/acme/web/pulls/7", "#5")).toBeNull();
   });
 });

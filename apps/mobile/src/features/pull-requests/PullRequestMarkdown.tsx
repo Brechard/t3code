@@ -1,9 +1,9 @@
-import { composerPullRequests } from "../../state/pull-requests";
-import { useEnvironmentQuery } from "../../state/query";
 import {
   reusePullRequestIdentities,
   splitPullRequestBody,
 } from "@t3tools/client-runtime/pull-request-markdown";
+import { composerPullRequests } from "../../state/pull-requests";
+import { useEnvironmentQuery } from "../../state/query";
 import type { ReactNode } from "react";
 import { View } from "react-native";
 import { useProject } from "../../state/entities";
@@ -15,7 +15,9 @@ import {
 } from "./PullRequestMedia";
 import { videoMimeType } from "@t3tools/shared/video";
 import { createContext, useContext, useCallback, useMemo, useState } from "react";
-import { azureDevOpsMarkdownLinks, githubMarkdownLinks } from "@t3tools/shared/githubMarkdownLinks";
+import { changeRequestReferenceAutolinker } from "@t3tools/client-runtime/pull-request-markdown";
+import type { ReferenceAutolink } from "@t3tools/client-runtime/source-control-clients";
+import { linkReferenceAutolinks } from "./pullRequestAutolinks";
 
 import { useOpenPullRequest } from "../../native/useOpenPullRequest";
 import { SelectableMarkdownText } from "../../native/SelectableMarkdownText";
@@ -31,18 +33,22 @@ import {
 import { ThreadMarkdownImageView } from "../threads/ThreadMarkdownImage";
 import type { MarkdownImageRenderer } from "../../native/SelectableMarkdownText";
 
+const AutolinksContext = createContext<((text: string) => ReadonlyArray<ReferenceAutolink>) | null>(
+  null,
+);
 const NO_IDENTITIES: Readonly<Record<string, string>> = {};
-const AzureIdentities = createContext(NO_IDENTITIES);
-const RepositoryContext = createContext<string | null>(null);
 
 export function PullRequestMarkdownRepository(props: {
-  readonly value: string | null;
+  /** The change request the markdown belongs to, whose host decides what its text links. */
+  readonly changeRequest: { readonly provider: string; readonly url: string } | null | undefined;
   readonly params: PullRequestParams;
   readonly children: ReactNode;
 }) {
+  const provider = props.changeRequest?.provider;
+  const url = props.changeRequest?.url;
   const target = pullRequestTarget(props.params);
   const activity = useEnvironmentQuery(
-    props.value?.includes("/_git/") ? composerPullRequests.activity(target) : null,
+    provider === "azure-devops" ? composerPullRequests.activity(target) : null,
   );
   const [identities, setIdentities] = useState(NO_IDENTITIES);
   const nextIdentities = reusePullRequestIdentities(
@@ -50,6 +56,13 @@ export function PullRequestMarkdownRepository(props: {
     activity.data?.identities ?? NO_IDENTITIES,
   );
   if (nextIdentities !== identities) setIdentities(nextIdentities);
+  const autolinks = useMemo(
+    () =>
+      provider === undefined || url === undefined
+        ? null
+        : changeRequestReferenceAutolinker({ provider, url }, identities),
+    [provider, url, identities],
+  );
   const project = useProject({
     environmentId: target.environmentId,
     projectId: target.input.projectId,
@@ -60,11 +73,9 @@ export function PullRequestMarkdownRepository(props: {
     [target.environmentId, cwd],
   );
   return (
-    <RepositoryContext value={props.value}>
-      <AzureIdentities value={identities}>
-        <PullRequestMediaContext value={media}>{props.children}</PullRequestMediaContext>
-      </AzureIdentities>
-    </RepositoryContext>
+    <AutolinksContext value={autolinks}>
+      <PullRequestMediaContext value={media}>{props.children}</PullRequestMediaContext>
+    </AutolinksContext>
   );
 }
 
@@ -121,15 +132,11 @@ function PullRequestMarkdownContent(props: {
   readonly markdown: string;
   readonly imageGroupMarkdown?: string;
 }) {
-  const repositoryUrl = useContext(RepositoryContext);
-  const identities = useContext(AzureIdentities);
+  const autolinks = useContext(AutolinksContext);
   const mediaContext = useContext(PullRequestMediaContext);
   const markdown = useMemo(
-    () =>
-      repositoryUrl?.includes("/_git/")
-        ? azureDevOpsMarkdownLinks(props.markdown, repositoryUrl, identities)
-        : githubMarkdownLinks(props.markdown, repositoryUrl),
-    [props.markdown, repositoryUrl, identities],
+    () => linkReferenceAutolinks(props.markdown, autolinks),
+    [props.markdown, autolinks],
   );
   const openPullRequest = useOpenPullRequest();
   const openLink = useCallback(
