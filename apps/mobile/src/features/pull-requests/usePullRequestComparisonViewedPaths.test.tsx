@@ -60,3 +60,14 @@ it("keeps historical viewed paths separate from latest and from other pull reque
   screen.render({ ...pr, commit: "abc", number: 2 });
   expect(screen.isViewed()).toBe(false);
 });
+
+it("clears a comparison's viewed paths even when the next comparison is not toggled", () => {
+  using screen = setup();
+  const first = { ...pr, iterationRange: { from: 1, to: 2 } };
+  screen.render(first);
+  screen.toggle();
+  screen.render({ ...pr, iterationRange: { from: 2, to: 3 } });
+  expect(screen.isViewed()).toBe(false);
+  screen.render(first);
+  expect(screen.isViewed()).toBe(false);
+});

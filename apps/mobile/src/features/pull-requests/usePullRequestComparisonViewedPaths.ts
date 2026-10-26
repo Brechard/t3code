@@ -13,6 +13,7 @@ export function usePullRequestComparisonViewedPaths(params: PullRequestDiffParam
     key,
     paths: new Set(),
   }));
+  if (state.key !== key) setState({ key, paths: new Set() });
   const paths = state.key === key ? state.paths : new Set<string>();
   return {
     isViewed: (path: string) => paths.has(path),
