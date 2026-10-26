@@ -36,22 +36,35 @@ export function linkReferenceAutolinks(
 ): string {
   if (autolinks === null) return markdown;
   const edits: { start: number; end: number; value: string }[] = [];
-  const visit = (node: MarkdownNode) => {
+  const visit = (node: MarkdownNode, following?: MarkdownNode) => {
     if (UNLINKED_TYPES.has(node.type)) return;
     if (node.type === "text") {
       const start = node.position?.start.offset;
-      const end = node.position?.end.offset;
+      let end = node.position?.end.offset;
       if (start === undefined || end === undefined) return;
+      const textLength = end - start;
+      const followingEnd = following?.position?.end.offset;
+      if (following?.type === "html" && followingEnd !== undefined) {
+        const combined = markdown.slice(start, followingEnd);
+        if (
+          autolinks(combined).some(
+            (link) => link.index < textLength && link.index + link.text.length === combined.length,
+          )
+        ) {
+          end = followingEnd;
+        }
+      }
       for (const link of autolinks(markdown.slice(start, end))) {
         edits.push({
           start: start + link.index,
           end: start + link.index + link.text.length,
-          value: `[${link.label}](${link.url})`,
+          value: `[${link.label.replace(/[\\[\]`*_<>!&~]/gu, "\\$&")}](${link.url})`,
         });
       }
     } else if (node.children !== undefined) {
       let protectedHtmlDepth = 0;
-      for (const child of node.children) {
+      for (let index = 0; index < node.children.length; index++) {
+        const child = node.children[index]!;
         if (child.type === "html") {
           const start = child.position?.start.offset;
           const end = child.position?.end.offset;
@@ -59,7 +72,7 @@ export function linkReferenceAutolinks(
           for (const match of tag.matchAll(/<(\/)?(?:a|code|pre|script|style)(?=[\s>])[^>]*>/giu)) {
             protectedHtmlDepth = Math.max(0, protectedHtmlDepth + (match[1] ? -1 : 1));
           }
-        } else if (protectedHtmlDepth === 0) visit(child);
+        } else if (protectedHtmlDepth === 0) visit(child, node.children[index + 1]);
       }
     }
   };

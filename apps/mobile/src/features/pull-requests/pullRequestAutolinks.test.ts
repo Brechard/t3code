@@ -1,4 +1,6 @@
 import { changeRequestReferenceAutolinker } from "@t3tools/client-runtime/pull-request-markdown";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
 import { describe, expect, it } from "vite-plus/test";
 
 import { linkReferenceAutolinks } from "./pullRequestAutolinks";
@@ -50,3 +52,60 @@ describe("linkReferenceAutolinks", () => {
     expect(linkReferenceAutolinks("Closes #123", gitlab)).toBe("Closes #123");
   });
 });
+
+describe.each(["abcdef01-2345-6789-abcd-ef0123456789", "01234567-89ab-cdef-0123-456789abcdef"])(
+  "Azure mention %s",
+  (id) => {
+    const label = "@Alice [team] \\ [ *em* _x_ ~x~ <code> &copy; ![x]";
+    const azure = changeRequestReferenceAutolinker(
+      {
+        provider: "azure-devops",
+        url: "https://dev.azure.com/acme/platform/_git/t3code/pullrequest/17",
+      },
+      { [id]: label.slice(1) },
+    );
+    const mention = `@<${id}>`;
+    it("serializes parsed mentions with a literal label", () => {
+      const linked = linkReferenceAutolinks(`Thanks ${mention}, then ${mention}.`, azure);
+      const tree = unified().use(remarkParse).parse(linked);
+      expect(tree).toMatchObject({
+        children: [
+          {
+            type: "paragraph",
+            children: [
+              { type: "text", value: "Thanks " },
+              {
+                type: "link",
+                url: `https://dev.azure.com/acme/platform/_settings/people?userId=${id}`,
+                children: [{ type: "text", value: label }],
+              },
+              { type: "text", value: ", then " },
+              {
+                type: "link",
+                url: `https://dev.azure.com/acme/platform/_settings/people?userId=${id}`,
+                children: [{ type: "text", value: label }],
+              },
+              { type: "text", value: "." },
+            ],
+          },
+        ],
+      });
+    });
+
+    it("preserves excluded contexts", () => {
+      const markdown = [
+        `\`${mention}\``,
+        `\`\`\`\n${mention}\n\`\`\``,
+        `[${mention}](https://example.com)`,
+        `![${mention}](image.png)`,
+        `[ref]: https://example.com "${mention}"`,
+        `[${mention}][ref]`,
+        `\\${mention} and \\${mention}`,
+        ...["a", "code", "pre", "script", "style"].map(
+          (tag) => `See <${tag}>${mention} #12</${tag}>`,
+        ),
+      ].join("\n\n");
+      expect(linkReferenceAutolinks(markdown, azure)).toBe(markdown);
+    });
+  },
+);
