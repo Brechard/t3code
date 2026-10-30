@@ -113,4 +113,13 @@ it("shows the details button while text or nested text is cut, until it fits aga
     ),
   );
   await expect.element(details).toBeInTheDocument();
+
+  await screen.rerender(
+    <ComposerBanner.Root>
+      {noticeRow("4rem", "Waiting on a subagent with a long name")}
+    </ComposerBanner.Root>,
+  );
+  await expect.element(details).toBeInTheDocument();
+  await screen.rerender(<ComposerBanner.Root>{noticeRow("4rem", "Ready")}</ComposerBanner.Root>);
+  await expect.element(details).not.toBeInTheDocument();
 });

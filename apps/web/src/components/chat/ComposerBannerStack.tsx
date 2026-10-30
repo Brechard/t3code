@@ -113,7 +113,14 @@ export function NoticeText({
     };
     measure();
     const stopObserving = observeResize([text, banner ?? text], measure);
-    const mutations = new MutationObserver(measure);
+    let content = text.textContent;
+    const mutations = new MutationObserver(() => {
+      if (text.textContent !== content) {
+        content = text.textContent;
+        setDetailsAtWidth(null);
+      }
+      measure();
+    });
     mutations.observe(text, { childList: true, subtree: true, characterData: true });
     return () => {
       stopObserving();
