@@ -79,7 +79,7 @@ export function NoticeText({
   useLayoutEffect(() => {
     const text = textRef.current;
     if (!text) return;
-    const banner = text.closest("[data-slot=composer-banner]") ?? text;
+    const banner = text.closest("[data-slot=composer-banner]");
     const range = document.createRange();
     const measure = () => {
       // Ignore the space taken by the details button itself so it cannot
@@ -102,13 +102,17 @@ export function NoticeText({
       // The button's width can wrap the banner's actions onto a second row, which gives
       // the text room and removes the button, which unwraps the row again. Once shown,
       // the button stays until the banner itself gets wider than where it appeared.
-      const width = banner.clientWidth;
+      const width = banner?.clientWidth ?? text.clientWidth;
       setDetailsAtWidth((shownAt) =>
-        overflowing ? (shownAt ?? width) : shownAt !== null && width <= shownAt ? shownAt : null,
+        overflowing
+          ? (shownAt ?? width)
+          : banner && shownAt !== null && width <= shownAt
+            ? shownAt
+            : null,
       );
     };
     measure();
-    const stopObserving = observeResize([text, banner], measure);
+    const stopObserving = observeResize([text, banner ?? text], measure);
     const mutations = new MutationObserver(measure);
     mutations.observe(text, { childList: true, subtree: true, characterData: true });
     return () => {
