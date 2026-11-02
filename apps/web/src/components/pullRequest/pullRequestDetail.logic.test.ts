@@ -43,6 +43,7 @@ import {
   threadPullRequestPanelTarget,
   latestPullRequestReviewOutcomes,
   applyPullRequestDetailOverride,
+  expirePullRequestDetailOverride,
   pullRequestDetailPatchAfterAction,
   pullRequestDetailPatchAfterVote,
   pullRequestViewerReviewOutcome,
@@ -449,13 +450,13 @@ describe("confirmed action outcome on the detail", () => {
     const first = record({ isDraft: false });
     expect(recordPullRequestDetailOverride(first, scope, { state: "closed" }, at + 1)).toEqual({
       scope,
-      at: at + 1,
+      at: { isDraft: at, state: at + 1 },
       isDraft: false,
       state: "closed",
     });
     expect(recordPullRequestDetailOverride(first, "other", { state: "closed" }, at + 1)).toEqual({
       scope: "other",
-      at: at + 1,
+      at: { state: at + 1 },
       state: "closed",
     });
   });
@@ -471,7 +472,7 @@ describe("confirmed action outcome on the detail", () => {
     expect(settlePullRequestDetailOverride(override, { ...detail, isDraft: false }, scope)).toEqual(
       {
         scope,
-        at,
+        at: { vote: at },
         vote: { login: "reviewer", reviewState: "approved" },
       },
     );
@@ -488,6 +489,23 @@ describe("confirmed action outcome on the detail", () => {
     ).toBeNull();
     expect(settlePullRequestDetailOverride(override, detail, "other")).toBeNull();
     expect(settlePullRequestDetailOverride(override, null, scope)).toBe(override);
+  });
+
+  it("expires each field on its own deadline", () => {
+    const override = recordPullRequestDetailOverride(
+      record({ isDraft: false }),
+      scope,
+      pullRequestDetailPatchAfterVote("reviewer", "approve")!,
+      at + 1,
+    );
+    expect(expirePullRequestDetailOverride(override, at)).toEqual({
+      scope,
+      at: { vote: at + 1 },
+      vote: { login: "reviewer", reviewState: "approved" },
+    });
+    expect(
+      expirePullRequestDetailOverride(expirePullRequestDetailOverride(override, at), at + 1),
+    ).toBeNull();
   });
 
   it("treats a reset vote as agreed when the viewer is absent from the fetched reviewers", () => {
