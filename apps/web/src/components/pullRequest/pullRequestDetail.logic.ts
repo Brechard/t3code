@@ -9,6 +9,7 @@ import {
   GitCommandError,
   PullRequestDetail,
   PullRequestOperationError,
+  type AzureDevOpsReviewVote,
   type PullRequestAction,
   type PullRequestActivityEvent,
   type PullRequestActor,
@@ -1463,4 +1464,156 @@ export function resolveDisplayedPullRequestDetail(input: {
   return link !== undefined && (link.authority ?? link.host) === input.reference.host.toLowerCase()
     ? input.cached
     : null;
+}
+
+type ReviewerVote = NonNullable<PullRequestReviewer["reviewState"]>;
+
+const AZURE_VOTE_REVIEW_STATE: Record<AzureDevOpsReviewVote, ReviewerVote> = {
+  approve: "approved",
+  "approve-with-suggestions": "approved-with-suggestions",
+  "wait-for-author": "waiting-for-author",
+  reject: "rejected",
+  reset: "none",
+};
+
+export interface PullRequestDetailPatch {
+  readonly state?: PullRequestState;
+  readonly isDraft?: boolean;
+  readonly autoMergeEnabled?: boolean;
+  readonly vote?: { readonly login: string; readonly reviewState: ReviewerVote };
+}
+
+export interface PullRequestDetailOverride extends PullRequestDetailPatch {
+  readonly scope: string;
+  readonly at: number;
+}
+
+export function pullRequestDetailPatchAfterAction(
+  action: PullRequestAction,
+): PullRequestDetailPatch | null {
+  switch (action) {
+    case "ready":
+      return { isDraft: false };
+    case "draft":
+      return { isDraft: true };
+    case "close":
+      return { state: "closed" };
+    case "reopen":
+      return { state: "open" };
+    case "enable-auto-merge":
+      return { autoMergeEnabled: true };
+    case "disable-auto-merge":
+      return { autoMergeEnabled: false };
+    default:
+      return null;
+  }
+}
+
+export function pullRequestDetailPatchAfterVote(
+  viewer: string | undefined,
+  vote: AzureDevOpsReviewVote,
+): PullRequestDetailPatch | null {
+  return viewer === undefined
+    ? null
+    : { vote: { login: viewer, reviewState: AZURE_VOTE_REVIEW_STATE[vote] } };
+}
+
+export function recordPullRequestDetailOverride(
+  previous: PullRequestDetailOverride | null,
+  scope: string,
+  patch: PullRequestDetailPatch,
+  now: number,
+): PullRequestDetailOverride {
+  return { ...(previous?.scope === scope ? previous : {}), ...patch, scope, at: now };
+}
+
+type OverridableDetail = Pick<
+  PullRequestDetail,
+  "state" | "isDraft" | "autoMergeEnabled" | "reviewers"
+>;
+
+export function applyPullRequestDetailOverride<Detail extends OverridableDetail>(
+  detail: Detail,
+  override: PullRequestDetailOverride | null,
+): Detail {
+  if (override === null) return detail;
+  const { state, isDraft, autoMergeEnabled, vote } = override;
+  const login = vote?.login.toLowerCase();
+  const held = login === undefined ? undefined : voteOf(detail.reviewers, login);
+  return {
+    ...detail,
+    ...(state === undefined ? {} : { state }),
+    ...(isDraft === undefined ? {} : { isDraft }),
+    ...(autoMergeEnabled === undefined ? {} : { autoMergeEnabled }),
+    ...(vote === undefined
+      ? {}
+      : {
+          reviewers:
+            held === undefined
+              ? [
+                  ...detail.reviewers,
+                  { login: vote.login, name: null, avatarUrl: null, reviewState: vote.reviewState },
+                ]
+              : detail.reviewers.map((reviewer) =>
+                  reviewer.login.toLowerCase() === login
+                    ? { ...reviewer, reviewState: vote.reviewState }
+                    : reviewer,
+                ),
+        }),
+  };
+}
+
+function voteOf(reviewers: ReadonlyArray<PullRequestReviewer>, login: string) {
+  return reviewers.find((reviewer) => reviewer.login.toLowerCase() === login);
+}
+
+/** Drop what the fetched detail now agrees with; the rest holds until it expires. */
+export function settlePullRequestDetailOverride(
+  override: PullRequestDetailOverride | null,
+  detail: OverridableDetail | null,
+  scope: string,
+): PullRequestDetailOverride | null {
+  if (override === null) return null;
+  if (override.scope !== scope) return null;
+  if (detail === null) return override;
+  const { state, isDraft, autoMergeEnabled, vote } = override;
+  const open = {
+    state: state !== undefined && detail.state !== state,
+    isDraft: isDraft !== undefined && detail.isDraft !== isDraft,
+    autoMergeEnabled:
+      autoMergeEnabled !== undefined && detail.autoMergeEnabled !== autoMergeEnabled,
+    vote:
+      vote !== undefined &&
+      (voteOf(detail.reviewers, vote.login.toLowerCase())?.reviewState ?? "none") !==
+        vote.reviewState,
+  };
+  if (!Object.values(open).some(Boolean)) return null;
+  if (
+    open.state === (state !== undefined) &&
+    open.isDraft === (isDraft !== undefined) &&
+    open.autoMergeEnabled === (autoMergeEnabled !== undefined) &&
+    open.vote === (vote !== undefined)
+  )
+    return override;
+  return {
+    scope: override.scope,
+    at: override.at,
+    ...(open.state ? { state } : {}),
+    ...(open.isDraft ? { isDraft } : {}),
+    ...(open.autoMergeEnabled ? { autoMergeEnabled } : {}),
+    ...(open.vote ? { vote } : {}),
+  };
+}
+
+export function pullRequestViewerReviewOutcome(
+  detail: Pick<PullRequestDetail, "viewer" | "reviewers"> &
+    Pick<PullRequestDetailView, "comments" | "commits">,
+) {
+  const viewer = detail.viewer?.toLowerCase();
+  if (viewer === undefined) return null;
+  return (
+    latestPullRequestReviewOutcomes(detail.comments, detail.commits, detail.reviewers).find(
+      (entry) => entry.key === viewer,
+    ) ?? null
+  );
 }

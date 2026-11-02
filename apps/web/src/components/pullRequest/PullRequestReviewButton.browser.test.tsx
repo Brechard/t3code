@@ -264,6 +264,28 @@ it("refuses another vote while a panel action is pending", async () => {
   expect(state.run).not.toHaveBeenCalled();
 });
 
+it("shows an approved viewer as Approved and still lets them change their vote", async () => {
+  using fixture = setup();
+  await using _screen = await renderUi(
+    fixture.wrap(
+      buttonNode({
+        ...detail,
+        reviewers: [
+          { login: "Reviewer", name: null, avatarUrl: null, reviewState: "approved" as const },
+        ],
+      }),
+    ),
+  );
+  await expect.element(page.getByRole("button", { name: "Approved", exact: true })).toBeDisabled();
+  await expect.element(approve()).not.toBeInTheDocument();
+  await expect.element(options()).toBeEnabled();
+  await selectOption("Reset feedback");
+  expect(state.run).toHaveBeenCalledExactlyOnceWith({
+    environmentId,
+    input: { ...reference, action: { type: "vote", vote: "reset" } },
+  });
+});
+
 it.each(["gitlab", "forgejo", "bitbucket", "gitcafe"])(
   "does not expose the review shortcut for %s",
   async (provider) => {

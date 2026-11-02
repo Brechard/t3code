@@ -5,6 +5,7 @@ import {
   AzureDevOpsReviewVote,
   type EnvironmentId,
   type PullRequestDetail,
+  type PullRequestDetailView,
   type PullRequestRef,
   type PullRequestReviewVerdict,
 } from "@t3tools/contracts";
@@ -20,7 +21,7 @@ import {
   PullRequestPermissionHint,
   PullRequestPermissionMenuItem,
 } from "./PullRequestPermissionButton";
-import { readableFailure } from "./pullRequestDetail.logic";
+import { pullRequestViewerReviewOutcome, readableFailure } from "./pullRequestDetail.logic";
 
 const reviewLabels: Record<PullRequestReviewVerdict, string> = {
   approve: "Approve",
@@ -38,10 +39,10 @@ export function PullRequestReviewButton({
 }: {
   environmentId: EnvironmentId;
   reference: PullRequestRef;
-  detail: PullRequestDetail;
+  detail: PullRequestDetail & Pick<PullRequestDetailView, "comments" | "commits">;
   actionPending: boolean;
   onReview: (verdict: PullRequestReviewVerdict) => void;
-  onActed: () => void;
+  onActed: (vote: AzureDevOpsReviewVote) => void;
 }) {
   const azure = detail.provider === "azure-devops" && detail.capabilities.hostActions === true;
   const allowed = useAtomValue(
@@ -65,6 +66,8 @@ export function PullRequestReviewButton({
     detail.viewerPermissions.deniedActions?.vote ??
     (!allowed ? "This connection does not allow pull request reviews." : undefined);
   const disabled = actionPending || busy;
+  const outcome = pullRequestViewerReviewOutcome(detail);
+  const approved = outcome?.outcome === "approved" && !outcome.stale;
   const verdictReason = (verdict: PullRequestReviewVerdict) =>
     reason ??
     (!detail.viewerPermissions.verdicts.includes(verdict)
@@ -86,7 +89,7 @@ export function PullRequestReviewButton({
       .then((result) => {
         if (result._tag === "Failure") throw squashAtomCommandFailure(result);
         toastManager.add({ type: "success", title: result.value.message });
-        onActed();
+        onActed(value);
       })
       .catch((cause: unknown) => {
         toastManager.add({
@@ -108,13 +111,17 @@ export function PullRequestReviewButton({
         size="xs"
         variant="outline"
         groupPosition="start"
-        reason={azure ? reason : verdictReason("approve")}
+        reason={
+          approved ? "You approved this pull request." : azure ? reason : verdictReason("approve")
+        }
         disabled={disabled}
-        aria-label={busy ? "Submitting review" : "Approve pull request"}
+        aria-label={busy ? "Submitting review" : approved ? "Approved" : "Approve pull request"}
         onClick={() => (azure ? void vote("approve") : review("approve"))}
       >
-        <CheckIcon className="size-3.5" />
-        <span className="@max-[30rem]/pr-header:hidden">{busy ? "Submitting…" : "Approve"}</span>
+        <CheckIcon className={approved ? "size-3.5 text-success" : "size-3.5"} />
+        <span className="@max-[30rem]/pr-header:hidden">
+          {busy ? "Submitting…" : approved ? "Approved" : "Approve"}
+        </span>
       </PullRequestPermissionButton>
       <Menu>
         <PullRequestPermissionHint reason={reason}>

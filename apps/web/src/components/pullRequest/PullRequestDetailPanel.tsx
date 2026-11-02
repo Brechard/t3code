@@ -141,6 +141,8 @@ import {
   resolvePullRequestPrimaryControl,
   allowsSinglePullRequestMerge,
   canDeletePullRequestBranch,
+  pullRequestDetailPatchAfterAction,
+  pullRequestDetailPatchAfterVote,
   resolveBaseFreshness,
   resolvePullRequestMergeMethod,
   type PullRequestFinding,
@@ -356,6 +358,7 @@ export function PullRequestDetailPanel({
     verdict?: PullRequestReviewVerdict;
   } | null>(null);
   const {
+    recordActionOutcome,
     canWriteSourceControl,
     detailQuery,
     activityQuery,
@@ -702,6 +705,8 @@ export function PullRequestDetailPanel({
       onActed?.(action, "failed");
       return false;
     }
+    const outcome = pullRequestDetailPatchAfterAction(action);
+    if (outcome !== null) recordActionOutcome(outcome);
     if (action === "revert") {
       toastManager.add({ type: "success", title: `Revert ${terminology.singular} opened` });
     }
@@ -1384,7 +1389,11 @@ export function PullRequestDetailPanel({
                 detail={detail}
                 actionPending={actionPending}
                 onReview={(verdict) => setOpenReviewRequest({ verdict })}
-                onActed={refreshDetail}
+                onActed={(vote) => {
+                  const outcome = pullRequestDetailPatchAfterVote(detail.viewer, vote);
+                  if (outcome !== null) recordActionOutcome(outcome);
+                  refreshDetail();
+                }}
               />
               <PullRequestPrimaryAction
                 pullRequestKey={pullRequestKey}

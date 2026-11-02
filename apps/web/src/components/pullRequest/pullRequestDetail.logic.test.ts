@@ -42,6 +42,12 @@ import {
   pullRequestPanelContext,
   threadPullRequestPanelTarget,
   latestPullRequestReviewOutcomes,
+  applyPullRequestDetailOverride,
+  pullRequestDetailPatchAfterAction,
+  pullRequestDetailPatchAfterVote,
+  pullRequestViewerReviewOutcome,
+  recordPullRequestDetailOverride,
+  settlePullRequestDetailOverride,
   newestPullRequestCommitAt,
   mergePullRequestThreadComments,
   orderPullRequestComments,
@@ -266,6 +272,43 @@ describe("review verdicts", () => {
     ).toMatchObject([{ outcome: "changes-requested", stale: false }]);
   });
 
+  it("finds the viewer's own current verdict, whatever the case of their login", () => {
+    const viewer = { login: "Reviewer", name: null, avatarUrl: null };
+    const commits = [
+      { oid: "new", messageHeadline: "New push", committedDate: "2026-07-02T00:00:00Z" },
+    ];
+    const review = (login: string): PullRequestComment => ({
+      id: login,
+      kind: "review",
+      author: { login, name: null, avatarUrl: null },
+      body: "",
+      createdAt: "2026-07-01T00:00:00Z",
+      path: null,
+      url: null,
+      reviewState: "APPROVED",
+    });
+    const find = (detail: Parameters<typeof pullRequestViewerReviewOutcome>[0]) =>
+      pullRequestViewerReviewOutcome(detail);
+
+    expect(
+      find({
+        viewer: "REVIEWER",
+        comments: [],
+        commits,
+        reviewers: [{ ...viewer, reviewState: "approved" }],
+      }),
+    ).toMatchObject({ outcome: "approved", stale: false });
+    expect(
+      find({ viewer: "reviewer", comments: [review("Reviewer")], commits, reviewers: [] }),
+    ).toMatchObject({ outcome: "approved", stale: true });
+    expect(
+      find({ viewer: "reviewer", comments: [review("octocat")], commits, reviewers: [] }),
+    ).toBe(null);
+    expect(find({ viewer: undefined, comments: [review("octocat")], commits, reviewers: [] })).toBe(
+      null,
+    );
+  });
+
   it("keeps each reviewer's last word, whatever order the host returned them in", () => {
     const review = (
       id: string,
@@ -352,6 +395,104 @@ describe("review verdicts", () => {
         },
       ]),
     ).toEqual([]);
+  });
+});
+
+describe("confirmed action outcome on the detail", () => {
+  const scope = "env:project:host:repo#1";
+  const detail = {
+    state: "open" as const,
+    isDraft: true,
+    reviewers: [{ login: "Reviewer", name: null, avatarUrl: null, reviewState: "none" as const }],
+  };
+  const at = 1_000_000;
+  const record = (patch: NonNullable<ReturnType<typeof pullRequestDetailPatchAfterAction>>) =>
+    recordPullRequestDetailOverride(null, scope, patch, at);
+
+  it("maps each action to the state it confirms, and leaves merge and the rest alone", () => {
+    expect(
+      (
+        ["ready", "draft", "close", "reopen", "enable-auto-merge", "disable-auto-merge"] as const
+      ).map(pullRequestDetailPatchAfterAction),
+    ).toEqual([
+      { isDraft: false },
+      { isDraft: true },
+      { state: "closed" },
+      { state: "open" },
+      { autoMergeEnabled: true },
+      { autoMergeEnabled: false },
+    ]);
+    expect(pullRequestDetailPatchAfterAction("merge")).toBeNull();
+    expect(pullRequestDetailPatchAfterVote(undefined, "approve")).toBeNull();
+  });
+
+  it("shows the outcome over the fetched detail, adding a viewer who was not a reviewer", () => {
+    const published = applyPullRequestDetailOverride(detail, record({ isDraft: false }));
+    expect(published).toMatchObject({ state: "open", isDraft: false });
+    const closed = applyPullRequestDetailOverride(detail, record({ state: "closed" }));
+    expect(closed.state).toBe("closed");
+
+    const vote = (login: string, kind: "approve" | "reset") =>
+      applyPullRequestDetailOverride(detail, record(pullRequestDetailPatchAfterVote(login, kind)!))
+        .reviewers;
+    expect(vote("reviewer", "approve")).toEqual([
+      { login: "Reviewer", name: null, avatarUrl: null, reviewState: "approved" },
+    ]);
+    expect(vote("newcomer", "approve")).toEqual([
+      ...detail.reviewers,
+      { login: "newcomer", name: null, avatarUrl: null, reviewState: "approved" },
+    ]);
+    expect(applyPullRequestDetailOverride(detail, null)).toBe(detail);
+  });
+
+  it("accumulates outcomes within a pull request and starts over for another", () => {
+    const first = record({ isDraft: false });
+    expect(recordPullRequestDetailOverride(first, scope, { state: "closed" }, at + 1)).toEqual({
+      scope,
+      at: at + 1,
+      isDraft: false,
+      state: "closed",
+    });
+    expect(recordPullRequestDetailOverride(first, "other", { state: "closed" }, at + 1)).toEqual({
+      scope: "other",
+      at: at + 1,
+      state: "closed",
+    });
+  });
+
+  it("retires a field once the fetched detail agrees", () => {
+    const override = recordPullRequestDetailOverride(
+      record({ isDraft: false }),
+      scope,
+      pullRequestDetailPatchAfterVote("reviewer", "approve")!,
+      at,
+    );
+    expect(settlePullRequestDetailOverride(override, detail, scope)).toBe(override);
+    expect(settlePullRequestDetailOverride(override, { ...detail, isDraft: false }, scope)).toEqual(
+      {
+        scope,
+        at,
+        vote: { login: "reviewer", reviewState: "approved" },
+      },
+    );
+    expect(
+      settlePullRequestDetailOverride(
+        override,
+        {
+          ...detail,
+          isDraft: false,
+          reviewers: [{ ...detail.reviewers[0]!, reviewState: "approved" }],
+        },
+        scope,
+      ),
+    ).toBeNull();
+    expect(settlePullRequestDetailOverride(override, detail, "other")).toBeNull();
+    expect(settlePullRequestDetailOverride(override, null, scope)).toBe(override);
+  });
+
+  it("treats a reset vote as agreed when the viewer is absent from the fetched reviewers", () => {
+    const override = record(pullRequestDetailPatchAfterVote("newcomer", "reset")!);
+    expect(settlePullRequestDetailOverride(override, detail, scope)).toBeNull();
   });
 });
 
